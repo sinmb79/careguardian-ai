@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.preview.pid
+*.tsbuildinfo
+
+# Generated config outputs
+vite.config.js
+vite.config.d.ts
+tailwind.config.js
+tailwind.config.d.ts
+
+# Local editor/runtime files
+.DS_Store
+Thumbs.db
