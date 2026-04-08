@@ -21,7 +21,8 @@ export default defineConfig({
         theme_color: "#f3efe6",
         background_color: "#f7f2e8",
         display: "standalone",
-        start_url: "/",
+        scope: base,
+        start_url: base,
         icons: [
           {
             src: "favicon.svg",
