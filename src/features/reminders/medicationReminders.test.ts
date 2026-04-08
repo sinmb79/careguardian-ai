@@ -7,7 +7,7 @@ describe("buildMedicationTimeline", () => {
     const manual = makeFixtureManual();
     manual.sections.medication.drugs[0].timing = "08:30";
 
-    const reminders = buildMedicationTimeline(manual, new Date("2026-04-09T07:00:00+09:00"));
+    const reminders = buildMedicationTimeline(manual, new Date(2026, 3, 9, 7, 0, 0));
 
     expect(reminders[0].label).toContain("08:30");
     expect(reminders[0].status).toBe("upcoming");
@@ -17,7 +17,7 @@ describe("buildMedicationTimeline", () => {
     const manual = makeFixtureManual();
     manual.sections.medication.drugs[0].timing = "08:30";
 
-    const reminders = buildMedicationTimeline(manual, new Date("2026-04-09T10:00:00+09:00"));
+    const reminders = buildMedicationTimeline(manual, new Date(2026, 3, 9, 10, 0, 0));
 
     expect(reminders[0].status).toBe("overdue");
   });
