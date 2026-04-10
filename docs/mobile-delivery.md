@@ -12,7 +12,7 @@ English: This document explains the practical setup path for shipping the `apps/
 | 모바일 앱 골격 | 완료 | `apps/mobile` Expo app |
 | Android 에뮬레이터 실행 | 확인 | `Medium_Phone_API_36.1`에서 Expo Go 로드 확인 |
 | iOS 시뮬레이터 | 불가 | Windows에서는 직접 실행 불가, macOS 필요 |
-| iOS 배포 경로 | 준비 | `apps/mobile/eas.json` 추가 |
+| EAS 프로젝트 연결 | 완료 | `15b9e293-b631-4b77-8cfc-9937cd604dd4` |
 
 ## 작업 공간 / Workspace
 
@@ -50,7 +50,7 @@ $env:Path="$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:JAVA
 ```powershell
 npm install
 npm run mobile:typecheck
-npm run mobile:android
+npm run mobile:android:go
 ```
 
 ## 개발 빌드 / Development Build
@@ -62,6 +62,9 @@ English: `expo-notifications` is limited in Expo Go, so a dev client build is th
 npm --workspace apps/mobile run android:dev
 ```
 
+한국어: `mobile:android:go`는 빠른 UI 확인용이고, `mobile:android:dev`는 네이티브 모듈 검증용입니다.  
+English: `mobile:android:go` is the quick UI verification path, while `mobile:android:dev` is the native-module verification path.
+
 ## iOS 경로 / iOS Path
 
 한국어: Windows에서는 iOS 시뮬레이터를 직접 돌릴 수 없습니다. 대신 EAS Cloud Build로 `.ipa`를 만들고, TestFlight 또는 원격 Mac에서 검증합니다.  
@@ -72,6 +75,9 @@ npx eas-cli login
 npx eas-cli build --platform ios --profile preview
 npx eas-cli build --platform android --profile preview
 ```
+
+한국어: 이 저장소는 이미 `@sinmb79/careguardian-ai-mobile` EAS 프로젝트에 연결되어 있습니다.  
+English: This repository is already linked to the `@sinmb79/careguardian-ai-mobile` EAS project.
 
 ## 현재 확인된 제한 / Known Limits
 

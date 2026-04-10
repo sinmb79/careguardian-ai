@@ -62,8 +62,11 @@ npm run mobile:typecheck
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 $env:Path="$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:JAVA_HOME\bin;$env:Path"
-npm run mobile:android
+npm run mobile:android:go
 ```
+
+Korean: 위 명령은 Expo Go 기준의 빠른 UI 확인용입니다. 복약 알림 같은 네이티브 모듈 검증은 `npm run mobile:android:dev`로 진행합니다.  
+English: The command above is the quick Expo Go path. Validate native modules such as medication notifications with `npm run mobile:android:dev`.
 
 ## Store build commands
 
@@ -72,6 +75,9 @@ npx eas-cli login
 npx eas-cli build --platform android --profile preview
 npx eas-cli build --platform ios --profile preview
 ```
+
+Korean: 이 저장소는 이미 `@sinmb79/careguardian-ai-mobile` EAS 프로젝트와 연결돼 있습니다.  
+English: This repository is already linked to the `@sinmb79/careguardian-ai-mobile` EAS project.
 
 ## Current constraints
 

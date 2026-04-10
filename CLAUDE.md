@@ -25,10 +25,10 @@ English: This repository now uses a `web demo + Expo mobile app + shared care co
 npm test -- --run
 npm run build
 npm run mobile:typecheck
-npm run mobile:android
+npm run mobile:android:go
 ```
 
 ## 현재 주의점 / Current Warnings
 
-한국어: Expo Go에서는 `expo-notifications`가 완전하지 않으므로, 다음 단계는 `npm run mobile:android:dev` 또는 `eas build` 기반 dev client 검증입니다.  
-English: `expo-notifications` is not fully supported in Expo Go, so the next step is dev client verification via `npm run mobile:android:dev` or `eas build`.
+한국어: `mobile:android:go`는 빠른 화면 검증용이고, `expo-notifications` 검증은 `npm run mobile:android:dev` 또는 `eas build` 기반 dev client로 봐야 합니다.  
+English: `mobile:android:go` is only for quick UI verification, and `expo-notifications` should be validated with `npm run mobile:android:dev` or an `eas build` based dev client.

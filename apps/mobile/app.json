@@ -31,6 +31,12 @@
     "plugins": [
       "expo-secure-store",
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "15b9e293-b631-4b77-8cfc-9937cd604dd4"
+      }
+    },
+    "owner": "sinmb79"
   }
 }
