@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
-import type { CareManual } from "../manual/manualSchema";
-import { generateCompanionReply } from "../companion/companionEngine";
-import { buildDailyScheduleCards } from "../companion/dailySchedule";
-import { buildMedicationTimeline } from "../reminders/medicationReminders";
-import { buildRelayPackage } from "../relay/relayPackage";
+import type { CareManual } from "@careguardian/care-core/manual";
+import { buildDailyScheduleCards, generateCompanionReply } from "@careguardian/care-core/companion";
+import { buildMedicationTimeline } from "@careguardian/care-core/reminders";
+import { buildRelayPackage } from "@careguardian/care-core/relay";
 import { createWebSpeechController } from "../voice/webSpeech";
 
 interface CompanionHomeProps {

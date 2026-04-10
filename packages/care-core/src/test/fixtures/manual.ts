@@ -1,4 +1,4 @@
-import { createEmptyCareManual, type CareManual } from "@careguardian/care-core/manual";
+import { createEmptyCareManual, type CareManual } from "../../manual/manualSchema";
 
 export function makeFixtureManual(): CareManual {
   const manual = createEmptyCareManual();

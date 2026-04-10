@@ -1,0 +1,15 @@
+{
+  "name": "@careguardian/care-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./manual": "./src/manual/index.ts",
+    "./companion": "./src/companion/index.ts",
+    "./reminders": "./src/reminders/index.ts",
+    "./relay": "./src/relay/index.ts"
+  },
+  "types": "./src/index.ts"
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createEmptyCareManual, type CareManual } from "../../features/manual/manualSchema";
+import { createEmptyCareManual, type CareManual } from "@careguardian/care-core/manual";
 import { loadCareManual, saveCareManual } from "../../features/storage/careManualRepository";
 
 const DEMO_PASSPHRASE = "careguardian-local-demo";

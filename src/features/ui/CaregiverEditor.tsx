@@ -1,6 +1,6 @@
 import { useRef, type ChangeEvent } from "react";
-import type { CareManual } from "../manual/manualSchema";
-import { caregiverSectionContent } from "../manual/manualSections";
+import type { CareManual } from "@careguardian/care-core/manual";
+import { caregiverSectionContent } from "@careguardian/care-core/manual";
 import { parseManualBackup, serializeManualBackup } from "../storage/manualBackup";
 import { SectionCard } from "./SectionCard";
 

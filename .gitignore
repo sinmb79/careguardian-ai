@@ -1,7 +1,10 @@
 node_modules/
 dist/
+.expo/
 .preview.pid
 *.tsbuildinfo
+apps/mobile/*.log
+apps/mobile/android-emulator-*.png
 
 # Generated config outputs
 vite.config.js
