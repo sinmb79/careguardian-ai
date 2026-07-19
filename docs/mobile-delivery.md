@@ -17,7 +17,7 @@ This document covers the delivery pipeline for the `apps/mobile` Expo app to And
 | EAS project | Connected | `@sinmb79/careguardian-ai-mobile` |
 | Production AAB | Built and verified | `apps/mobile/careguardian-ai-private-test-v1.0.1-vc6.aab`, build `c4968750-6d8a-41a9-ab50-b4a55661623e` |
 | Play Console | Closed Alpha configured, release not uploaded | Korea + tester email lists configured; candidate upload pending final verification and user confirmation |
-| Privacy policy | Source ready; deployment verification required | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` must return HTTP 200 before testing |
+| Privacy policy | Deployed and verified | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` returned HTTP 200 on 2026-07-20 |
 | Store screenshots | Captured | 4 phone + 2 tablet 7" + 2 tablet 10" + feature graphic |
 | Security gate | Synthetic-data only | SQLCipher, device authentication, privacy-safe local notifications, deletion and screen-capture controls implemented |
 
@@ -136,7 +136,7 @@ Observed in the console on 2026-07-20:
 - The app is not a medical device and does not diagnose, treat, prescribe, validate medication, confirm a dose was taken, or place emergency calls.
 - Expo and FCM/Firebase components may be present. Do not make a no-network, no-analytics, or no-data-transmission claim until dynamic runtime verification has completed.
 - Web SpeechRecognition input is disabled by default. The web PWA has a fixed demo passphrase in localStorage; no real personal data may be entered. Relay exports can be plaintext.
-- Before Play closed testing: publish the Korean-first/English policy at the URL above, verify HTTP 200, provide the contact email `sinmb79@naver.com`, and complete the Health declaration.
+- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. Before Play closed testing, keep the contact email `sinmb79@naver.com` and complete the Health declaration.
 
 ## Handoff
 
