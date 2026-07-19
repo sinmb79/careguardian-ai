@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CareGuardian AI 개인정보처리방침</title>
+  <style>
+    body { font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; color: #1a2626; background: #f7f2e8; line-height: 1.7; }
+    h1 { font-size: 1.7rem; border-bottom: 2px solid #6f8a70; padding-bottom: 8px; } h2 { font-size: 1.15rem; color: #506d52; margin-top: 2rem; } p, li { font-size: .96rem; } .date, .notice { color: #526166; } .notice { border-left: 4px solid #d97f5f; padding-left: 12px; }
+  </style>
+</head>
+<body>
+  <h1>CareGuardian AI 개인정보처리방침</h1>
+  <p class="date">시행일·최종 수정일: 2026-07-20</p>
+  <p class="notice"><strong>비공개 테스트 안내:</strong> 현재 테스트에는 가상의 인물·약·연락처만 입력해 주세요. 실제 건강정보, 처방정보, 긴급연락처, 생체정보는 입력하지 마세요.</p>
+  <h2>1. 서비스와 안전 한계</h2>
+  <p>CareGuardian AI는 보호자가 돌봄 일상, 의사소통 방법, 등록한 복약 정보를 정리하고 DAILY 화면에서 함께 살펴보도록 돕는 로컬 우선 보조 도구입니다. 의료기기가 아니며 진단·치료·처방·약물 상호작용·용량을 검증하지 않습니다. 알림 표시와 실제 복용 확인은 다르며, 이 앱은 복용 완료를 확인하거나 증명하지 않습니다. 응급 호출, 119 연결 또는 보호자 자동 연락 기능도 제공하지 않습니다. 응급 상황에서는 지역 응급 서비스와 의료전문가에게 직접 연락하세요.</p>
+  <h2>2. 처리하는 정보와 저장 위치</h2>
+  <p>사용자가 입력할 수 있는 정보에는 돌봄 대상의 이름, 일상, 의사소통·안정화 메모, 등록한 약 정보와 시간, 연락처가 포함될 수 있습니다.</p>
+  <ul>
+    <li><strong>모바일 앱:</strong> 비공개 테스트 후보(v1.0.1)는 CareManual을 앱 전용 SQLCipher 암호화 데이터베이스에 저장하고, 256비트 무작위 데이터베이스 키를 Android Keystore가 보호하는 SecureStore에 분리해 보관합니다. Android 백업은 비활성화되어 있습니다. 저장된 프로필은 기기 인증 성공 후에만 불러오며 앱이 백그라운드로 가면 다시 잠그고 화면 캡처를 차단합니다. 정적 네이티브 검증은 마쳤지만 다양한 실제 기기의 포렌식·네트워크 검증은 아직 진행 중이므로 비공개 테스트에서는 합성 데이터만 사용하세요.</li>
+    <li><strong>웹 PWA 데모:</strong> 브라우저 <code>localStorage</code>와 코드에 고정된 데모 passphrase를 사용합니다. 이는 실제 개인정보 보호 수단이 아니므로 실제 개인정보·건강정보 입력을 금지합니다.</li>
+    <li><strong>내보내기(relay):</strong> 보호자가 인수인계를 위해 파일을 직접 내보낼 수 있습니다. 내보낸 relay 파일은 평문일 수 있으며, 이메일·메신저·공유 폴더로 전송하면 수신자와 제3자에게 노출될 위험이 있습니다.</li>
+  </ul>
+  <h2>3. 음성·알림·네트워크</h2>
+  <ul>
+    <li><strong>음성:</strong> 비공개 테스트 모바일 앱의 음성 입력과 음성 출력은 비활성화되어 있습니다. 웹 PWA의 브라우저 SpeechRecognition 입력도 기본 비활성화되어 있습니다.</li>
+    <li><strong>모바일 알림:</strong> 등록 정보에 따라 기기 내 로컬 알림 예약을 시도할 수 있습니다. 권한, 절전 모드, 운영체제·제조사 정책, 기기 상태에 따라 알림이 지연되거나 누락될 수 있습니다. 알림만으로 복약을 관리하거나 안전을 판단하지 마세요.</li>
+    <li><strong>네트워크:</strong> 사용자 계정, 광고, 자체 분석 서버 기능을 제공하지 않습니다. 다만 배포·알림 환경에 Expo 및 FCM/Firebase 구성요소가 포함될 수 있습니다. 현재 빌드의 실제 네트워크 동작은 런타임 검증 전이므로 “어떠한 데이터도 전송되지 않는다”라고 단정하지 않습니다.</li>
+  </ul>
+  <h2>4. 보존, 삭제, 동의 철회</h2>
+  <p>모바일 앱의 “이 기기의 데이터 모두 삭제” 기능은 CareGuardian 예약 알림을 취소·재확인한 뒤 암호화 데이터베이스, 키와 앱 내 상태를 삭제합니다. 알림 취소가 확인되지 않으면 데이터 삭제를 중단하고 잠긴 상태를 유지해 다시 시도할 수 있게 합니다. 이 기능은 웹 PWA의 사이트 데이터나 사용자가 별도로 내보낸 파일까지 삭제하지 않으므로 해당 항목은 사용자가 직접 삭제해야 합니다. 테스트 참여자는 언제든 앱 사용을 중단하거나 기기 설정에서 알림 권한을 철회할 수 있습니다. 실제 개인정보가 포함되었다면 즉시 사용을 중단하고 아래 연락처로 알려 주세요.</p>
+  <h2>5. 제3자 제공과 변경</h2>
+  <p>CareGuardian AI는 이용자 데이터를 판매하지 않습니다. 사용자가 직접 relay 파일을 내보내거나 외부 앱으로 공유하는 경우, 그 전달은 사용자의 선택이며 수신·보관 환경의 위험은 별도로 적용됩니다. 본 방침은 기능 또는 검증 결과가 바뀌면 수정일과 함께 업데이트됩니다.</p>
+  <h2>6. 문의</h2>
+  <p>개인정보, 삭제, 동의 철회 또는 안전 우려 문의: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+  <hr />
+  <h1>Privacy Policy (English)</h1>
+  <p class="date">Effective and last updated: 2026-07-20</p>
+  <p class="notice"><strong>Closed-test notice:</strong> Use fictional people, medicines, and contacts only. Do not enter real personal, health, prescription, emergency-contact, or biometric data.</p>
+  <h2>1. Purpose and safety limits</h2>
+  <p>CareGuardian AI is a local-first aid for organizing care routines, communication notes, and user-entered medication information in a DAILY view. It is not a medical device and does not diagnose, treat, prescribe, or validate medicines, doses, interactions, or adherence. A notification is not proof of taking medicine. The app does not place emergency calls, call 119, or automatically contact caregivers.</p>
+  <h2>2. Storage and export</h2>
+  <p>The v1.0.1 closed-test candidate stores the mobile CareManual in an app-specific SQLCipher database. A random 256-bit database key is stored separately in SecureStore under Android Keystore protection, and Android backup is disabled. Stored profiles are loaded only after device authentication; the app relocks in the background and blocks screen capture. Native static checks have passed, but broader real-device forensic and network validation is still in progress, so closed-test participants must use synthetic data only. The web PWA demo uses browser localStorage and a fixed demo passphrase, so real personal or health data must never be entered. A user-exported relay file may be plaintext; sharing it can expose its contents.</p>
+  <h2>3. Voice, notifications, and network</h2>
+  <p>Mobile speech input and output are disabled in the closed-test build, and browser SpeechRecognition input is disabled by default on the web. The mobile app may attempt to schedule local device notifications, which can be delayed or missed because of permissions, battery controls, OS/vendor policy, or device state. The product has no user-account, advertising, or first-party analytics feature. Expo and FCM/Firebase components may nevertheless be present in the build or notification environment. Until runtime network behavior is verified, we do not claim that no data is transmitted.</p>
+  <h2>4. Retention, deletion, and withdrawal</h2>
+  <p>The mobile “delete all data on this device” action cancels and rechecks CareGuardian reminders before deleting the encrypted database, its key, and in-app state. If reminder cancellation cannot be confirmed, data deletion stops and the app stays locked so the user can retry. This action does not delete web PWA site data or separately exported files; users must remove those items themselves. Participants may stop using the app and withdraw notification permission in device settings. Contact us if real data was entered.</p>
+  <h2>5. Contact</h2>
+  <p>Privacy, deletion, consent withdrawal, or safety questions: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+</body>
+</html>

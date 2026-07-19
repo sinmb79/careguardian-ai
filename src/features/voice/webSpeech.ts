@@ -30,45 +30,6 @@ export function createWebSpeechController(
       typeof window !== "undefined" && "SpeechSynthesisUtterance" in window
         ? (text) => new SpeechSynthesisUtterance(text)
         : undefined,
-    recognitionFactory:
-      typeof window !== "undefined"
-        ? () => {
-            const SpeechRecognitionCtor =
-              (window as Window & {
-                webkitSpeechRecognition?: new () => {
-                  lang: string;
-                  interimResults: boolean;
-                  start: () => void;
-                  stop: () => void;
-                  onresult?: ((
-                    event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }
-                  ) => void) | null;
-                };
-                SpeechRecognition?: new () => {
-                  lang: string;
-                  interimResults: boolean;
-                  start: () => void;
-                  stop: () => void;
-                  onresult?: ((
-                    event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }
-                  ) => void) | null;
-                };
-              }).SpeechRecognition ??
-              (window as Window & {
-                webkitSpeechRecognition?: new () => {
-                  lang: string;
-                  interimResults: boolean;
-                  start: () => void;
-                  stop: () => void;
-                  onresult?: ((
-                    event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }
-                  ) => void) | null;
-                };
-              }).webkitSpeechRecognition;
-
-            return SpeechRecognitionCtor ? new SpeechRecognitionCtor() : undefined;
-          }
-        : undefined
   }
 ): WebSpeechController {
   const synth = environment.synth;

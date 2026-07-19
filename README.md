@@ -19,21 +19,22 @@ flowchart LR
 |---|---|---|
 | 공용 돌봄 코어 | 완료 | `packages/care-core`에 매뉴얼, 일정, 복약, 릴레이 로직 공유화 |
 | 웹 PWA | 완료 | GitHub Pages 데모와 백업/암호화 경로 유지 |
-| Expo 모바일 앱 | 완료 | `apps/mobile`에서 Android/iPhone/iPad 대상 앱 골격 확보 |
-| Android 에뮬레이터 검증 | 완료 | `Medium_Phone_API_36.1`에서 앱 렌더링 확인 |
+| Expo 모바일 앱 | 비공개 테스트 후보 | Android `1.0.1`, production AAB와 Play 비공개 테스트 준비 |
+| Android 에뮬레이터 검증 | 완료 | 릴리스 APK 기동과 주요 화면 렌더링 확인 |
 | iOS 배포 준비 | 완료 | `apps/mobile/eas.json` 추가, Windows 기준 EAS 경로 정리 |
-| 음성 출력 | 완료 | 웹은 Web Speech, 모바일은 `expo-speech` |
-| 복약 알림 준비 | 완료 | 모바일 `expo-notifications` 스케줄 로직 추가 |
+| 로컬 암호화·잠금 | 완료 | SQLCipher + SecureStore 키 분리, 기기 인증, 백그라운드 잠금, 화면 캡처 차단 |
+| 복약 알림 준비 | 완료 | 민감정보 없는 매일 로컬 알림, 예약·취소 결과 재확인 |
 
 ## 시스템 구조
 
 ```mermaid
 flowchart TD
   Core["Shared Care Core"] --> WebState["Web State + Web Storage"]
-  Core --> MobileState["Mobile State + SQLite/SecureStore"]
+  Core --> MobileState["Mobile State + SQLCipher/SecureStore"]
   WebState --> WebUI["Vite React PWA"]
   MobileState --> MobileUI["Expo React Native UI"]
-  MobileState --> MobileNotify["Local Notification Scheduling"]
+  MobileState --> MobileAuth["Device authentication + privacy lock"]
+  MobileState --> MobileNotify["Privacy-safe local notifications"]
 ```
 
 ## 작업 공간
@@ -75,7 +76,7 @@ English: The command above is the quick Expo Go path. Validate native modules su
 
 ```powershell
 npx eas-cli login
-npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform android --profile production
 npx eas-cli build --platform ios --profile preview
 ```
 
@@ -91,12 +92,14 @@ GitHub Pages: https://sinmb79.github.io/careguardian-ai/
 
 ## 현재 제약
 
-1. Windows에서는 iOS 시뮬레이터를 직접 돌릴 수 없습니다.
-2. Expo Go에서는 `expo-notifications`가 완전하지 않아 dev client 검증이 다음 단계입니다.
-3. 모바일 저장은 현재 SQLite + SecureStore 중심이며, AES 계층은 다음 단계에서 보강합니다.
+1. 현재 비공개 테스트는 가상의 인물·약·연락처만 허용합니다. 실제 건강·복약정보 테스트는 실기기 포렌식·네트워크·알림 매트릭스 검증 뒤에 별도로 판단합니다.
+2. Expo Go는 네이티브 보안·알림 검증 대상이 아닙니다. Play 후보는 EAS production AAB로만 만듭니다.
+3. Windows에서는 iOS 시뮬레이터를 직접 돌릴 수 없습니다.
 
 ## 참고 문서
 
 1. [모바일 배포 준비 문서](./docs/mobile-delivery.md)
-2. [Claude Code 인계 문서](./CLAUDE.md)
-3. [모바일 설계 문서](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)
+2. [비공개 테스트 운영 가이드](./docs/private-test-operations.md)
+3. [보안·안전 준비도 감사](./docs/security/private-test-readiness-2026-07-20.md)
+4. [Claude Code 인계 문서](./CLAUDE.md)
+5. [모바일 설계 문서](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)

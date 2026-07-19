@@ -12,10 +12,10 @@ export interface ScheduleCard {
 
 function routineCard(period: ScheduleCard["period"], item: CareRoutineItem, index: number): ScheduleCard {
   const periodLabelMap: Record<ScheduleCard["period"], string> = {
-    morning: "아침",
-    afternoon: "오후",
-    evening: "저녁",
-    night: "밤"
+    morning: "\u{1F305} 아침",
+    afternoon: "\u2600\uFE0F 오후",
+    evening: "\u{1F319} 저녁",
+    night: "\u{1F31F} 밤"
   };
 
   return {

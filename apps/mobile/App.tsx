@@ -1,23 +1,49 @@
 import { StatusBar } from "expo-status-bar";
+import { usePreventScreenCapture } from "expo-screen-capture";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useMobileCareAppState } from "./src/state/useMobileCareAppState";
 import { MobileCaregiverScreen } from "./src/ui/MobileCaregiverScreen";
 import { MobileCompanionScreen } from "./src/ui/MobileCompanionScreen";
+import { PrivacyGateScreen } from "./src/ui/PrivacyGateScreen";
 
 export default function App() {
-  const { manual, mode, isLoaded, isSaving, statusMessage, actions } = useMobileCareAppState();
+  usePreventScreenCapture("careguardian-sensitive-care-data");
+
+  const {
+    manual,
+    mode,
+    isLoaded,
+    isSaving,
+    isDeleting,
+    isAuthenticating,
+    privacyGate,
+    statusMessage,
+    actions
+  } = useMobileCareAppState();
 
   if (!isLoaded) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color="#183138" />
-        <Text style={styles.loadingText}>돌봄 프로필을 불러오는 중입니다.</Text>
+        <Text style={styles.loadingEmoji}>{"\u{1F91D}"}</Text>
+        <Text style={styles.loadingTitle}>돌봄 환경을 준비하고 있어요...</Text>
+        <Text style={styles.loadingSubtitle}>잠시만 기다려 주세요.</Text>
+        <ActivityIndicator size="large" color="#6f8a70" />
       </View>
     );
   }
 
+  if (privacyGate === "locked") {
+    return (
+      <PrivacyGateScreen
+        message={statusMessage}
+        isAuthenticating={isAuthenticating}
+        onUnlock={actions.unlockSensitiveUi}
+      />
+    );
+  }
+
   return (
-    <View style={styles.screen}>
+    <View style={styles.screen} accessibilityLabel="돌봄 매뉴얼">
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.shell}>
@@ -35,6 +61,8 @@ export default function App() {
               statusMessage={statusMessage}
               onBack={actions.openCaregiver}
               onResyncNotifications={actions.resyncNotifications}
+              onDeleteAllData={actions.deleteAllData}
+              isDeleting={isDeleting}
             />
           )}
         </View>
@@ -62,11 +90,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 14,
     backgroundColor: "#f4ecde"
   },
-  loadingText: {
-    fontSize: 15,
-    color: "#4f5f64"
+  loadingEmoji: {
+    fontSize: 48
+  },
+  loadingTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1a2626"
+  },
+  loadingSubtitle: {
+    fontSize: 16,
+    color: "#526166"
   }
 });

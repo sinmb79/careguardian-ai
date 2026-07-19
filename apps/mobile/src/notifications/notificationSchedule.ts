@@ -1,74 +1,59 @@
 import type { CareManual } from "@careguardian/care-core/manual";
 
+export const MEDICATION_NOTIFICATION_DISCLOSURE =
+  "등록한 시각마다 매일 로컬 알림을 예약합니다. 기기 설정과 상태에 따라 지연되거나 누락될 수 있습니다.";
+
 export interface MedicationNotificationRequest {
   identifier: string;
-  date: Date;
+  schedule: {
+    hour: number;
+    minute: number;
+  };
   content: {
     title: string;
     body: string;
     data: {
-      medicationName: string;
-      timing: string;
+      notificationType: "medication-reminder";
     };
   };
 }
 
-const TIME_PATTERN = /(\d{1,2}):(\d{2})/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-function parseHoursAndMinutes(timing: string): { hours: number; minutes: number } | null {
+function parseHoursAndMinutes(timing: string): { hour: number; minute: number } | null {
   const match = timing.match(TIME_PATTERN);
   if (!match) {
     return null;
   }
 
   return {
-    hours: Number(match[1]),
-    minutes: Number(match[2])
+    hour: Number(match[1]),
+    minute: Number(match[2])
   };
-}
-
-function buildNextOccurrence(
-  referenceDate: Date,
-  hours: number,
-  minutes: number
-): Date {
-  const scheduled = new Date(referenceDate);
-  scheduled.setHours(hours, minutes, 0, 0);
-
-  if (scheduled.getTime() <= referenceDate.getTime()) {
-    scheduled.setDate(scheduled.getDate() + 1);
-  }
-
-  return scheduled;
 }
 
 export function buildMedicationNotificationRequests(
   manual: CareManual,
-  referenceDate: Date = new Date()
+  _referenceDate: Date = new Date()
 ): MedicationNotificationRequest[] {
-  return manual.sections.medication.drugs
-    .flatMap((drug, index) => {
-      const parsedTime = parseHoursAndMinutes(drug.timing);
-      if (!parsedTime) {
-        return [];
-      }
+  return manual.sections.medication.drugs.flatMap((drug, index) => {
+    const schedule = parseHoursAndMinutes(drug.timing);
+    if (!schedule) {
+      return [];
+    }
 
-      const date = buildNextOccurrence(referenceDate, parsedTime.hours, parsedTime.minutes);
-
-      return [
-        {
-          identifier: `careguardian-medication-${index}`,
-          date,
-          content: {
-            title: "복약 시간",
-            body: `${drug.name} 복용 시간입니다. ${drug.method}`,
-            data: {
-              medicationName: drug.name,
-              timing: drug.timing
-            }
+    return [
+      {
+        identifier: `careguardian-medication-${index}`,
+        schedule,
+        content: {
+          title: "복약 알림",
+          body: "지금 알림을 확인해주세요.",
+          data: {
+            notificationType: "medication-reminder"
           }
         }
-      ];
-    })
-    .sort((left, right) => left.date.getTime() - right.date.getTime());
+      }
+    ];
+  });
 }

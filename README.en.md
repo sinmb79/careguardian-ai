@@ -19,21 +19,22 @@ flowchart LR
 |---|---|---|
 | Shared care core | Done | `packages/care-core` now owns manual, schedule, reminder, and relay logic |
 | Web PWA | Done | Existing Pages demo and backup path remain intact |
-| Expo mobile app | Done | `apps/mobile` targets Android, iPhone, and iPad |
-| Android emulator verification | Done | Render confirmed on `Medium_Phone_API_36.1` |
+| Expo mobile app | Closed-test candidate | Android `1.0.1`, production AAB and Play closed-test preparation |
+| Android emulator verification | Done | Release APK launch and primary-screen rendering confirmed |
 | iOS delivery prep | Done | `apps/mobile/eas.json` added for EAS cloud builds |
-| Voice output | Done | Web Speech on web, `expo-speech` on mobile |
-| Medication notification prep | Done | Local scheduling logic added in mobile app |
+| Local encryption and lock | Done | SQLCipher, separated SecureStore key, device authentication, background relock, and screen-capture blocking |
+| Medication notification prep | Done | Privacy-safe daily local reminders with schedule/cancellation verification |
 
 ## Architecture
 
 ```mermaid
 flowchart TD
   Core["Shared Care Core"] --> WebState["Web State + Web Storage"]
-  Core --> MobileState["Mobile State + SQLite/SecureStore"]
+  Core --> MobileState["Mobile State + SQLCipher/SecureStore"]
   WebState --> WebUI["Vite React PWA"]
   MobileState --> MobileUI["Expo React Native UI"]
-  MobileState --> MobileNotify["Local Notification Scheduling"]
+  MobileState --> MobileAuth["Device authentication + privacy lock"]
+  MobileState --> MobileNotify["Privacy-safe local notifications"]
 ```
 
 ## Workspace
@@ -72,7 +73,7 @@ English: The command above is the quick Expo Go path. Validate native modules su
 
 ```powershell
 npx eas-cli login
-npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform android --profile production
 npx eas-cli build --platform ios --profile preview
 ```
 
@@ -81,9 +82,9 @@ English: This repository is already linked to the `@sinmb79/careguardian-ai-mobi
 
 ## Current constraints
 
-1. The iOS simulator cannot run directly on Windows.
-2. `expo-notifications` is not fully supported in Expo Go, so dev-client verification is the next step.
-3. Mobile persistence currently uses SQLite + SecureStore; a stronger encryption layer is the next hardening step.
+1. The current closed test permits fictional people, medicines, and contacts only. Real health or medication data remains out of scope until real-device forensic, network, and notification-matrix validation is complete.
+2. Expo Go is not a native security or notification verification target. Play candidates are built only as EAS production AABs.
+3. The iOS simulator cannot run directly on Windows.
 
 ## Public links
 
@@ -95,5 +96,7 @@ GitHub Pages: https://sinmb79.github.io/careguardian-ai/
 ## Reference docs
 
 1. [Mobile delivery guide](./docs/mobile-delivery.md)
-2. [Claude Code handoff](./CLAUDE.md)
-3. [Mobile design spec](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)
+2. [Closed-test operations guide](./docs/private-test-operations.md)
+3. [Security and safety readiness audit (Korean)](./docs/security/private-test-readiness-2026-07-20.md)
+4. [Claude Code handoff](./CLAUDE.md)
+5. [Mobile design spec](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)

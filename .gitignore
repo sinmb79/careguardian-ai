@@ -5,6 +5,11 @@ dist/
 *.tsbuildinfo
 apps/mobile/*.log
 apps/mobile/android-emulator-*.png
+apps/mobile/*.aab
+
+# Local project-memory vaults may include raw conversation context.
+docs/project-memory/source/
+docs/project-memory/vault/
 
 # Generated config outputs
 vite.config.js

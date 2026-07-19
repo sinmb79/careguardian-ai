@@ -55,4 +55,34 @@ describe("createWebSpeechController", () => {
     expect(start).toHaveBeenCalledTimes(1);
     expect(transcript).toHaveBeenCalledWith("산책 가자");
   });
+
+  test("keeps browser speech recognition disabled by default", () => {
+    const start = vi.fn();
+    const Recognition = class {
+      lang = "";
+      interimResults = false;
+      start = start;
+      stop = vi.fn();
+      onresult = null;
+    };
+    const recognitionWindow = window as Window & { SpeechRecognition?: unknown };
+    const original = recognitionWindow.SpeechRecognition;
+    Object.defineProperty(recognitionWindow, "SpeechRecognition", {
+      configurable: true,
+      value: Recognition
+    });
+
+    try {
+      const controller = createWebSpeechController();
+      controller.startListening(vi.fn());
+
+      expect(controller.capabilities.canListen).toBe(false);
+      expect(start).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(recognitionWindow, "SpeechRecognition", {
+        configurable: true,
+        value: original
+      });
+    }
+  });
 });

@@ -7,14 +7,16 @@ export function App() {
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-sand px-6 text-ink">
-        돌봄 환경을 불러오는 중...
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-sand px-6 text-ink">
+        <span className="text-5xl">{"\u{1F91D}"}</span>
+        <p className="text-xl font-semibold text-ink">돌봄 환경을 준비하고 있어요...</p>
+        <p className="text-base text-ink/60">잠시만 기다려 주세요.</p>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-sand px-4 py-6 text-ink sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-sand px-4 py-6 text-ink sm:px-6 lg:px-8" role="main" aria-label="돌봄 매뉴얼">
       <div className="mx-auto grid max-w-5xl gap-5">
         {mode === "caregiver" ? (
           <CaregiverEditor

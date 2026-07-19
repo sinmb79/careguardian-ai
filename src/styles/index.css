@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 :root {
-  color: #1f2a2a;
+  color: #1a2626;
+  font-size: 18px;
+  line-height: 1.6;
   background:
     radial-gradient(circle at top left, rgba(217, 127, 95, 0.14), transparent 30%),
     radial-gradient(circle at top right, rgba(111, 138, 112, 0.18), transparent 28%),
@@ -29,4 +31,15 @@ input {
 
 button {
   cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid #6f8a70;
+  outline-offset: 2px;
+}
+
+button,
+input,
+[role="button"] {
+  min-height: 48px;
 }

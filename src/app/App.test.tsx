@@ -14,7 +14,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("복약 이름"), "빨간 알약");
     await user.click(screen.getByRole("button", { name: "저장하고 동반자 보기" }));
 
-    expect(screen.getByText("오늘의 돌봄 동반자")).toBeInTheDocument();
+    expect(screen.getByText(/수호님!/)).toBeInTheDocument();
     expect(screen.getAllByText(/수호/).length).toBeGreaterThan(0);
     expect(screen.getByText("복약 타임라인")).toBeInTheDocument();
     expect(screen.getByText("릴레이 준비도")).toBeInTheDocument();

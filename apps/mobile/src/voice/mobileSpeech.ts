@@ -1,5 +1,3 @@
-import * as Speech from "expo-speech";
-
 export interface MobileSpeechController {
   capabilities: {
     canSpeak: boolean;
@@ -11,19 +9,24 @@ export interface MobileSpeechController {
   stopListening: () => void;
 }
 
-export function createMobileSpeechController(): MobileSpeechController {
+export interface MobileSpeechAdapter {
+  speak: (text: string) => void;
+  stop: () => void;
+}
+
+export function createMobileSpeechController(
+  adapter?: MobileSpeechAdapter
+): MobileSpeechController {
   return {
     capabilities: {
-      canSpeak: true,
+      canSpeak: Boolean(adapter),
       canListen: false
     },
     speak(text) {
-      Speech.speak(text, {
-        language: "ko-KR"
-      });
+      adapter?.speak(text);
     },
     cancel() {
-      Speech.stop();
+      adapter?.stop();
     },
     startListening(onTranscript) {
       void onTranscript;
