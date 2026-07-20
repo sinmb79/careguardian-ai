@@ -1,7 +1,7 @@
 # Claude Code Handoff
 
 This repository uses a `web demo + Expo mobile app + shared care core` structure.
-The Android app has been built, submitted to Google Play Console internal testing, and the UI was redesigned for accessibility.
+The hardened Android `1.0.1` (`versionCode 6`) bundle is saved as a Google Play Closed Alpha draft. It has not been submitted for Google review.
 
 ## Read First
 
@@ -31,34 +31,36 @@ npm run mobile:typecheck
 npm run mobile:android:go
 ```
 
-## Current State (2026-04-12)
+## Current State (2026-07-20)
 
 | Item | Status |
 |---|---|
 | Web PWA | Deployed on GitHub Pages |
-| Mobile app (Expo) | AAB built, uploaded to Play Console internal test |
-| Play Console setup | 8/11 completed (data security, store listing, app category remain) |
+| Mobile app (Expo) | Hardened `1.0.1 (6)` AAB uploaded to Closed Alpha draft |
+| Play Console setup | Health/Medical/Advertising ID/Data safety saved; 13 changes pending review submission |
 | UX accessibility overhaul | Completed (15 files, both web + mobile) |
 | Tablet 2-column layout | Completed (web sm:grid-cols-2, mobile flexWrap) |
 | App icons | Generated from SVG (1024, 512, adaptive) |
 | Feature graphic | `docs/screenshots/feature-graphic.png` (1024x500) |
 | Phone screenshots | 4 screenshots in `docs/screenshots/` |
 | Tablet screenshots | 7-inch (2) + 10-inch (2) in `docs/screenshots/` |
-| Privacy policy | `public/privacy-policy.html` |
+| Privacy policy | Deployed; public URL returned HTTP 200 |
 | EAS project | `@sinmb79/careguardian-ai-mobile` (ID: 15b9e293-b631-4b77-8cfc-9937cd604dd4) |
+| Security gate | Synthetic data only; real personal/health/medication data remains NO-GO |
 
 ## Warnings
 
 - `mobile:android:go` is for quick Expo Go UI verification only.
 - `expo-notifications` requires dev client build (`npm run mobile:android:dev`) or EAS build.
 - iOS simulator is not available on Windows; use `eas build --platform ios`.
-- Play Console still needs: data security form, app category + contact, store listing + screenshots upload.
+- Selected Play tester lists contain at most 9 listed users; at least 12 actual opt-ins are required for 14 consecutive days.
+- The Closed Alpha release has one non-blocking deobfuscation mapping warning; code shrinking is not enabled.
+- Google review submission and any broader tester access require explicit owner confirmation.
 
 ## Next Steps
 
-1. Complete remaining 3 Play Console items (data security, app category, store listing)
-2. Upload AAB to internal test track (file: `apps/mobile/careguardian-ai.aab`)
-3. iOS build via EAS (`eas build --platform ios --profile preview`)
-4. Voice input (STT) — select native plugin
-5. AES encryption layer for mobile storage
-6. E2E tests for caregiver-to-companion flow
+1. Confirm the intended tester pool and reach at least 12 opted-in testers without granting unrelated users access.
+2. After explicit owner confirmation, submit the 13 pending Play changes for Google review.
+3. Run the 14-day synthetic-data test plan in `docs/private-test-operations.md`.
+4. Complete Samsung/Pixel real-device network, forensic, deletion and notification-matrix validation before any real-data phase.
+5. Build and validate iOS through EAS/TestFlight as a separate workstream.

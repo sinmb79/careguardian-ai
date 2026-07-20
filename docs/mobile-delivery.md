@@ -16,7 +16,7 @@ This document covers the delivery pipeline for the `apps/mobile` Expo app to And
 | iOS simulator | N/A | Windows cannot run iOS simulator, use EAS |
 | EAS project | Connected | `@sinmb79/careguardian-ai-mobile` |
 | Production AAB | Built and verified | `apps/mobile/careguardian-ai-private-test-v1.0.1-vc6.aab`, build `c4968750-6d8a-41a9-ab50-b4a55661623e` |
-| Play Console | Closed Alpha configured, release not uploaded | Korea + tester email lists configured; candidate upload pending final verification and user confirmation |
+| Play Console | Closed Alpha draft ready; review not submitted | `1.0.1 (6)` uploaded, Korea targeted, 13 changes pending Google review |
 | Privacy policy | Deployed and verified | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` returned HTTP 200 on 2026-07-20 |
 | Store screenshots | Captured | 4 phone + 2 tablet 7" + 2 tablet 10" + feature graphic |
 | Security gate | Synthetic-data only | SQLCipher, device authentication, privacy-safe local notifications, deletion and screen-capture controls implemented |
@@ -109,12 +109,14 @@ Google Play Console: developer account **22B**, app **CareGuardian AI**
 Observed in the console on 2026-07-20:
 
 - Internal test: legacy `versionCode 2` active. It is retired and must not be promoted.
-- Closed test `Alpha`: inactive, country/region and tester lists configured, no closed release uploaded.
-- Data safety draft: no collection / no sharing. Keep only if final AAB SDK and runtime-network evidence agree.
-- Health declaration: currently says no health features and must be corrected to **Medication and Treatment Management**.
-- Category: currently Tools and must be corrected to **Medical**.
-- Advertising ID declaration: incomplete; answer that the app does not use the advertising ID after final AAB confirms no `AD_ID` permission.
-- Store listing, content rating, 18+ target, privacy-policy URL, ads declaration and other edits are visible as pending publishing changes.
+- Closed test `Alpha`: `1.0.1 (versionCode 6)` AAB uploaded and release draft saved. Google review has **not** been submitted.
+- Play recognized minSdk 24+, targetSdk 36 and four ABIs. The only release warning is the optional R8/ProGuard deobfuscation mapping recommendation; code shrinking is not enabled in this project.
+- Data safety: no collection / no sharing, with the deployed privacy-policy URL. Continue real-device network observation during testing.
+- Health declaration: **Medication and Treatment Management** saved.
+- Category: **Medical** saved.
+- Advertising ID declaration: **not used** saved, consistent with the final manifest having no `AD_ID` permission.
+- Publishing overview shows 13 pending changes, including the Alpha release, Korean store listing, Data safety, Health, privacy policy and Medical category. They have not been sent to Google review.
+- Korea is targeted. Selected tester lists are `22B` (1) and `테스터` (8), so listed capacity is at most 9 and does not yet satisfy the 12 opted-in tester requirement.
 - Closed-test production access requires at least 12 opted-in testers for 14 consecutive days; follow `docs/private-test-operations.md`.
 
 ## Known Limits
@@ -124,7 +126,7 @@ Observed in the console on 2026-07-20:
 | Expo Go | UI preview only; never use it as security or notification evidence |
 | Voice | Mobile input/output disabled for this closed test; web SpeechRecognition input disabled by default |
 | Mobile encryption | SQLCipher and SecureStore/Keystore key separation compiled and statically verified; real-device forensic validation remains |
-| Network | No app account, ads, analytics, push-token request or first-party server call; final AAB runtime observation remains required before a categorical no-transmission claim |
+| Network | Limited Android 15 emulator observation showed 0-byte app UID traffic; Samsung/Pixel real-device observation remains required before a categorical no-transmission claim |
 | iOS validation | Requires EAS cloud build + TestFlight |
 
 ## Closed-test policy and safety gate (2026-07-20)
@@ -136,7 +138,7 @@ Observed in the console on 2026-07-20:
 - The app is not a medical device and does not diagnose, treat, prescribe, validate medication, confirm a dose was taken, or place emergency calls.
 - Expo and FCM/Firebase components may be present. Do not make a no-network, no-analytics, or no-data-transmission claim until dynamic runtime verification has completed.
 - Web SpeechRecognition input is disabled by default. The web PWA has a fixed demo passphrase in localStorage; no real personal data may be entered. Relay exports can be plaintext.
-- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. Before Play closed testing, keep the contact email `sinmb79@naver.com` and complete the Health declaration.
+- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. Before starting the 14-day clock, confirm an intended tester pool of at least 12 people, obtain explicit approval for access changes and Google review submission, and keep the contact email `sinmb79@naver.com`.
 
 ## Handoff
 

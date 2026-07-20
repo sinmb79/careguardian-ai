@@ -4,6 +4,8 @@
 - 테스트 트랙: Google Play 비공개 테스트 `Alpha`
 - 데이터 범위: **합성 데이터만 허용**
 - 운영 목표: 최소 12명이 참여 동의 상태를 14일 연속 유지하면서 기능·안전·접근성 피드백 수집
+- Play 상태: `1.0.1 (6) - 비공개 테스트` Closed Alpha 초안 저장 완료, Google 검토 미제출
+- 현재 선택 목록: `22B` 1명 + `테스터` 8명(목록 합계 최대 9명, 12명 요건 미달)
 
 > 이 앱은 의료기기, 복약 확인 수단 또는 응급 연락 수단이 아닙니다. 실제 사람, 실제 약, 처방, 건강정보, 전화번호와 긴급연락처를 입력하지 마세요.
 
@@ -87,17 +89,20 @@ Android 버전:
 
 ## 6. Play Console 제출 전 답변 기준
 
-아래 값은 최종 AAB 정적·동적 검증과 공개 정책 URL의 HTTP 200 확인 뒤에만 저장합니다.
+아래 값은 최종 AAB 정적·동적 검증과 공개 정책 URL의 HTTP 200 확인 뒤 2026-07-20 Play Console에 저장했습니다. 게시 개요의 13개 변경사항은 아직 Google 검토에 제출하지 않았습니다.
 
-| 항목 | 준비 값 |
-|---|---|
-| 앱 카테고리 | Medical |
-| Health apps declaration | Medication and Treatment Management |
-| Ads / Advertising ID | 광고 없음 / 광고 ID 사용 안 함 |
-| Data safety | 수집 없음, 공유 없음 — 최종 AAB SDK·네트워크 결과와 일치할 때만 |
-| 개인정보처리방침 | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` |
-| 국가/지역 | 대한민국 |
-| 테스터 목록 | Play Console의 `22B`, `테스터` 이메일 목록 |
+| 항목 | 저장 값 | 상태 |
+|---|---|---|
+| 앱 카테고리 | Medical | 저장 완료 |
+| Health apps declaration | Medication and Treatment Management | 저장 완료 |
+| Ads / Advertising ID | 광고 없음 / 광고 ID 사용 안 함 | 저장 완료 |
+| Data safety | 수집 없음, 공유 없음 | 저장 완료, 실기기 관찰 지속 |
+| 개인정보처리방침 | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` | HTTP 200 확인 |
+| 국가/지역 | 대한민국 | 타겟팅됨 |
+| 테스터 목록 | `22B` 1명, `테스터` 8명 | 선택됨, 12명 미달 |
+| Closed Alpha | `1.0.1 (6) - 비공개 테스트` | AAB/노트 저장, 검토 미제출 |
+
+검토 제출 전에 의도된 테스터를 최소 12명 확보합니다. 선택되지 않은 다른 이메일 목록은 다른 프로젝트용일 수 있으므로 보스의 명시적 확인 없이 접근 권한을 확대하지 않습니다.
 
 ## 7. 아직 허용하지 않는 범위
 
