@@ -1,7 +1,7 @@
 # Claude Code Handoff
 
 This repository uses a `web demo + Expo mobile app + shared care core` structure.
-The hardened Android `1.0.1` (`versionCode 6`) bundle is saved as a Google Play Closed Alpha draft. It has not been submitted for Google review.
+The hardened Android `1.0.1` (`versionCode 6`) bundle and 12 related Play changes were submitted together as 13 changes for Google review on 2026-07-20.
 
 ## Read First
 
@@ -36,8 +36,9 @@ npm run mobile:android:go
 | Item | Status |
 |---|---|
 | Web PWA | Deployed on GitHub Pages |
-| Mobile app (Expo) | Hardened `1.0.1 (6)` AAB uploaded to Closed Alpha draft |
-| Play Console setup | Health/Medical/Advertising ID/Data safety saved; 13 changes pending review submission |
+| Mobile app (Expo) | Hardened `1.0.1 (6)` AAB submitted from Closed Alpha |
+| Play Console setup | 13 changes submitted; currently under Google review |
+| Closed-test access | `22B` (1), `젤리테스터` (44), `테스터` (8) selected; listed capacity up to 53 |
 | UX accessibility overhaul | Completed (15 files, both web + mobile) |
 | Tablet 2-column layout | Completed (web sm:grid-cols-2, mobile flexWrap) |
 | App icons | Generated from SVG (1024, 512, adaptive) |
@@ -53,14 +54,14 @@ npm run mobile:android:go
 - `mobile:android:go` is for quick Expo Go UI verification only.
 - `expo-notifications` requires dev client build (`npm run mobile:android:dev`) or EAS build.
 - iOS simulator is not available on Windows; use `eas build --platform ios`.
-- Selected Play tester lists contain at most 9 listed users; at least 12 actual opt-ins are required for 14 consecutive days.
+- Selected Play tester lists contain up to 53 listed users, but duplicates and non-participants may reduce the actual unique opt-in count. At least 12 actual opt-ins are required for 14 consecutive days.
 - The Closed Alpha release has one non-blocking deobfuscation mapping warning; code shrinking is not enabled.
-- Google review submission and any broader tester access require explicit owner confirmation.
+- Managed publishing is off, so an approved release may become available to the selected testers automatically.
 
 ## Next Steps
 
-1. Confirm the intended tester pool and reach at least 12 opted-in testers without granting unrelated users access.
-2. After explicit owner confirmation, submit the 13 pending Play changes for Google review.
-3. Run the 14-day synthetic-data test plan in `docs/private-test-operations.md`.
+1. Monitor Google review and verify when `1.0.1 (6)` becomes available to the selected testers.
+2. Confirm at least 12 unique testers have actually opted in; list membership alone does not start the 14-day requirement.
+3. Run the 14-day synthetic-data test plan in `docs/private-test-operations.md` while maintaining at least 12 opt-ins.
 4. Complete Samsung/Pixel real-device network, forensic, deletion and notification-matrix validation before any real-data phase.
 5. Build and validate iOS through EAS/TestFlight as a separate workstream.

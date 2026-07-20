@@ -16,7 +16,7 @@ This document covers the delivery pipeline for the `apps/mobile` Expo app to And
 | iOS simulator | N/A | Windows cannot run iOS simulator, use EAS |
 | EAS project | Connected | `@sinmb79/careguardian-ai-mobile` |
 | Production AAB | Built and verified | `apps/mobile/careguardian-ai-private-test-v1.0.1-vc6.aab`, build `c4968750-6d8a-41a9-ab50-b4a55661623e` |
-| Play Console | Closed Alpha draft ready; review not submitted | `1.0.1 (6)` uploaded, Korea targeted, 13 changes pending Google review |
+| Play Console | Under Google review | `1.0.1 (6)` and 12 related changes submitted together as 13 changes on 2026-07-20 |
 | Privacy policy | Deployed and verified | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` returned HTTP 200 on 2026-07-20 |
 | Store screenshots | Captured | 4 phone + 2 tablet 7" + 2 tablet 10" + feature graphic |
 | Security gate | Synthetic-data only | SQLCipher, device authentication, privacy-safe local notifications, deletion and screen-capture controls implemented |
@@ -109,14 +109,15 @@ Google Play Console: developer account **22B**, app **CareGuardian AI**
 Observed in the console on 2026-07-20:
 
 - Internal test: legacy `versionCode 2` active. It is retired and must not be promoted.
-- Closed test `Alpha`: `1.0.1 (versionCode 6)` AAB uploaded and release draft saved. Google review has **not** been submitted.
+- Closed test `Alpha`: `1.0.1 (versionCode 6)` AAB uploaded and release saved. It was submitted for Google review with the other pending changes on 2026-07-20.
 - Play recognized minSdk 24+, targetSdk 36 and four ABIs. The only release warning is the optional R8/ProGuard deobfuscation mapping recommendation; code shrinking is not enabled in this project.
 - Data safety: no collection / no sharing, with the deployed privacy-policy URL. Continue real-device network observation during testing.
 - Health declaration: **Medication and Treatment Management** saved.
 - Category: **Medical** saved.
 - Advertising ID declaration: **not used** saved, consistent with the final manifest having no `AD_ID` permission.
-- Publishing overview shows 13 pending changes, including the Alpha release, Korean store listing, Data safety, Health, privacy policy and Medical category. They have not been sent to Google review.
-- Korea is targeted. Selected tester lists are `22B` (1) and `테스터` (8), so listed capacity is at most 9 and does not yet satisfy the 12 opted-in tester requirement.
+- Publishing overview shows 13 changes under review, including the Alpha release, Korean store listing, Data safety, Health, privacy policy and Medical category.
+- Korea is targeted. Selected tester lists are `22B` (1), `젤리테스터` (44) and `테스터` (8), so listed capacity is up to 53. Duplicate accounts and users who have not opted in do not count as active testers.
+- Managed publishing is off. After Google approval, the release may automatically become available to the selected tester lists.
 - Closed-test production access requires at least 12 opted-in testers for 14 consecutive days; follow `docs/private-test-operations.md`.
 
 ## Known Limits
@@ -138,7 +139,7 @@ Observed in the console on 2026-07-20:
 - The app is not a medical device and does not diagnose, treat, prescribe, validate medication, confirm a dose was taken, or place emergency calls.
 - Expo and FCM/Firebase components may be present. Do not make a no-network, no-analytics, or no-data-transmission claim until dynamic runtime verification has completed.
 - Web SpeechRecognition input is disabled by default. The web PWA has a fixed demo passphrase in localStorage; no real personal data may be entered. Relay exports can be plaintext.
-- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. Before starting the 14-day clock, confirm an intended tester pool of at least 12 people, obtain explicit approval for access changes and Google review submission, and keep the contact email `sinmb79@naver.com`.
+- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. Tester access and Google review submission were explicitly approved and completed. Before treating the 14-day requirement as started, verify that at least 12 unique testers have actually opted in, and keep the contact email `sinmb79@naver.com`.
 
 ## Handoff
 
