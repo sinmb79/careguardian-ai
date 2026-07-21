@@ -1,5 +1,7 @@
 # 2026-04-12 UX Overhaul + Play Store Registration
 
+> **역사 문서:** 이 문서는 2026-04-12 당시 상태를 기록한 것으로, Health `None`, 임시 카테고리 후보 및 초기 Data safety 메모는 현재 선언이 아닙니다. 현행 값과 2026-07-20 거부 보완 상태는 `docs/store-listing.md`, `docs/mobile-delivery.md`, `docs/google-play-organization-account-remediation-2026-07-22.md`를 따르세요.
+
 This document summarizes the work done on April 12, 2026 to make the app user-friendly and prepare it for Android Play Store release.
 
 ## 1. UX Accessibility Overhaul (15 files modified)
