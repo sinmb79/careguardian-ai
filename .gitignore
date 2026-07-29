@@ -20,3 +20,4 @@ tailwind.config.d.ts
 # Local editor/runtime files
 .DS_Store
 Thumbs.db
+.worktrees/
