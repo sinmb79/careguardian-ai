@@ -15,7 +15,6 @@ import { authenticateForSensitiveAccess, type AuthenticationResult } from "../se
 import {
   createPrivacyGateState,
   lockedWorkspaceStatusMessage,
-  shouldLockWorkspaceOnBackground,
   type PrivacyGateState
 } from "../security/privacyGate";
 import {
@@ -123,7 +122,7 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     },
     update(workspace: PersonalWorkspace) { patch({ workspace }); },
     onAppStateChange(nextState: string) {
-      if ((nextState === "background" || nextState === "inactive") && shouldLockWorkspaceOnBackground(current.hasStoredWorkspace, current.workspace)) {
+      if (nextState !== "active") {
         lifecycleGeneration += 1;
         patch({ privacyGate: "locked", statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다." });
       }

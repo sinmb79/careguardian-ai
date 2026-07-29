@@ -70,6 +70,22 @@ async function cancelNotificationsWithPrefix(prefix: string, errorMessage: strin
   }
 }
 
+async function rollbackScheduledNotifications(identifiers: string[]): Promise<void> {
+  const cancellations = await Promise.allSettled(
+    identifiers.map((identifier) => Notifications.cancelScheduledNotificationAsync(identifier))
+  );
+  let remaining: { identifier: string }[];
+  try {
+    remaining = await Notifications.getAllScheduledNotificationsAsync();
+  } catch {
+    throw new Error("notification rollback failed: could not verify scheduled notifications");
+  }
+  const remainingIds = new Set(remaining.map((notification) => notification.identifier));
+  if (cancellations.some((result) => result.status === "rejected") || identifiers.some((identifier) => remainingIds.has(identifier))) {
+    throw new Error("notification rollback failed");
+  }
+}
+
 export async function cancelAllLifeNotifications(): Promise<void> {
   await cancelNotificationsWithPrefix(IDENTIFIER_PREFIX, "생활 알림 취소 검증에 실패했습니다.");
 }
@@ -91,16 +107,20 @@ export async function syncLifeNotifications(tasks: LifeTask[]): Promise<number> 
   const scheduledIdentifiers: string[] = [];
   try {
     for (const request of requests) {
-      await Notifications.scheduleNotificationAsync(request as Notifications.NotificationRequestInput);
-      scheduledIdentifiers.push(request.identifier);
+      const nativeIdentifier = await Notifications.scheduleNotificationAsync(request as Notifications.NotificationRequestInput);
+      scheduledIdentifiers.push(nativeIdentifier);
     }
   } catch (error) {
-    await Promise.allSettled(scheduledIdentifiers.map((identifier) => Notifications.cancelScheduledNotificationAsync(identifier)));
+    try {
+      await rollbackScheduledNotifications(scheduledIdentifiers);
+    } catch (rollbackError) {
+      throw rollbackError;
+    }
     throw error;
   }
   const reserved = new Set((await Notifications.getAllScheduledNotificationsAsync()).map((item) => item.identifier));
-  if (requests.some((request) => !reserved.has(request.identifier))) {
-    await Promise.allSettled(requests.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
+  if (scheduledIdentifiers.some((identifier) => !reserved.has(identifier))) {
+    await rollbackScheduledNotifications(scheduledIdentifiers);
     throw new Error("생활 알림 예약 검증에 실패했습니다.");
   }
   return requests.length;

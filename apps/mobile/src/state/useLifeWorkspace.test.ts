@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { fixtureWorkspace } from "../test/fixtureWorkspace";
+import { createEmptyWorkspace } from "@life-steward/life-core";
 
 vi.mock("react-native", () => ({
   AppState: { addEventListener: () => ({ remove: () => undefined }) }
@@ -119,6 +120,26 @@ describe("life workspace state", () => {
     await expect(saving).resolves.toMatchObject({ kind: "stale" });
     expect(syncNotifications).not.toHaveBeenCalled();
     expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", hasStoredWorkspace: true, isSaving: false });
+  });
+
+  test("invalidates an empty first save on every non-active lifecycle transition", async () => {
+    const pendingSave = deferred<void>();
+    const syncNotifications = vi.fn(async () => 1);
+    const controller = createLifeWorkspaceController({
+      load: async () => null, hasPreviousTestData: async () => false,
+      save: async () => pendingSave.promise, deleteWorkspace: async () => undefined,
+      syncNotifications, cancelNotifications: async () => undefined
+    });
+    const emptyWorkspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
+    controller.update(emptyWorkspace);
+
+    const saving = controller.save(emptyWorkspace);
+    controller.onAppStateChange("background");
+    pendingSave.resolve();
+
+    await expect(saving).resolves.toMatchObject({ kind: "stale" });
+    expect(syncNotifications).not.toHaveBeenCalled();
+    expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", isSaving: false });
   });
 
   test("keeps the real coordinator locked when authentication completes after backgrounding", async () => {

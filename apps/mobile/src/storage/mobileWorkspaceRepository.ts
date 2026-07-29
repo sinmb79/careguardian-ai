@@ -98,10 +98,15 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
   async function openDatabaseWithKey(key: string, recordCreation: boolean): Promise<MobileWorkspaceDatabase> {
     assertDatabaseKey(key);
     const database = await dependencies.openDatabase(databaseName);
-    await database.execAsync(`PRAGMA key = "x'${key}'";`);
-    await database.execAsync("CREATE TABLE IF NOT EXISTS personal_workspaces (storage_key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);");
-    if (recordCreation) await dependencies.secureStore.setItem(DATABASE_CREATED_KEY, "1");
-    return database;
+    try {
+      await database.execAsync(`PRAGMA key = "x'${key}'";`);
+      await database.execAsync("CREATE TABLE IF NOT EXISTS personal_workspaces (storage_key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);");
+      if (recordCreation) await dependencies.secureStore.setItem(DATABASE_CREATED_KEY, "1");
+      return database;
+    } catch (error) {
+      await database.closeAsync?.();
+      throw error;
+    }
   }
 
   async function cleanupFailedPersistence(): Promise<void> {
@@ -128,15 +133,30 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
       const validation = validateWorkspace(workspace);
       if (!validation.ok) throw new Error("invalid personal workspace");
       let database: MobileWorkspaceDatabase | undefined;
+      const previousContext = await assertNoIncompleteStorageWithoutContext();
+      const isFirstPersistence = previousContext === null;
       try {
-        database = await openDatabaseWithKey(await getOrCreateDatabaseKey(), true);
+        database = await openDatabaseWithKey(await getOrCreateDatabaseKey(), isFirstPersistence);
+        await database.execAsync("BEGIN IMMEDIATE;");
         await database.runAsync("INSERT OR REPLACE INTO personal_workspaces (storage_key, value) VALUES (?, ?);", WORKSPACE_KEY, JSON.stringify(validation.value));
         await dependencies.secureStore.setItem(WORKSPACE_CONTEXT_KEY, JSON.stringify({ savedAt: validation.value.updatedAt }));
+        await database.execAsync("COMMIT;");
       } catch (error) {
-        try {
-          await cleanupFailedPersistence();
-        } catch {
-          throw new Error("workspace persistence failed; recovery required");
+        try { await database?.execAsync("ROLLBACK;"); } catch { /* Rollback is best-effort after setup or native failures. */ }
+        if (isFirstPersistence) {
+          try {
+            await database?.closeAsync?.();
+            database = undefined;
+            await cleanupFailedPersistence();
+          } catch {
+            throw new Error("workspace persistence failed; recovery required");
+          }
+        } else if (previousContext) {
+          try {
+            await dependencies.secureStore.setItem(WORKSPACE_CONTEXT_KEY, previousContext);
+          } catch {
+            throw new Error("workspace persistence failed; recovery required");
+          }
         }
         throw error;
       } finally {

@@ -90,13 +90,33 @@ describe("life notifications", () => {
     notificationApi.scheduleNotificationAsync
       .mockReset()
       .mockImplementationOnce(async () => {
-        scheduled.add("life-steward-task-buy-fruit");
-        return "life-steward-task-buy-fruit";
+        scheduled.add("native-reservation-42");
+        return "native-reservation-42";
       })
       .mockRejectedValueOnce(new Error("native schedule failure"));
 
     await expect(syncLifeNotifications([fixtureWorkspace.tasks[0], secondTask])).rejects.toThrow("native schedule failure");
-    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("life-steward-task-buy-fruit");
+    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("native-reservation-42");
     expect(scheduled).toEqual(new Set());
+  });
+
+  test("reports rollback failure when a returned native reservation remains scheduled", async () => {
+    const secondTask = { ...fixtureWorkspace.tasks[0], id: "plan-trip", dueDate: "2026-08-01" };
+    const scheduled = new Set<string>();
+    notificationApi.getAllScheduledNotificationsAsync
+      .mockReset()
+      .mockImplementation(async () => [...scheduled].map((identifier) => ({ identifier })));
+    notificationApi.scheduleNotificationAsync
+      .mockReset()
+      .mockImplementationOnce(async () => {
+        scheduled.add("native-reservation-42");
+        return "native-reservation-42";
+      })
+      .mockRejectedValueOnce(new Error("native schedule failure"));
+    notificationApi.cancelScheduledNotificationAsync.mockReset().mockRejectedValue(new Error("native cancel failure"));
+
+    await expect(syncLifeNotifications([fixtureWorkspace.tasks[0], secondTask])).rejects.toThrow("rollback");
+    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("native-reservation-42");
+    expect(scheduled).toEqual(new Set(["native-reservation-42"]));
   });
 });
