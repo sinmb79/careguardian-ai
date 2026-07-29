@@ -1,14 +1,13 @@
 import * as SQLite from "expo-sqlite";
 import LegacyStorage from "expo-sqlite/kv-store";
 import * as SecureStore from "expo-secure-store";
-import {
-  validateWorkspace,
-  type PersonalWorkspace
-} from "@life-steward/life-core";
+import * as FileSystem from "expo-file-system/legacy";
+import { validateWorkspace, type PersonalWorkspace } from "@life-steward/life-core";
 
 const WORKSPACE_KEY = "life-steward.mobile.workspace";
 const WORKSPACE_CONTEXT_KEY = "life-steward.mobile.context";
 const DATABASE_KEY = "life-steward.mobile.database-key";
+const DATABASE_CREATED_KEY = "life-steward.mobile.database-created";
 const DATABASE_NAME = "life-steward-workspace-encrypted.db";
 const PREVIOUS_PLAINTEXT_KEY = "careguardian.mobile.manual";
 const PREVIOUS_CONTEXT_KEY = "careguardian.mobile.context";
@@ -18,10 +17,15 @@ const KEY_BYTES = 32;
 const HEX_KEY = /^[0-9a-f]{64}$/;
 
 function secureRandomBytes(length: number): Promise<Uint8Array> {
-  const crypto = require("expo-crypto") as {
-    getRandomBytesAsync(byteCount: number): Promise<Uint8Array>;
-  };
+  const crypto = require("expo-crypto") as { getRandomBytesAsync(byteCount: number): Promise<Uint8Array> };
   return crypto.getRandomBytesAsync(length);
+}
+
+async function databaseFileExists(name: string): Promise<boolean> {
+  const directory = SQLite.defaultDatabaseDirectory as string | null;
+  if (!directory) return false;
+  const separator = directory.endsWith("/") ? "" : "/";
+  return (await FileSystem.getInfoAsync(`${directory}${separator}${name}`)).exists;
 }
 
 export interface MobileWorkspaceDatabase {
@@ -35,10 +39,8 @@ export interface MobileWorkspaceStorageDependencies {
   databaseName?: string;
   openDatabase(name: string): Promise<MobileWorkspaceDatabase>;
   deleteDatabase(name: string): Promise<void>;
-  legacyStorage: {
-    getItem(key: string): Promise<string | null>;
-    removeItem(key: string): Promise<void>;
-  };
+  databaseExists(name: string): Promise<boolean>;
+  legacyStorage: { getItem(key: string): Promise<string | null>; removeItem(key: string): Promise<void> };
   secureStore: {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
@@ -66,27 +68,18 @@ function assertDatabaseKey(key: string): void {
 
 function parseWorkspace(serialized: string): PersonalWorkspace {
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(serialized);
-  } catch {
-    throw new Error("invalid persisted personal workspace: malformed JSON");
-  }
+  try { parsed = JSON.parse(serialized); } catch { throw new Error("invalid persisted personal workspace: malformed JSON"); }
   const result = validateWorkspace(parsed);
   if (!result.ok) throw new Error("invalid persisted personal workspace");
   return result.value;
 }
 
-export function createMobileWorkspaceRepository(
-  dependencies: MobileWorkspaceStorageDependencies
-): MobileWorkspaceRepository {
+export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceStorageDependencies): MobileWorkspaceRepository {
   const databaseName = dependencies.databaseName ?? DATABASE_NAME;
 
   async function getOrCreateDatabaseKey(): Promise<string> {
     const existing = await dependencies.secureStore.getItem(DATABASE_KEY);
-    if (existing) {
-      assertDatabaseKey(existing);
-      return existing;
-    }
+    if (existing) { assertDatabaseKey(existing); return existing; }
     const bytes = await dependencies.randomBytes(KEY_BYTES);
     if (bytes.length !== KEY_BYTES) throw new Error("could not generate a mobile database key");
     const key = toHex(bytes);
@@ -95,78 +88,94 @@ export function createMobileWorkspaceRepository(
     return key;
   }
 
-  async function openEncryptedDatabase(): Promise<MobileWorkspaceDatabase> {
-    const key = await getOrCreateDatabaseKey();
+  async function getExistingDatabaseKey(): Promise<string> {
+    const key = await dependencies.secureStore.getItem(DATABASE_KEY);
+    if (!key) throw new Error("workspace storage requires recovery");
+    assertDatabaseKey(key);
+    return key;
+  }
+
+  async function openDatabaseWithKey(key: string, recordCreation: boolean): Promise<MobileWorkspaceDatabase> {
+    assertDatabaseKey(key);
     const database = await dependencies.openDatabase(databaseName);
     await database.execAsync(`PRAGMA key = "x'${key}'";`);
-    await database.execAsync(
-      "CREATE TABLE IF NOT EXISTS personal_workspaces (storage_key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);"
-    );
+    await database.execAsync("CREATE TABLE IF NOT EXISTS personal_workspaces (storage_key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);");
+    if (recordCreation) await dependencies.secureStore.setItem(DATABASE_CREATED_KEY, "1");
     return database;
+  }
+
+  async function cleanupFailedPersistence(): Promise<void> {
+    await dependencies.secureStore.deleteItem(WORKSPACE_CONTEXT_KEY);
+    await dependencies.deleteDatabase(databaseName);
+    await dependencies.secureStore.deleteItem(DATABASE_CREATED_KEY);
+    await dependencies.secureStore.deleteItem(DATABASE_KEY);
+  }
+
+  async function assertNoIncompleteStorageWithoutContext(): Promise<string | null> {
+    const context = await dependencies.secureStore.getItem(WORKSPACE_CONTEXT_KEY);
+    if (context) return context;
+    const [key, created, databaseExists] = await Promise.all([
+      dependencies.secureStore.getItem(DATABASE_KEY),
+      dependencies.secureStore.getItem(DATABASE_CREATED_KEY),
+      dependencies.databaseExists(databaseName)
+    ]);
+    if (key || created || databaseExists) throw new Error("workspace storage requires recovery");
+    return null;
   }
 
   return {
     async saveWorkspace(workspace): Promise<void> {
       const validation = validateWorkspace(workspace);
       if (!validation.ok) throw new Error("invalid personal workspace");
-      const database = await openEncryptedDatabase();
+      let database: MobileWorkspaceDatabase | undefined;
       try {
-        await database.runAsync(
-          "INSERT OR REPLACE INTO personal_workspaces (storage_key, value) VALUES (?, ?);",
-          WORKSPACE_KEY,
-          JSON.stringify(validation.value)
-        );
-        await dependencies.secureStore.setItem(
-          WORKSPACE_CONTEXT_KEY,
-          JSON.stringify({ savedAt: validation.value.updatedAt })
-        );
+        database = await openDatabaseWithKey(await getOrCreateDatabaseKey(), true);
+        await database.runAsync("INSERT OR REPLACE INTO personal_workspaces (storage_key, value) VALUES (?, ?);", WORKSPACE_KEY, JSON.stringify(validation.value));
+        await dependencies.secureStore.setItem(WORKSPACE_CONTEXT_KEY, JSON.stringify({ savedAt: validation.value.updatedAt }));
+      } catch (error) {
+        try {
+          await cleanupFailedPersistence();
+        } catch {
+          throw new Error("workspace persistence failed; recovery required");
+        }
+        throw error;
       } finally {
-        await database.closeAsync?.();
+        await database?.closeAsync?.();
       }
     },
 
     async loadWorkspace(): Promise<PersonalWorkspace | null> {
-      const context = await dependencies.secureStore.getItem(WORKSPACE_CONTEXT_KEY);
+      const context = await assertNoIncompleteStorageWithoutContext();
       if (!context) return null;
-      const database = await openEncryptedDatabase();
+      const database = await openDatabaseWithKey(await getExistingDatabaseKey(), false);
       try {
-        const stored = await database.getFirstAsync<{ value: string }>(
-          "SELECT value FROM personal_workspaces WHERE storage_key = ?;",
-          WORKSPACE_KEY
-        );
-        return stored ? parseWorkspace(stored.value) : null;
+        const stored = await database.getFirstAsync<{ value: string }>("SELECT value FROM personal_workspaces WHERE storage_key = ?;", WORKSPACE_KEY);
+        if (!stored) throw new Error("workspace storage requires recovery");
+        return parseWorkspace(stored.value);
       } finally {
         await database.closeAsync?.();
       }
     },
 
     async hasWorkspace(): Promise<boolean> {
-      return (await dependencies.secureStore.getItem(WORKSPACE_CONTEXT_KEY)) !== null;
+      const context = await assertNoIncompleteStorageWithoutContext();
+      if (!context) return false;
+      await getExistingDatabaseKey();
+      return true;
     },
 
     async deleteWorkspace(): Promise<void> {
-      const key = await dependencies.secureStore.getItem(DATABASE_KEY);
-      if (key) {
-        assertDatabaseKey(key);
-        const database = await dependencies.openDatabase(databaseName);
-        try {
-          await database.execAsync(`PRAGMA key = "x'${key}'";`);
-          await database.runAsync("DELETE FROM personal_workspaces WHERE storage_key = ?;", WORKSPACE_KEY);
-        } finally {
-          await database.closeAsync?.();
-        }
-      }
       await dependencies.deleteDatabase(databaseName);
       await dependencies.secureStore.deleteItem(WORKSPACE_CONTEXT_KEY);
+      await dependencies.secureStore.deleteItem(DATABASE_CREATED_KEY);
       await dependencies.secureStore.deleteItem(DATABASE_KEY);
     },
 
     async hasPreviousTestData(): Promise<boolean> {
-      return (
-        (await dependencies.legacyStorage.getItem(PREVIOUS_PLAINTEXT_KEY)) !== null ||
+      return (await dependencies.legacyStorage.getItem(PREVIOUS_PLAINTEXT_KEY)) !== null ||
         (await dependencies.secureStore.getItem(PREVIOUS_CONTEXT_KEY)) !== null ||
-        (await dependencies.secureStore.getItem(PREVIOUS_DATABASE_KEY)) !== null
-      );
+        (await dependencies.secureStore.getItem(PREVIOUS_DATABASE_KEY)) !== null ||
+        await dependencies.databaseExists(PREVIOUS_DATABASE_NAME);
     },
 
     async deletePreviousTestData(): Promise<void> {
@@ -181,12 +190,9 @@ export function createMobileWorkspaceRepository(
 const defaultRepository = createMobileWorkspaceRepository({
   openDatabase: (name) => SQLite.openDatabaseAsync(name),
   deleteDatabase: (name) => SQLite.deleteDatabaseAsync(name),
+  databaseExists: databaseFileExists,
   legacyStorage: LegacyStorage,
-  secureStore: {
-    getItem: (key) => SecureStore.getItemAsync(key),
-    setItem: (key, value) => SecureStore.setItemAsync(key, value),
-    deleteItem: (key) => SecureStore.deleteItemAsync(key)
-  },
+  secureStore: { getItem: (key) => SecureStore.getItemAsync(key), setItem: (key, value) => SecureStore.setItemAsync(key, value), deleteItem: (key) => SecureStore.deleteItemAsync(key) },
   randomBytes: secureRandomBytes
 });
 

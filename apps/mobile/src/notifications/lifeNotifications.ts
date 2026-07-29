@@ -88,8 +88,15 @@ export async function syncLifeNotifications(tasks: LifeTask[]): Promise<number> 
   });
   await cancelAllLifeNotifications();
   if (requests.length === 0 || !(await ensurePermission())) return 0;
-  for (const request of requests) {
-    await Notifications.scheduleNotificationAsync(request as Notifications.NotificationRequestInput);
+  const scheduledIdentifiers: string[] = [];
+  try {
+    for (const request of requests) {
+      await Notifications.scheduleNotificationAsync(request as Notifications.NotificationRequestInput);
+      scheduledIdentifiers.push(request.identifier);
+    }
+  } catch (error) {
+    await Promise.allSettled(scheduledIdentifiers.map((identifier) => Notifications.cancelScheduledNotificationAsync(identifier)));
+    throw error;
   }
   const reserved = new Set((await Notifications.getAllScheduledNotificationsAsync()).map((item) => item.identifier));
   if (requests.some((request) => !reserved.has(request.identifier))) {

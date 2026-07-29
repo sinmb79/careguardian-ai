@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import {
   createEmptyWorkspace,
@@ -11,12 +11,10 @@ import {
   cancelPreviousTestNotifications,
   syncLifeNotifications
 } from "../notifications/lifeNotifications";
-import { clearMobileData } from "../security/clearMobileData";
-import { authenticateForSensitiveAccess } from "../security/localAuthentication";
+import { authenticateForSensitiveAccess, type AuthenticationResult } from "../security/localAuthentication";
 import {
   createPrivacyGateState,
   lockedWorkspaceStatusMessage,
-  resolveWorkspaceUnlock,
   shouldLockWorkspaceOnBackground,
   type PrivacyGateState
 } from "../security/privacyGate";
@@ -29,6 +27,7 @@ import {
 } from "../storage/mobileWorkspaceRepository";
 
 export type LifeWorkspaceSection = "today" | "lists" | "extensions" | "local-ai" | "settings";
+type OperationKind = "save" | "delete" | "unlock" | "previous-delete" | null;
 
 export type LifeWorkspaceSnapshot = {
   workspace: PersonalWorkspace;
@@ -56,7 +55,9 @@ export type LifeWorkspaceState = LifeWorkspaceSnapshot & {
 
 type SaveOutcome =
   | { kind: "saved"; notificationCount: number }
-  | { kind: "validation-failed"; message: string };
+  | { kind: "validation-failed"; message: string }
+  | { kind: "busy" }
+  | { kind: "stale" };
 
 export type LifeWorkspaceControllerDependencies = {
   load(): Promise<PersonalWorkspace | null>;
@@ -66,6 +67,8 @@ export type LifeWorkspaceControllerDependencies = {
   deleteWorkspace(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
   cancelNotifications(): Promise<void>;
+  cancelPreviousTestNotifications?(): Promise<void>;
+  authenticate?(): Promise<AuthenticationResult>;
 };
 
 function validateForSaving(workspace: PersonalWorkspace): string | null {
@@ -78,80 +81,150 @@ function validateForSaving(workspace: PersonalWorkspace): string | null {
   return null;
 }
 
+function initialSnapshot(): LifeWorkspaceSnapshot {
+  return {
+    workspace: createEmptyWorkspace(), hasStoredWorkspace: false, previousTestData: false,
+    isLoaded: false, isSaving: false, isDeleting: false, isAuthenticating: false,
+    privacyGate: "unlocked", statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
+  };
+}
+
 export function createLifeWorkspaceController(dependencies: LifeWorkspaceControllerDependencies) {
-  let current: LifeWorkspaceSnapshot = {
-    workspace: createEmptyWorkspace(),
-    hasStoredWorkspace: false,
-    previousTestData: false,
-    isLoaded: false,
-    isSaving: false,
-    isDeleting: false,
-    isAuthenticating: false,
-    privacyGate: "unlocked",
-    statusMessage: "개인 생활 작업공간을 준비하고 있습니다.",
-    section: "today"
+  let current = initialSnapshot();
+  let listener: ((snapshot: LifeWorkspaceSnapshot) => void) | undefined;
+  let lifecycleGeneration = 0;
+  let operationGeneration = 0;
+  let activeOperation: { kind: Exclude<OperationKind, null>; id: number } | null = null;
+
+  const publish = (next: LifeWorkspaceSnapshot) => {
+    current = next;
+    listener?.(current);
+  };
+  const patch = (next: Partial<LifeWorkspaceSnapshot>) => publish({ ...current, ...next });
+  const isCurrent = (kind: Exclude<OperationKind, null>, id: number, generation: number) =>
+    activeOperation?.kind === kind && activeOperation.id === id && lifecycleGeneration === generation;
+  const start = (kind: Exclude<OperationKind, null>): number | null => {
+    if (activeOperation) return null;
+    const id = ++operationGeneration;
+    activeOperation = { kind, id };
+    return id;
+  };
+  const finish = (kind: Exclude<OperationKind, null>, id: number, next: Partial<LifeWorkspaceSnapshot>) => {
+    if (activeOperation?.kind !== kind || activeOperation.id !== id) return;
+    activeOperation = null;
+    patch(next);
   };
 
   return {
     snapshot: () => current,
-    update(workspace: PersonalWorkspace) {
-      current = { ...current, workspace };
+    subscribe(nextListener: (snapshot: LifeWorkspaceSnapshot) => void) {
+      listener = nextListener;
+      return () => { if (listener === nextListener) listener = undefined; };
+    },
+    update(workspace: PersonalWorkspace) { patch({ workspace }); },
+    onAppStateChange(nextState: string) {
+      if ((nextState === "background" || nextState === "inactive") && shouldLockWorkspaceOnBackground(current.hasStoredWorkspace, current.workspace)) {
+        lifecycleGeneration += 1;
+        patch({ privacyGate: "locked", statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다." });
+      }
     },
     async load() {
-      const [workspace, previousTestData] = await Promise.all([
-        dependencies.load(),
-        dependencies.hasPreviousTestData()
-      ]);
-      current = {
-        ...current,
-        workspace: workspace ?? current.workspace,
-        hasStoredWorkspace: Boolean(workspace),
-        previousTestData,
-        isLoaded: true,
-        privacyGate: createPrivacyGateState(Boolean(workspace)),
-        statusMessage: previousTestData
-          ? "이전 테스트 데이터 삭제 후 시작할 수 있습니다."
-          : workspace
-            ? lockedWorkspaceStatusMessage()
-            : "오늘의 생활 작업을 정리해 보세요."
-      };
-      return current;
+      const generation = lifecycleGeneration;
+      try {
+        const [workspace, previousTestData] = await Promise.all([dependencies.load(), dependencies.hasPreviousTestData()]);
+        const shouldRemainLocked = generation !== lifecycleGeneration || Boolean(workspace);
+        patch({
+          workspace: workspace ?? current.workspace,
+          hasStoredWorkspace: Boolean(workspace), previousTestData, isLoaded: true,
+          privacyGate: shouldRemainLocked ? "locked" : createPrivacyGateState(false),
+          statusMessage: previousTestData
+            ? "이전 테스트 데이터 삭제 후 시작할 수 있습니다."
+            : workspace ? lockedWorkspaceStatusMessage() : "오늘의 생활 작업을 정리해 보세요."
+        });
+        return current;
+      } catch (error) {
+        patch({ isLoaded: true, privacyGate: "locked", statusMessage: "저장된 작업공간을 안전하게 확인하지 못했습니다." });
+        throw error;
+      }
     },
     async save(workspace: PersonalWorkspace): Promise<SaveOutcome> {
       const validationError = validateForSaving(workspace);
       if (validationError) return { kind: "validation-failed", message: validationError };
-      current = { ...current, isSaving: true };
+      const id = start("save");
+      if (id === null) return { kind: "busy" };
+      const generation = lifecycleGeneration;
+      patch({ isSaving: true });
       try {
         await dependencies.save(workspace);
+        if (!isCurrent("save", id, generation)) {
+          patch({ hasStoredWorkspace: true, privacyGate: "locked" });
+          return { kind: "stale" };
+        }
         const notificationCount = await dependencies.syncNotifications(workspace.tasks);
-        current = {
-          ...current,
-          workspace,
-          hasStoredWorkspace: true,
-          privacyGate: "unlocked",
+        if (!isCurrent("save", id, generation)) {
+          patch({ hasStoredWorkspace: true, privacyGate: "locked" });
+          return { kind: "stale" };
+        }
+        patch({
+          workspace, hasStoredWorkspace: true, privacyGate: "unlocked",
           statusMessage: notificationCount > 0 ? `생활 알림 ${notificationCount}건을 예약했습니다.` : "생활 작업공간을 저장했습니다."
-        };
+        });
         return { kind: "saved", notificationCount };
       } finally {
-        current = { ...current, isSaving: false };
+        finish("save", id, { isSaving: false });
       }
     },
-    async deleteAll() {
-      await dependencies.cancelNotifications();
-      await dependencies.deleteWorkspace();
-      current = {
-        ...current,
-        workspace: createEmptyWorkspace(),
-        hasStoredWorkspace: false,
-        privacyGate: "unlocked",
-        statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
-      };
+    async deleteAll(): Promise<void> {
+      const id = start("delete");
+      if (id === null) throw new Error("workspace operation in progress");
+      lifecycleGeneration += 1;
+      patch({ isDeleting: true, privacyGate: "locked" });
+      try {
+        await dependencies.cancelNotifications();
+        await dependencies.deleteWorkspace();
+        patch({
+          workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked",
+          statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
+        });
+      } finally {
+        finish("delete", id, { isDeleting: false });
+      }
     },
-    async deletePreviousTestData() {
-      if (!dependencies.deletePreviousTestData) return;
-      await dependencies.deletePreviousTestData();
-      current = { ...current, previousTestData: false, statusMessage: "이전 테스트 데이터를 삭제했습니다." };
-    }
+    async unlock(): Promise<void> {
+      const id = start("unlock");
+      if (id === null) return;
+      const generation = lifecycleGeneration;
+      patch({ isAuthenticating: true });
+      try {
+        const authentication = await (dependencies.authenticate?.() ?? Promise.resolve({ authenticated: false, message: "기기 인증을 확인할 수 없습니다." }));
+        if (!isCurrent("unlock", id, generation)) return;
+        if (!authentication.authenticated) {
+          patch({ privacyGate: "locked", statusMessage: authentication.message });
+          return;
+        }
+        const workspace = await dependencies.load();
+        if (!isCurrent("unlock", id, generation)) return;
+        if (!workspace) {
+          patch({ privacyGate: "locked", statusMessage: "저장된 개인 작업공간을 찾지 못했습니다. 안전을 위해 잠금 상태를 유지합니다." });
+          return;
+        }
+        patch({ workspace, hasStoredWorkspace: true, privacyGate: "unlocked", statusMessage: authentication.message });
+      } finally {
+        finish("unlock", id, { isAuthenticating: false });
+      }
+    },
+    async deletePreviousTestData(): Promise<void> {
+      const id = start("previous-delete");
+      if (id === null) throw new Error("workspace operation in progress");
+      try {
+        await dependencies.cancelPreviousTestNotifications?.();
+        await dependencies.deletePreviousTestData?.();
+        patch({ previousTestData: false, statusMessage: "이전 테스트 데이터를 삭제했습니다." });
+      } finally {
+        finish("previous-delete", id, {});
+      }
+    },
+    openSection(section: LifeWorkspaceSection) { patch({ section }); }
   };
 }
 
@@ -160,72 +233,35 @@ function stampWorkspace(workspace: PersonalWorkspace): PersonalWorkspace {
 }
 
 export function useLifeWorkspace(): LifeWorkspaceState {
-  const [snapshot, setSnapshot] = useState<LifeWorkspaceSnapshot>({
-    workspace: createEmptyWorkspace(), hasStoredWorkspace: false, previousTestData: false, isLoaded: false, isSaving: false,
-    isDeleting: false, isAuthenticating: false, privacyGate: "unlocked",
-    statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
-  });
-
-  useEffect(() => {
-    let active = true;
-    const controller = createLifeWorkspaceController({
+  const controllerRef = useRef<ReturnType<typeof createLifeWorkspaceController> | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = createLifeWorkspaceController({
       load: loadWorkspace, hasPreviousTestData, deletePreviousTestData, save: saveWorkspace,
-      deleteWorkspace, syncNotifications: syncLifeNotifications, cancelNotifications: cancelAllLifeNotifications
+      deleteWorkspace, syncNotifications: syncLifeNotifications, cancelNotifications: cancelAllLifeNotifications,
+      cancelPreviousTestNotifications, authenticate: authenticateForSensitiveAccess
     });
-    void controller.load().then((next) => active && setSnapshot(next)).catch(() => {
-      if (active) setSnapshot((current) => ({ ...current, isLoaded: true, statusMessage: "저장된 작업공간을 안전하게 확인하지 못했습니다." }));
-    });
-    return () => { active = false; };
-  }, []);
+  }
+  const controller = controllerRef.current;
+  const [snapshot, setSnapshot] = useState<LifeWorkspaceSnapshot>(() => controller.snapshot());
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if ((nextState === "background" || nextState === "inactive") && shouldLockWorkspaceOnBackground(snapshot.hasStoredWorkspace, snapshot.workspace)) {
-        setSnapshot((current) => ({ ...current, privacyGate: "locked", statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다." }));
-      }
-    });
+    const unsubscribe = controller.subscribe(setSnapshot);
+    void controller.load().catch(() => undefined);
+    return unsubscribe;
+  }, [controller]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => controller.onAppStateChange(state));
     return () => subscription.remove();
-  }, [snapshot.privacyGate, snapshot.workspace]);
+  }, [controller]);
 
   const actions = useMemo(() => ({
-    updateWorkspace(workspace: PersonalWorkspace) { setSnapshot((current) => ({ ...current, workspace })); },
-    async save() {
-      const workspace = stampWorkspace(snapshot.workspace);
-      const validation = validateForSaving(workspace);
-      if (validation) {
-        setSnapshot((current) => ({ ...current, statusMessage: validation }));
-        return;
-      }
-      setSnapshot((current) => ({ ...current, isSaving: true }));
-      try {
-        await saveWorkspace(workspace);
-        const notificationCount = await syncLifeNotifications(workspace.tasks);
-        setSnapshot((current) => ({ ...current, workspace, hasStoredWorkspace: true, privacyGate: "unlocked", statusMessage: notificationCount > 0 ? `생활 알림 ${notificationCount}건을 예약했습니다.` : "생활 작업공간을 저장했습니다." }));
-      } finally { setSnapshot((current) => ({ ...current, isSaving: false })); }
-    },
-    async deleteAllData() {
-      setSnapshot((current) => ({ ...current, isDeleting: true }));
-      try {
-        await clearMobileData({ deleteWorkspace, cancelLifeNotifications: cancelAllLifeNotifications, resetMemory: () => undefined });
-        setSnapshot((current) => ({ ...current, workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked", statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다." }));
-      } finally { setSnapshot((current) => ({ ...current, isDeleting: false })); }
-    },
-    async unlock() {
-      setSnapshot((current) => ({ ...current, isAuthenticating: true }));
-      try {
-        const result = await resolveWorkspaceUnlock({ hasStoredWorkspace: true, authenticate: authenticateForSensitiveAccess, loadStoredWorkspace: loadWorkspace });
-        setSnapshot((current) => result.authenticated && result.workspace
-          ? { ...current, workspace: result.workspace, privacyGate: "unlocked", statusMessage: result.message }
-          : { ...current, privacyGate: "locked", statusMessage: result.message });
-      } finally { setSnapshot((current) => ({ ...current, isAuthenticating: false })); }
-    },
-    async deletePreviousTestData() {
-      await cancelPreviousTestNotifications();
-      await deletePreviousTestData();
-      setSnapshot((current) => ({ ...current, previousTestData: false, statusMessage: "이전 테스트 데이터를 삭제했습니다." }));
-    },
-    openSection(section: LifeWorkspaceSection) { setSnapshot((current) => ({ ...current, section })); }
-  }), [snapshot.workspace]);
-
+    updateWorkspace: (workspace: PersonalWorkspace) => controller.update(workspace),
+    save: async () => { await controller.save(stampWorkspace(controller.snapshot().workspace)); },
+    deleteAllData: () => controller.deleteAll(),
+    unlock: () => controller.unlock(),
+    deletePreviousTestData: () => controller.deletePreviousTestData(),
+    openSection: (section: LifeWorkspaceSection) => controller.openSection(section)
+  }), [controller]);
   return { ...snapshot, actions };
 }

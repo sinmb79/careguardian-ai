@@ -77,4 +77,26 @@ describe("life notifications", () => {
     await expect(cancelPreviousTestNotifications()).resolves.toBeUndefined();
     expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("careguardian-medication-0");
   });
+
+  test("cancels every newly scheduled notification when scheduling stops midway", async () => {
+    const secondTask = { ...fixtureWorkspace.tasks[0], id: "plan-trip", dueDate: "2026-08-01" };
+    const scheduled = new Set<string>();
+    notificationApi.getAllScheduledNotificationsAsync
+      .mockReset()
+      .mockImplementation(async () => [...scheduled].map((identifier) => ({ identifier })));
+    notificationApi.cancelScheduledNotificationAsync
+      .mockReset()
+      .mockImplementation(async (identifier: string) => void scheduled.delete(identifier));
+    notificationApi.scheduleNotificationAsync
+      .mockReset()
+      .mockImplementationOnce(async () => {
+        scheduled.add("life-steward-task-buy-fruit");
+        return "life-steward-task-buy-fruit";
+      })
+      .mockRejectedValueOnce(new Error("native schedule failure"));
+
+    await expect(syncLifeNotifications([fixtureWorkspace.tasks[0], secondTask])).rejects.toThrow("native schedule failure");
+    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("life-steward-task-buy-fruit");
+    expect(scheduled).toEqual(new Set());
+  });
 });

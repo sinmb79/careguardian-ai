@@ -36,7 +36,7 @@ export function LifeWorkspaceScreen(props: Props) {
     {props.section === "extensions" ? <ExtensionBuilderScreen onCreate={addExtension} /> : null}
     {props.section === "local-ai" ? <View style={styles.card}><Text style={styles.cardTitle}>로컬 AI</Text><Text style={styles.body}>로컬 AI 기능은 이 기기 안에서만 개인 작업공간을 도울 수 있도록 준비 중입니다.</Text></View> : null}
     {props.section === "settings" ? <View style={styles.card}><Text style={styles.cardTitle}>설정</Text><Text style={styles.body}>모든 데이터는 이 기기에서만 삭제할 수 있습니다.</Text><Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("개인 작업공간 삭제", "이 기기의 모든 생활 작업과 일반 알림을 삭제합니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => void props.onDeleteAll() }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable></View> : null}
-    <Pressable disabled={props.isSaving} accessibilityRole="button" style={[styles.saveButton, props.isSaving && styles.disabled]} onPress={() => void props.onSave()}><Text style={styles.saveText}>{props.isSaving ? "저장 중…" : "변경 사항 저장"}</Text></Pressable>
+    <Pressable disabled={props.isSaving || props.isDeleting} accessibilityRole="button" style={[styles.saveButton, (props.isSaving || props.isDeleting) && styles.disabled]} onPress={() => void props.onSave()}><Text style={styles.saveText}>{props.isSaving ? "저장 중…" : "변경 사항 저장"}</Text></Pressable>
   </View>;
 }
 
