@@ -88,6 +88,8 @@ export type PolicyDecision = {
 
 검증기는 알 수 없는 키를 거부하고 문자열 길이, 배열 개수, `HH:mm`, ISO 날짜, ID 문자 집합을 제한한다. 정책 검사는 Unicode NFKC 정규화, 공백·구두점 제거, 한국어·영문 의료어 패턴을 함께 사용한다.
 
+루트 `package.json`에는 기존 care-core 의존성을 일시 유지한 채 `"@life-steward/life-core": "file:packages/life-core"`를 함께 추가한다. Task 4에서 모든 소비자가 전환된 뒤 care-core 의존성을 제거한다.
+
 - [ ] **Step 4: 공용 코어 테스트 실행**
 
 Run: `npx vitest run packages/life-core/src`
@@ -114,6 +116,7 @@ git commit -m "feat: 비의료 생활 관리 공용 코어 추가"
 - Test: `apps/mobile/src/notifications/lifeNotifications.test.ts`
 - Test: `apps/mobile/src/state/useLifeWorkspace.test.ts`
 - Modify: `apps/mobile/App.tsx`
+- Modify: `apps/mobile/package.json`
 - Modify: `apps/mobile/src/security/clearMobileData.ts`
 - Modify: `apps/mobile/src/security/privacyGate.ts`
 - Delete: `apps/mobile/src/ui/MobileCaregiverScreen.tsx`
@@ -155,6 +158,8 @@ Expected: 새 생활 모듈 부재로 FAIL.
 - [ ] **Step 3: 기존 SQLCipher·SecureStore 보안 경계를 재사용해 생활 저장 구현**
 
 DB 키 수명주기, 기기 인증, 백그라운드 잠금, 화면 캡처 차단은 유지한다. 이전 스키마가 발견되면 자동 변환하지 않고 `이전 테스트 데이터 삭제 후 시작` 화면을 제공한다.
+
+모바일 workspace에는 `"@life-steward/life-core": "file:../../packages/life-core"`를 추가하되 Task 4 전까지 기존 care-core dependency를 함께 유지한다.
 
 - [ ] **Step 4: 모바일 화면과 일반 알림 구현**
 
@@ -555,7 +560,7 @@ Run: `npm run release:policy-check`
 
 Run: `npm run release:model-check`
 
-Expected: Critical 0, High 0, 모든 명령 PASS. 해결 불가능한 advisory는 제품 도달 경로와 만료일을 보안 문서에 기록하고 production 실행 차단 여부를 결정한다.
+Expected: Critical 0, production-reachable High 0, 모든 출시 검사 명령 PASS. Expo/React Native 빌드 도구에만 남는 High는 제품 도달 불가 근거, 소유자, 재검토일을 보안 문서에 기록하고 별도 위험 승인 파일로 검사기에 입력한다.
 
 - [ ] **Step 5: 통합 게이트 커밋**
 
@@ -687,7 +692,7 @@ Run: `npm run release:policy-check`
 
 Run: `npm run release:model-check`
 
-Expected: 출시 게이트 모두 PASS.
+Expected: Critical 0, production-reachable High 0, 출시 게이트 모두 PASS. 빌드 도구 전용 High가 남으면 Task 9의 위험 승인과 정확히 일치해야 한다.
 
 - [ ] **Step 3: 마지막 미커밋 증거가 있으면 커밋**
 
