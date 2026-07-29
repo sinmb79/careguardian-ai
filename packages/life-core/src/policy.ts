@@ -4,7 +4,7 @@ export type PolicyDecision = {
   message?: string;
 };
 
-const RESTRICTED_HEALTH_PATTERN = /(약|투약|처방|진단|증상|치료|복약|병원|의사|의료|medication|medicine|prescription|diagnos(?:e|is)|symptom|treatment|dosage|dose|doctor|hospital|medical|healthcare)/i;
+const RESTRICTED_HEALTH_PATTERN = /(?:복약|투약|약먹|약을|약물|약품|처방약|처방|진단|증상|치료|알레르기|질환|재활|건강|혈압|혈당|체온|심박|맥박|bmi|병원|의사|의료|medication|medicine|prescription|diagnos(?:e|is)|symptom|treatment|dosage|dose|allerg(?:y|ies|ic)|disease|rehabilitation|health|bloodpressure|bloodsugar|bodytemperature|heartrate|pulse|bmi|doctor|hospital|medical|healthcare)/i;
 
 export function detectRestrictedHealthIntent(input: string): PolicyDecision {
   const normalized = input.normalize("NFKC").replace(/[\s\p{P}\p{S}_]+/gu, "").toLowerCase();

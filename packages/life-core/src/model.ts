@@ -183,11 +183,17 @@ function validateText(value: unknown, path: string, errors: string[]): void {
 }
 
 function validateDate(value: unknown, path: string, errors: string[]): void {
-  if (typeof value !== "string" || !DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))) errors.push(`${path} must be an ISO date`);
+  if (typeof value !== "string" || !DATE_PATTERN.test(value) || !isCalendarDate(value)) errors.push(`${path} must be an ISO date`);
 }
 
 function validateTimestamp(value: unknown, path: string, errors: string[]): void {
-  if (typeof value !== "string" || !TIMESTAMP_PATTERN.test(value) || Number.isNaN(Date.parse(value))) errors.push(`${path} must be an ISO timestamp`);
+  if (typeof value !== "string" || !TIMESTAMP_PATTERN.test(value) || !isCalendarDate(value.slice(0, 10)) || Number.isNaN(Date.parse(value))) errors.push(`${path} must be an ISO timestamp`);
+}
+
+function isCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day;
 }
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: string[], path: string, errors: string[]): void {

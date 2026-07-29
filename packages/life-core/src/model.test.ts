@@ -45,4 +45,38 @@ describe("workspace model", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  test("rejects an impossible ISO calendar date", () => {
+    expect(
+      validateWorkspace({
+        schemaVersion: 1,
+        id: "home-2026",
+        title: "우리 집",
+        createdAt: "2026-07-30T00:00:00.000Z",
+        updatedAt: "2026-07-30T00:00:00.000Z",
+        lists: [],
+        records: [],
+        tasks: [{ id: "buy-fruit", title: "과일 사기", status: "open", dueDate: "2026-02-30" }],
+        reminders: [],
+        extensions: [],
+      }).ok,
+    ).toBe(false);
+  });
+
+  test("rejects an impossible ISO calendar timestamp", () => {
+    expect(
+      validateWorkspace({
+        schemaVersion: 1,
+        id: "home-2026",
+        title: "우리 집",
+        createdAt: "2026-02-30T00:00:00.000Z",
+        updatedAt: "2026-07-30T00:00:00.000Z",
+        lists: [],
+        records: [],
+        tasks: [],
+        reminders: [],
+        extensions: [],
+      }).ok,
+    ).toBe(false);
+  });
 });
