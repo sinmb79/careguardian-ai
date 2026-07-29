@@ -1,15 +1,15 @@
 export interface MobileDataDeletionDependencies {
-  deleteManual: () => Promise<void>;
-  cancelCareguardianNotifications: () => Promise<void>;
+  deleteWorkspace: () => Promise<void>;
+  cancelLifeNotifications: () => Promise<void>;
   resetMemory: () => void;
 }
 
 export async function clearMobileData({
-  deleteManual,
-  cancelCareguardianNotifications,
+  deleteWorkspace,
+  cancelLifeNotifications,
   resetMemory
 }: MobileDataDeletionDependencies): Promise<void> {
-  await cancelCareguardianNotifications();
-  await deleteManual();
+  await cancelLifeNotifications();
+  await deleteWorkspace();
   resetMemory();
 }

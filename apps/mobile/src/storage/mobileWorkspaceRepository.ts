@@ -1,0 +1,198 @@
+import * as SQLite from "expo-sqlite";
+import LegacyStorage from "expo-sqlite/kv-store";
+import * as SecureStore from "expo-secure-store";
+import {
+  validateWorkspace,
+  type PersonalWorkspace
+} from "@life-steward/life-core";
+
+const WORKSPACE_KEY = "life-steward.mobile.workspace";
+const WORKSPACE_CONTEXT_KEY = "life-steward.mobile.context";
+const DATABASE_KEY = "life-steward.mobile.database-key";
+const DATABASE_NAME = "life-steward-workspace-encrypted.db";
+const PREVIOUS_PLAINTEXT_KEY = "careguardian.mobile.manual";
+const PREVIOUS_CONTEXT_KEY = "careguardian.mobile.context";
+const PREVIOUS_DATABASE_KEY = "careguardian.mobile.database-key";
+const PREVIOUS_DATABASE_NAME = "careguardian-caremanual-encrypted.db";
+const KEY_BYTES = 32;
+const HEX_KEY = /^[0-9a-f]{64}$/;
+
+function secureRandomBytes(length: number): Promise<Uint8Array> {
+  const crypto = require("expo-crypto") as {
+    getRandomBytesAsync(byteCount: number): Promise<Uint8Array>;
+  };
+  return crypto.getRandomBytesAsync(length);
+}
+
+export interface MobileWorkspaceDatabase {
+  execAsync(sql: string): Promise<void>;
+  runAsync(sql: string, ...params: string[]): Promise<unknown>;
+  getFirstAsync<T>(sql: string, ...params: string[]): Promise<T | null>;
+  closeAsync?(): Promise<void>;
+}
+
+export interface MobileWorkspaceStorageDependencies {
+  databaseName?: string;
+  openDatabase(name: string): Promise<MobileWorkspaceDatabase>;
+  deleteDatabase(name: string): Promise<void>;
+  legacyStorage: {
+    getItem(key: string): Promise<string | null>;
+    removeItem(key: string): Promise<void>;
+  };
+  secureStore: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+    deleteItem(key: string): Promise<void>;
+  };
+  randomBytes(length: number): Promise<Uint8Array>;
+}
+
+export interface MobileWorkspaceRepository {
+  saveWorkspace(workspace: PersonalWorkspace): Promise<void>;
+  loadWorkspace(): Promise<PersonalWorkspace | null>;
+  deleteWorkspace(): Promise<void>;
+  hasWorkspace(): Promise<boolean>;
+  hasPreviousTestData(): Promise<boolean>;
+  deletePreviousTestData(): Promise<void>;
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function assertDatabaseKey(key: string): void {
+  if (!HEX_KEY.test(key)) throw new Error("invalid mobile database key");
+}
+
+function parseWorkspace(serialized: string): PersonalWorkspace {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    throw new Error("invalid persisted personal workspace: malformed JSON");
+  }
+  const result = validateWorkspace(parsed);
+  if (!result.ok) throw new Error("invalid persisted personal workspace");
+  return result.value;
+}
+
+export function createMobileWorkspaceRepository(
+  dependencies: MobileWorkspaceStorageDependencies
+): MobileWorkspaceRepository {
+  const databaseName = dependencies.databaseName ?? DATABASE_NAME;
+
+  async function getOrCreateDatabaseKey(): Promise<string> {
+    const existing = await dependencies.secureStore.getItem(DATABASE_KEY);
+    if (existing) {
+      assertDatabaseKey(existing);
+      return existing;
+    }
+    const bytes = await dependencies.randomBytes(KEY_BYTES);
+    if (bytes.length !== KEY_BYTES) throw new Error("could not generate a mobile database key");
+    const key = toHex(bytes);
+    assertDatabaseKey(key);
+    await dependencies.secureStore.setItem(DATABASE_KEY, key);
+    return key;
+  }
+
+  async function openEncryptedDatabase(): Promise<MobileWorkspaceDatabase> {
+    const key = await getOrCreateDatabaseKey();
+    const database = await dependencies.openDatabase(databaseName);
+    await database.execAsync(`PRAGMA key = "x'${key}'";`);
+    await database.execAsync(
+      "CREATE TABLE IF NOT EXISTS personal_workspaces (storage_key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);"
+    );
+    return database;
+  }
+
+  return {
+    async saveWorkspace(workspace): Promise<void> {
+      const validation = validateWorkspace(workspace);
+      if (!validation.ok) throw new Error("invalid personal workspace");
+      const database = await openEncryptedDatabase();
+      try {
+        await database.runAsync(
+          "INSERT OR REPLACE INTO personal_workspaces (storage_key, value) VALUES (?, ?);",
+          WORKSPACE_KEY,
+          JSON.stringify(validation.value)
+        );
+        await dependencies.secureStore.setItem(
+          WORKSPACE_CONTEXT_KEY,
+          JSON.stringify({ savedAt: validation.value.updatedAt })
+        );
+      } finally {
+        await database.closeAsync?.();
+      }
+    },
+
+    async loadWorkspace(): Promise<PersonalWorkspace | null> {
+      const context = await dependencies.secureStore.getItem(WORKSPACE_CONTEXT_KEY);
+      if (!context) return null;
+      const database = await openEncryptedDatabase();
+      try {
+        const stored = await database.getFirstAsync<{ value: string }>(
+          "SELECT value FROM personal_workspaces WHERE storage_key = ?;",
+          WORKSPACE_KEY
+        );
+        return stored ? parseWorkspace(stored.value) : null;
+      } finally {
+        await database.closeAsync?.();
+      }
+    },
+
+    async hasWorkspace(): Promise<boolean> {
+      return (await dependencies.secureStore.getItem(WORKSPACE_CONTEXT_KEY)) !== null;
+    },
+
+    async deleteWorkspace(): Promise<void> {
+      const key = await dependencies.secureStore.getItem(DATABASE_KEY);
+      if (key) {
+        assertDatabaseKey(key);
+        const database = await dependencies.openDatabase(databaseName);
+        try {
+          await database.execAsync(`PRAGMA key = "x'${key}'";`);
+          await database.runAsync("DELETE FROM personal_workspaces WHERE storage_key = ?;", WORKSPACE_KEY);
+        } finally {
+          await database.closeAsync?.();
+        }
+      }
+      await dependencies.deleteDatabase(databaseName);
+      await dependencies.secureStore.deleteItem(WORKSPACE_CONTEXT_KEY);
+      await dependencies.secureStore.deleteItem(DATABASE_KEY);
+    },
+
+    async hasPreviousTestData(): Promise<boolean> {
+      return (
+        (await dependencies.legacyStorage.getItem(PREVIOUS_PLAINTEXT_KEY)) !== null ||
+        (await dependencies.secureStore.getItem(PREVIOUS_CONTEXT_KEY)) !== null ||
+        (await dependencies.secureStore.getItem(PREVIOUS_DATABASE_KEY)) !== null
+      );
+    },
+
+    async deletePreviousTestData(): Promise<void> {
+      await dependencies.deleteDatabase(PREVIOUS_DATABASE_NAME);
+      await dependencies.legacyStorage.removeItem(PREVIOUS_PLAINTEXT_KEY);
+      await dependencies.secureStore.deleteItem(PREVIOUS_CONTEXT_KEY);
+      await dependencies.secureStore.deleteItem(PREVIOUS_DATABASE_KEY);
+    }
+  };
+}
+
+const defaultRepository = createMobileWorkspaceRepository({
+  openDatabase: (name) => SQLite.openDatabaseAsync(name),
+  deleteDatabase: (name) => SQLite.deleteDatabaseAsync(name),
+  legacyStorage: LegacyStorage,
+  secureStore: {
+    getItem: (key) => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+    deleteItem: (key) => SecureStore.deleteItemAsync(key)
+  },
+  randomBytes: secureRandomBytes
+});
+
+export const saveWorkspace = defaultRepository.saveWorkspace;
+export const loadWorkspace = defaultRepository.loadWorkspace;
+export const deleteWorkspace = defaultRepository.deleteWorkspace;
+export const hasWorkspace = defaultRepository.hasWorkspace;
+export const hasPreviousTestData = defaultRepository.hasPreviousTestData;
+export const deletePreviousTestData = defaultRepository.deletePreviousTestData;
