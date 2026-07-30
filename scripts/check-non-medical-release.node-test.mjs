@@ -305,6 +305,122 @@ test("fails closed when the installed expo-file-system version drifts", () => {
   assert.match(report.problems.join("\n"), /expo-file-system installed version mismatch/i);
 });
 
+test("rejects require aliases and every indirect loader invocation shape", () => {
+  const cases = [
+    ["alias", `
+const reviewLoader = require;
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["call", `
+void require.call(undefined, "expo-file-system/legacy");
+`],
+    ["apply", `
+void require.apply(undefined, ["expo-file-system/legacy"]);
+`],
+    ["bind", `
+const reviewLoader = require.bind(undefined);
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["sequence", `
+void (0, require)("expo-file-system/legacy");
+`],
+    ["module member", `
+void module.require("expo-file-system/legacy");
+`],
+    ["computed member", `
+const reviewLoader = module["requ" + "ire"];
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["module facade alias", `
+const reviewModuleFacade = module;
+const reviewLoaderName = Date.now() > 0 ? "require" : "other";
+const reviewLoader = reviewModuleFacade[reviewLoaderName];
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["global member", `
+void globalThis.require("expo-file-system/legacy");
+`],
+    ["destructure", `
+const { require: reviewLoader } = module;
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["return", `
+function reviewLoaderFactory() {
+  return require;
+}
+void reviewLoaderFactory()("expo-file-system/legacy");
+`],
+    ["pass", `
+function reviewUseLoader(loader: (id: string) => unknown) {
+  return loader("expo-file-system/legacy");
+}
+void reviewUseLoader(require);
+`],
+    ["createRequire", `
+import { createRequire } from "node:module";
+const reviewLoader = createRequire(import.meta.url);
+void reviewLoader("expo-file-system/legacy");
+`],
+    ["builtin module", `
+const reviewNodeModule = process.getBuiltinModule("node:module");
+const reviewLoader = reviewNodeModule.createRequire(import.meta.url);
+void reviewLoader("expo-file-system/legacy");
+`]
+  ];
+  const results = cases.map(([name, suffix]) => [
+    name,
+    mutate(
+      "apps/mobile/src/local-ai/assistantPolicy.ts",
+      (source) => `${source}${suffix}`
+    )
+  ]);
+  const escaped = results
+    .filter(([, report]) => report.status === "pass")
+    .map(([name]) => name);
+
+  assert.deepEqual(escaped, []);
+  for (const [, report] of results) {
+    assert.match(
+      report.problems.join("\n"),
+      /module loader|require|node:module|global object/i
+    );
+  }
+});
+
+test("allows only exact direct literal require contracts", () => {
+  const directFileSystem = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+void require("expo-file-system/legacy").getInfoAsync("file:///private");
+`
+  );
+  const nonLiteral = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const reviewModuleName = "expo-file-system/legacy";
+void require(reviewModuleName);
+`
+  );
+  const changedApprovedModule = mutate(
+    "apps/mobile/metro.config.js",
+    (source) => source.replace(
+      'const path = require("path");',
+      'const path = require("node:path");'
+    )
+  );
+
+  for (
+    const report of [
+      directFileSystem,
+      nonLiteral,
+      changedApprovedModule
+    ]
+  ) {
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /expo-file-system|require|module loader/i);
+  }
+});
+
 test("rejects an array-joined remote URL used in a conditional registry mutation", () => {
   const report = mutate(
     "apps/mobile/src/local-ai/modelRegistry.ts",

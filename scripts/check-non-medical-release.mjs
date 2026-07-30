@@ -323,6 +323,40 @@ const NETWORK_LINE_CONTRACTS = new Map([
     "  const downloadedAsset = await assetFactory.fromModule(asset.moduleLoader()).downloadAsync();"
   ]]
 ]);
+const REQUIRE_LINE_CONTRACTS = new Map([
+  ["apps/mobile/metro.config.js", [
+    'const path = require("path");',
+    'const { getDefaultConfig } = require("expo/metro-config");'
+  ]],
+  ["apps/mobile/plugins/with-local-only-notifications.js", [
+    'const { withAndroidManifest } = require("@expo/config-plugins");'
+  ]],
+  ["apps/mobile/src/storage/mobileWorkspaceRepository.ts", [
+    '  const crypto = require("expo-crypto") as { getRandomBytesAsync(byteCount: number): Promise<Uint8Array> };'
+  ]],
+  ["apps/mobile/src/legal/thirdPartyModels.ts", [
+    '      return require("../../assets/model-licenses/hyperclovax-seed/LICENSE.txt");',
+    '      return require("../../assets/model-licenses/hyperclovax-seed/NOTICE.txt");',
+    '      return require("../../assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt");',
+    '      return require("../../assets/model-licenses/apache-2.0/LICENSE.txt");',
+    '  return require("expo-asset").Asset as ExpoAssetFactory;'
+  ]]
+]);
+const MODULE_EXPORT_LINE_CONTRACTS = new Map([
+  ["apps/mobile/metro.config.js", [
+    "module.exports = config;"
+  ]],
+  ["apps/mobile/plugins/with-local-only-notifications.js", [
+    "module.exports = function withLocalOnlyNotifications(config) {"
+  ]]
+]);
+const MODULE_LOADER_NAMES = new Set(["require", "createRequire"]);
+const MODULE_LOADER_MEMBER_NAMES = new Set([
+  ...MODULE_LOADER_NAMES,
+  "getBuiltinModule",
+  "mainModule"
+]);
+const NODE_MODULE_LOADER_SPECIFIERS = new Set(["module", "node:module"]);
 
 function isReleaseFile(file) {
   return RELEASE_ROOTS.some((prefix) => file.startsWith(prefix)) || EXACT_FILES.has(file);
@@ -343,6 +377,14 @@ function lineIsExactContract(file, line) {
 
 function networkLineIsExactContract(file, line) {
   return (NETWORK_LINE_CONTRACTS.get(file) ?? []).includes(line);
+}
+
+function requireLineIsExactContract(file, line) {
+  return (REQUIRE_LINE_CONTRACTS.get(file) ?? []).includes(line);
+}
+
+function moduleExportLineIsExactContract(file, line) {
+  return (MODULE_EXPORT_LINE_CONTRACTS.get(file) ?? []).includes(line);
 }
 
 function checkExactContractCounts(files, contracts, problems, label) {
@@ -845,6 +887,104 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
     if (reportedDynamicNodes.has(start)) return;
     reportedDynamicNodes.add(start);
     problems.push(`${file}:${lineFor(node) + 1}: forbidden dynamic capability (${label})`);
+  };
+
+  const isApprovedDirectRequireIdentifier = (node) => {
+    const call = node.parent;
+    return (
+      node.text === "require" &&
+      ts.isCallExpression(call) &&
+      call.expression === node &&
+      !call.questionDotToken &&
+      (call.typeArguments?.length ?? 0) === 0 &&
+      call.arguments.length === 1 &&
+      ts.isStringLiteral(call.arguments[0]) &&
+      requireLineIsExactContract(file, lines[lineFor(call)] ?? "")
+    );
+  };
+
+  const isApprovedModuleExportsIdentifier = (node) => {
+    const access = node.parent;
+    return (
+      node.text === "module" &&
+      ts.isPropertyAccessExpression(access) &&
+      access.expression === node &&
+      access.name.text === "exports" &&
+      moduleExportLineIsExactContract(file, lines[lineFor(access)] ?? "")
+    );
+  };
+
+  const isNodeModuleLoaderSpecifier = (node) => {
+    if (
+      !ts.isStringLiteral(node) ||
+      !NODE_MODULE_LOADER_SPECIFIERS.has(node.text)
+    ) {
+      return false;
+    }
+    const parent = node.parent;
+    if (
+      (
+        ts.isImportDeclaration(parent) ||
+        ts.isExportDeclaration(parent)
+      ) &&
+      parent.moduleSpecifier === node
+    ) {
+      return true;
+    }
+    if (
+      ts.isExternalModuleReference(parent) &&
+      parent.expression === node
+    ) {
+      return true;
+    }
+    if (ts.isCallExpression(parent) && parent.arguments.includes(node)) {
+      const target = unwrapExpression(parent.expression);
+      return (
+        target.kind === ts.SyntaxKind.ImportKeyword ||
+        (
+          ts.isIdentifier(target) &&
+          MODULE_LOADER_NAMES.has(target.text)
+        ) ||
+        (
+          (
+            ts.isPropertyAccessExpression(target) ||
+            ts.isElementAccessExpression(target)
+          ) &&
+          MODULE_LOADER_MEMBER_NAMES.has(
+            evaluator.evaluatePropertyName(target) ?? ""
+          )
+        )
+      );
+    }
+    return false;
+  };
+
+  const bindingElementLoaderName = (node) => {
+    if (!ts.isBindingElement(node) || !node.propertyName) return undefined;
+    if (
+      ts.isIdentifier(node.propertyName) ||
+      ts.isStringLiteral(node.propertyName)
+    ) {
+      return node.propertyName.text;
+    }
+    if (ts.isComputedPropertyName(node.propertyName)) {
+      return evaluator.evaluateString(node.propertyName.expression);
+    }
+    return undefined;
+  };
+
+  const isUnresolvedModuleFacadeAccess = (node, propertyName) => {
+    if (!ts.isElementAccessExpression(node) || propertyName !== undefined) {
+      return false;
+    }
+    const target = unwrapExpression(node.expression);
+    if (ts.isIdentifier(target) && target.text === "module") return true;
+    return (
+      ts.isPropertyAccessExpression(target) &&
+      target.name.text === "mainModule" &&
+      ts.isIdentifier(unwrapExpression(target.expression)) &&
+      unwrapExpression(target.expression).text === "process"
+    );
   };
 
   const isPropertyNameIdentifier = (node) => {
@@ -1488,6 +1628,39 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
       if (propertyName && FORBIDDEN_CAPABILITY_PROPERTIES.has(propertyName)) {
         reportDynamic(node, `capability facade ${propertyName}`);
       }
+      if (
+        MODULE_LOADER_MEMBER_NAMES.has(propertyName ?? "") ||
+        isUnresolvedModuleFacadeAccess(node, propertyName)
+      ) {
+        reportDynamic(node, `indirect module loader ${propertyName ?? "computed"}`);
+      }
+    }
+    if (
+      ts.isIdentifier(node) &&
+      MODULE_LOADER_NAMES.has(node.text) &&
+      (
+        node.text !== "require" ||
+        !isApprovedDirectRequireIdentifier(node)
+      )
+    ) {
+      reportDynamic(node, `module loader ${node.text}`);
+    }
+    if (
+      ts.isIdentifier(node) &&
+      node.text === "module" &&
+      !isPropertyNameIdentifier(node) &&
+      !isApprovedModuleExportsIdentifier(node)
+    ) {
+      reportDynamic(node, "module loader facade module");
+    }
+    if (
+      ts.isBindingElement(node) &&
+      MODULE_LOADER_MEMBER_NAMES.has(bindingElementLoaderName(node) ?? "")
+    ) {
+      reportDynamic(node, "destructured module loader");
+    }
+    if (isNodeModuleLoaderSpecifier(node)) {
+      reportDynamic(node, `module loader specifier ${node.text}`);
     }
     if (
       ts.isIdentifier(node) &&
@@ -1642,6 +1815,13 @@ export function validateReleasePolicy(files, options = {}) {
   }
   checkExactContractCounts(files, POLICY_LINE_CONTRACTS, problems, "policy contract");
   checkExactContractCounts(files, NETWORK_LINE_CONTRACTS, problems, "network contract");
+  checkExactContractCounts(files, REQUIRE_LINE_CONTRACTS, problems, "require contract");
+  checkExactContractCounts(
+    files,
+    MODULE_EXPORT_LINE_CONTRACTS,
+    problems,
+    "module export contract"
+  );
   validateIdentity(files, problems);
   return {
     gate: "non-medical-release",
