@@ -1,5 +1,11 @@
 import modelRegistryData from "./model-registry.json";
 
+// Capture trusted intrinsics before this module performs any registry work.
+// Runtime-specific mutation of the global Object facade cannot weaken these bindings.
+const nativeObjectFreeze = Object.freeze.bind(Object);
+const nativeObjectIsFrozen = Object.isFrozen.bind(Object);
+const nativeObjectValues = Object.values.bind(Object);
+
 export type ModelAvailability = "installable" | "blocked_no_approved_gguf";
 
 export interface ModelLicenseAsset {
@@ -199,19 +205,19 @@ export function validateModelRegistry(registry: unknown): asserts registry is re
   }
 }
 
-function deepFreeze<T>(input: T): T {
-  if (typeof input === "object" && input !== null && !Object.isFrozen(input)) {
-    for (const value of Object.values(input)) deepFreeze(value);
-    Object.freeze(input);
+export function deepFreeze<T>(input: T): T {
+  if (typeof input === "object" && input !== null && !nativeObjectIsFrozen(input)) {
+    for (const value of nativeObjectValues(input)) deepFreeze(value);
+    nativeObjectFreeze(input);
   }
   return input;
 }
 
-function assertDeepFrozen(input: unknown, seen = new Set<object>()): void {
+export function assertDeepFrozen(input: unknown, seen = new Set<object>()): void {
   if (typeof input !== "object" || input === null || seen.has(input)) return;
-  if (!Object.isFrozen(input)) throw new Error("model registry must be deeply frozen");
+  if (!nativeObjectIsFrozen(input)) throw new Error("model registry must be deeply frozen");
   seen.add(input);
-  for (const value of Object.values(input)) assertDeepFrozen(value, seen);
+  for (const value of nativeObjectValues(input)) assertDeepFrozen(value, seen);
 }
 
 const validatedRegistryData: unknown = modelRegistryData;
@@ -219,7 +225,7 @@ validateModelRegistry(validatedRegistryData);
 
 export const MODEL_REGISTRY: readonly ModelArtifact[] = deepFreeze(validatedRegistryData);
 assertDeepFrozen(MODEL_REGISTRY);
-const INSTALLABLE_MODELS: readonly ModelArtifact[] = Object.freeze(
+const INSTALLABLE_MODELS: readonly ModelArtifact[] = nativeObjectFreeze(
   MODEL_REGISTRY.filter((model) => model.availability === "installable")
 );
 assertDeepFrozen(INSTALLABLE_MODELS);

@@ -233,9 +233,10 @@ describe("App", () => {
   test("deletes an invalid raw workspace with the exact record the user confirmed", async () => {
     const user = userEvent.setup();
     const raw = '{"schemaVersion":999,"private":"delete-me"}';
+    const confirmationToken = "a".repeat(32);
     const clearWorkspace = vi.fn(async () => ({ kind: "cleared" as const }));
     const repository: LifeAppRepository = {
-      loadWorkspace: async () => ({ kind: "invalid", raw }),
+      loadWorkspace: async () => ({ kind: "invalid", raw, confirmationToken }),
       saveWorkspace: async () => ({ kind: "unavailable" }),
       initializeWorkspace: async () => ({ kind: "unavailable" }),
       clearWorkspace,
@@ -247,17 +248,18 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "이 브라우저의 작업공간 삭제" }));
     await user.click(screen.getByRole("button", { name: "삭제 확인" }));
 
-    expect(clearWorkspace).toHaveBeenCalledWith({ kind: "invalid", raw });
+    expect(clearWorkspace).toHaveBeenCalledWith({ kind: "invalid", raw, confirmationToken });
     await screen.findByText("이 브라우저의 개인 작업공간을 삭제했습니다.");
   });
 
   test("runs initialization only once while its confirmation is pending", async () => {
     const user = userEvent.setup();
     const raw = "{broken";
+    const confirmationToken = "b".repeat(32);
     const pendingInitialize = deferred<{ kind: "saved"; revision: number }>();
     const initializeWorkspace = vi.fn(() => pendingInitialize.promise);
     const repository: LifeAppRepository = {
-      loadWorkspace: async () => ({ kind: "invalid", raw }),
+      loadWorkspace: async () => ({ kind: "invalid", raw, confirmationToken }),
       saveWorkspace: async () => ({ kind: "unavailable" }),
       initializeWorkspace,
       clearWorkspace: async () => ({ kind: "unavailable" }),

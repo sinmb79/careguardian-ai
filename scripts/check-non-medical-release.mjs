@@ -29,6 +29,14 @@ const NETWORK_CAPABILITIES = new Set([
   "createDownloadResumable",
   "downloadAsync"
 ]);
+const FORBIDDEN_DYNAMIC_IDENTIFIERS = new Set(["Reflect", "eval", "Function", "Proxy"]);
+const FORBIDDEN_CAPABILITY_PROPERTIES = new Set([
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "__proto__",
+  "constructor",
+  "defaultView"
+]);
 
 // These are line-level, single-occurrence contracts for explicit policy
 // denials, migration identifiers, and cloud-disable metadata. No whole file is
@@ -59,6 +67,9 @@ const POLICY_LINE_CONTRACTS = new Map([
   ]],
   ["apps/mobile/src/ui/LocalAiScreen.tsx", [
     "          건강·약물·증상·진단·치료·응급, 위해·착취·사기·괴롭힘·악성 코드·불법행위"
+  ]],
+  ["src/features/workspace/workspaceRepository.ts", [
+    "      const factory = globalThis.indexedDB;"
   ]],
   ["apps/mobile/src/storage/mobileWorkspaceRepository.ts", [
     " * a release install can erase health-era records without opening or migrating them."
@@ -125,6 +136,248 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
   const lines = text.split(/\r?\n/);
   const reportedNetworkNodes = new Set();
   const reportedRemoteNodes = new Set();
+  const reportedDynamicNodes = new Set();
+
+  const lineFor = (node) =>
+    sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line;
+
+  const hasNamedAncestor = (node, name) => {
+    for (let current = node.parent; current; current = current.parent) {
+      if (
+        ts.isFunctionDeclaration(current) &&
+        current.name?.text === name
+      ) {
+        return true;
+      }
+      if (
+        ts.isMethodDeclaration(current) &&
+        current.name &&
+        (
+          (ts.isIdentifier(current.name) || ts.isStringLiteral(current.name)) &&
+          current.name.text === name
+        )
+      ) {
+        return true;
+      }
+      if (
+        ts.isPropertyAssignment(current) &&
+        (
+          (ts.isIdentifier(current.name) || ts.isStringLiteral(current.name)) &&
+          current.name.text === name
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const isApprovedNetworkCall = (node, capability) => {
+    const line = lines[lineFor(node)] ?? "";
+    if (!networkLineIsExactContract(file, line)) return false;
+    const callee = unwrapExpression(node.expression);
+    if (!ts.isCallExpression(node) || !callee) return false;
+
+    if (
+      file === "apps/mobile/src/local-ai/modelStore.ts" &&
+      capability === "createDownloadResumable" &&
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(unwrapExpression(callee.expression)) &&
+      unwrapExpression(callee.expression).text === "ExpoFileSystem" &&
+      callee.name.text === "createDownloadResumable" &&
+      node.arguments.length === 5 &&
+      ts.isIdentifier(unwrapExpression(node.arguments[0])) &&
+      unwrapExpression(node.arguments[0]).text === "url" &&
+      ts.isIdentifier(unwrapExpression(node.arguments[1])) &&
+      unwrapExpression(node.arguments[1]).text === "destinationUri" &&
+      hasNamedAncestor(node, "createDownload")
+    ) {
+      return true;
+    }
+
+    if (
+      file === "apps/mobile/src/local-ai/modelStore.ts" &&
+      capability === "downloadAsync" &&
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(unwrapExpression(callee.expression)) &&
+      unwrapExpression(callee.expression).text === "task" &&
+      callee.name.text === "downloadAsync" &&
+      node.arguments.length === 0 &&
+      hasNamedAncestor(node, "download") &&
+      hasNamedAncestor(node, "createDownload")
+    ) {
+      return true;
+    }
+
+    if (
+      file === "apps/mobile/src/legal/thirdPartyModels.ts" &&
+      capability === "downloadAsync" &&
+      ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === "downloadAsync" &&
+      ts.isCallExpression(unwrapExpression(callee.expression)) &&
+      hasNamedAncestor(node, "getOfflineLicenseAssetUri")
+    ) {
+      const fromModuleCall = unwrapExpression(callee.expression);
+      const fromModuleTarget = unwrapExpression(fromModuleCall.expression);
+      const moduleArgument = fromModuleCall.arguments[0]
+        ? unwrapExpression(fromModuleCall.arguments[0])
+        : undefined;
+      return (
+        fromModuleCall.arguments.length === 1 &&
+        ts.isPropertyAccessExpression(fromModuleTarget) &&
+        ts.isIdentifier(unwrapExpression(fromModuleTarget.expression)) &&
+        unwrapExpression(fromModuleTarget.expression).text === "assetFactory" &&
+        fromModuleTarget.name.text === "fromModule" &&
+        ts.isCallExpression(moduleArgument) &&
+        ts.isPropertyAccessExpression(unwrapExpression(moduleArgument.expression)) &&
+        ts.isIdentifier(
+          unwrapExpression(unwrapExpression(moduleArgument.expression).expression)
+        ) &&
+        unwrapExpression(unwrapExpression(moduleArgument.expression).expression).text === "asset" &&
+        unwrapExpression(moduleArgument.expression).name.text === "moduleLoader"
+      );
+    }
+
+    return false;
+  };
+
+  const reportDynamic = (node, label) => {
+    const start = node.getStart(sourceFile);
+    if (reportedDynamicNodes.has(start)) return;
+    reportedDynamicNodes.add(start);
+    problems.push(`${file}:${lineFor(node) + 1}: forbidden dynamic capability (${label})`);
+  };
+
+  const isPropertyNameIdentifier = (node) => {
+    const parent = node.parent;
+    return (
+      (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+      (
+        (
+          ts.isPropertyAssignment(parent) ||
+          ts.isMethodDeclaration(parent) ||
+          ts.isPropertyDeclaration(parent) ||
+          ts.isPropertySignature(parent) ||
+          ts.isMethodSignature(parent)
+        ) &&
+        parent.name === node
+      )
+    );
+  };
+
+  const isApprovedGlobalReference = (node) => {
+    const parent = node.parent;
+    if (
+      node.text === "globalThis" &&
+      ts.isPropertyAccessExpression(parent) &&
+      unwrapExpression(parent.expression) === node &&
+      parent.name.text === "indexedDB" &&
+      file === "src/features/workspace/workspaceRepository.ts" &&
+      lines[lineFor(parent)] === "      const factory = globalThis.indexedDB;"
+    ) {
+      return true;
+    }
+    return (
+      ["window", "self", "global"].includes(node.text) &&
+      ts.isPropertyAccessExpression(parent) &&
+      unwrapExpression(parent.expression) === node &&
+      !FORBIDDEN_CAPABILITY_PROPERTIES.has(parent.name.text)
+    );
+  };
+
+  const originatesFromComputedAccess = (node, resolving = new Set()) => {
+    const expression = unwrapExpression(node);
+    if (!expression) return false;
+    if (ts.isElementAccessExpression(expression)) return true;
+    if (ts.isIdentifier(expression)) {
+      if (resolving.has(expression.text)) return false;
+      const initializer = evaluator.resolveConstInitializer(expression);
+      if (!initializer) return false;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(expression.text);
+      return originatesFromComputedAccess(initializer, nextResolving);
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return (
+        originatesFromComputedAccess(expression.whenTrue, resolving) ||
+        originatesFromComputedAccess(expression.whenFalse, resolving)
+      );
+    }
+    return false;
+  };
+
+  const resolvesToBuiltInFacade = (node, resolving = new Set()) => {
+    const expression = unwrapExpression(node);
+    if (!expression) return false;
+    if (
+      ts.isIdentifier(expression) &&
+      ["Object", "Reflect", "Function", "Proxy"].includes(expression.text)
+    ) {
+      return true;
+    }
+    if (ts.isIdentifier(expression)) {
+      if (resolving.has(expression.text)) return false;
+      const initializer = evaluator.resolveConstInitializer(expression);
+      if (!initializer) return false;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(expression.text);
+      return resolvesToBuiltInFacade(initializer, nextResolving);
+    }
+    if (
+      ts.isPropertyAccessExpression(expression) ||
+      ts.isElementAccessExpression(expression)
+    ) {
+      return resolvesToBuiltInFacade(expression.expression, resolving);
+    }
+    return false;
+  };
+
+  const builtInMutationHelpers = new Set([
+    "assign",
+    "defineProperties",
+    "defineProperty",
+    "deleteProperty",
+    "set",
+    "setPrototypeOf"
+  ]);
+
+  const mutatesBuiltInFacade = (node) => {
+    const isAssignmentOperator = (kind) =>
+      kind >= ts.SyntaxKind.FirstAssignment &&
+      kind <= ts.SyntaxKind.LastAssignment;
+    if (
+      ts.isBinaryExpression(node) &&
+      isAssignmentOperator(node.operatorToken.kind)
+    ) {
+      return resolvesToBuiltInFacade(node.left);
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (
+        node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken
+      )
+    ) {
+      return resolvesToBuiltInFacade(node.operand);
+    }
+    if (ts.isDeleteExpression(node)) {
+      return resolvesToBuiltInFacade(node.expression);
+    }
+    if (!ts.isCallExpression(node) || !node.arguments[0]) return false;
+    const target = unwrapExpression(node.expression);
+    if (
+      !ts.isPropertyAccessExpression(target) &&
+      !ts.isElementAccessExpression(target)
+    ) {
+      return false;
+    }
+    const helper = evaluator.evaluatePropertyName(target);
+    return (
+      helper !== undefined &&
+      builtInMutationHelpers.has(helper) &&
+      resolvesToBuiltInFacade(node.arguments[0])
+    );
+  };
 
   const classifyNetworkMember = (expression) => {
     if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) {
@@ -183,9 +436,9 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
   };
 
   const reportNetwork = (node, capability) => {
-    const lineIndex = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line;
+    const lineIndex = lineFor(node);
     const line = lines[lineIndex] ?? "";
-    if (!networkLineIsExactContract(file, line) && !reportedNetworkNodes.has(node.getStart(sourceFile))) {
+    if (!isApprovedNetworkCall(node, capability) && !reportedNetworkNodes.has(node.getStart(sourceFile))) {
       reportedNetworkNodes.add(node.getStart(sourceFile));
       problems.push(`${file}:${lineIndex + 1}: unapproved network API (${capability})`);
     }
@@ -207,6 +460,12 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
       const capability = classifyNetworkCallee(node.expression);
       if (capability) reportNetwork(node, capability);
+      if (originatesFromComputedAccess(node.expression)) {
+        reportDynamic(node, "computed call");
+      }
+    }
+    if (mutatesBuiltInFacade(node)) {
+      reportDynamic(node, "built-in facade mutation");
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const capability = classifyNetworkMember(node);
@@ -215,6 +474,32 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
         (ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
         unwrapExpression(parent.expression) === node;
       if (capability && !isDirectInvocation) reportNetwork(node, capability);
+      const propertyName = evaluator.evaluatePropertyName(node);
+      if (propertyName && FORBIDDEN_CAPABILITY_PROPERTIES.has(propertyName)) {
+        reportDynamic(node, `capability facade ${propertyName}`);
+      }
+    }
+    if (
+      ts.isIdentifier(node) &&
+      !isPropertyNameIdentifier(node) &&
+      FORBIDDEN_DYNAMIC_IDENTIFIERS.has(node.text)
+    ) {
+      reportDynamic(node, `dynamic code or reflection ${node.text}`);
+    }
+    if (
+      ts.isIdentifier(node) &&
+      !isPropertyNameIdentifier(node) &&
+      NETWORK_CAPABILITIES.has(node.text)
+    ) {
+      reportNetwork(node, node.text);
+    }
+    if (
+      ts.isIdentifier(node) &&
+      !isPropertyNameIdentifier(node) &&
+      ["globalThis", "window", "self", "global"].includes(node.text) &&
+      !isApprovedGlobalReference(node)
+    ) {
+      reportDynamic(node, `global object ${node.text}`);
     }
     ts.forEachChild(node, visit);
   };

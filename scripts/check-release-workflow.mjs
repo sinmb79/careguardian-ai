@@ -84,6 +84,18 @@ export function validateReleaseWorkflow(source, workflowFiles = ["ci.yml"]) {
       problems
     };
   }
+  if (
+    !hasExactKeys(workflow, ["name", "on", "env", "permissions", "jobs"]) ||
+    workflow.name !== "Verify and deploy GitHub Pages"
+  ) {
+    problems.push("workflow root cannot declare defaults, extra env, or other execution overrides");
+  }
+  if (
+    !hasExactKeys(workflow.env, ["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"]) ||
+    workflow.env.FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 !== "true"
+  ) {
+    problems.push("workflow env must contain only the pinned JavaScript Action runtime");
+  }
 
   const triggers = workflow.on;
   if (
@@ -116,18 +128,35 @@ export function validateReleaseWorkflow(source, workflowFiles = ["ci.yml"]) {
   }
   if (
     !isRecord(verify) ||
+    !hasExactKeys(verify, ["runs-on", "permissions", "steps"]) ||
     verify["runs-on"] !== "ubuntu-latest" ||
     hasOwn(verify, "if") ||
     hasOwn(verify, "continue-on-error") ||
     !hasExactKeys(verify.permissions, ["contents"]) ||
     verify.permissions.contents !== "read"
   ) {
-    problems.push("verify job execution and permissions are not unconditional least privilege");
+    problems.push("verify job cannot declare defaults, env, or other execution overrides");
   }
   if (
     !isRecord(deploy) ||
+    !hasExactKeys(deploy, [
+      "if",
+      "needs",
+      "runs-on",
+      "concurrency",
+      "permissions",
+      "environment",
+      "steps"
+    ]) ||
     deploy.needs !== "verify" ||
-    deploy.if !== EXPECTED_DEPLOY_CONDITION
+    deploy.if !== EXPECTED_DEPLOY_CONDITION ||
+    deploy["runs-on"] !== "ubuntu-latest" ||
+    !hasExactKeys(deploy.concurrency, ["group", "cancel-in-progress"]) ||
+    deploy.concurrency.group !== "pages" ||
+    deploy.concurrency["cancel-in-progress"] !== true ||
+    !hasExactKeys(deploy.environment, ["name", "url"]) ||
+    deploy.environment.name !== "github-pages" ||
+    deploy.environment.url !== "${{ steps.deployment.outputs.page_url }}"
   ) {
     problems.push("deploy must depend directly on the complete verify job");
   }
@@ -169,12 +198,27 @@ export function validateReleaseWorkflow(source, workflowFiles = ["ci.yml"]) {
   if (
     checkout.length !== 1 ||
     checkout[0].jobName !== "verify" ||
+    !hasExactKeys(checkout[0].step, ["name", "uses", "with"]) ||
     !hasExactKeys(checkout[0].step.with, ["ref"]) ||
     checkout[0].step.with.ref !== "${{ github.sha }}" ||
     hasOwn(checkout[0].step, "if") ||
     hasOwn(checkout[0].step, "continue-on-error")
   ) {
     problems.push("verify checkout must bind to the exact workflow SHA");
+  }
+
+  const setupNode = steps.filter(({ step }) =>
+    typeof step.uses === "string" && step.uses.startsWith("actions/setup-node@")
+  );
+  if (
+    setupNode.length !== 1 ||
+    setupNode[0].jobName !== "verify" ||
+    !hasExactKeys(setupNode[0].step, ["name", "uses", "with"]) ||
+    !hasExactKeys(setupNode[0].step.with, ["node-version", "cache"]) ||
+    setupNode[0].step.with["node-version"] !== 22 ||
+    setupNode[0].step.with.cache !== "npm"
+  ) {
+    problems.push("verify Node setup cannot contain execution overrides");
   }
 
   const upload = steps.filter(({ step }) =>
@@ -185,6 +229,7 @@ export function validateReleaseWorkflow(source, workflowFiles = ["ci.yml"]) {
     : -1;
   if (
     uploadIndex < 0 ||
+    !hasExactKeys(upload[0].step, ["name", "if", "uses", "with"]) ||
     upload[0].step.if !== EXPECTED_DEPLOY_CONDITION ||
     hasOwn(upload[0].step, "continue-on-error") ||
     !hasExactKeys(upload[0].step.with, ["path"]) ||
@@ -241,6 +286,8 @@ export function validateReleaseWorkflow(source, workflowFiles = ["ci.yml"]) {
   if (
     deploySteps.length !== 1 ||
     deployActions.length !== 1 ||
+    !hasExactKeys(deployActions[0], ["name", "id", "uses"]) ||
+    deployActions[0].id !== "deployment" ||
     deploySteps.some((step) => isRecord(step) && (hasOwn(step, "run") || hasOwn(step, "if") || hasOwn(step, "continue-on-error")))
   ) {
     problems.push("deploy must consume the verified artifact without checkout or rebuild");

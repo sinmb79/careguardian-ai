@@ -8,7 +8,8 @@ import {
   subscribeWorkspaceChanges,
   type WorkspaceLoadResult,
   type WorkspaceMutationResult,
-  type WorkspaceDeletionExpectation
+  type WorkspaceDeletionExpectation,
+  type WorkspaceInvalidExpectation
 } from "../../features/workspace/workspaceRepository";
 
 type PendingConfirmation = "delete" | "initialize" | null;
@@ -17,7 +18,7 @@ type WorkspaceOperation = "initial-load" | "sync" | "save" | "delete" | "initial
 export type LifeAppRepository = {
   loadWorkspace(): Promise<WorkspaceLoadResult>;
   saveWorkspace(workspace: PersonalWorkspace, expectedRevision: number): Promise<WorkspaceMutationResult>;
-  initializeWorkspace(workspace: PersonalWorkspace, expectedInvalidRaw: string): Promise<WorkspaceMutationResult>;
+  initializeWorkspace(workspace: PersonalWorkspace, expectation: WorkspaceInvalidExpectation): Promise<WorkspaceMutationResult>;
   clearWorkspace(expectation: WorkspaceDeletionExpectation): Promise<WorkspaceMutationResult>;
   subscribeWorkspaceChanges(listener: () => void): () => void;
 };
@@ -190,7 +191,7 @@ export function useLifeAppState(repository: LifeAppRepository = browserRepositor
 
       if (requested === "initialize" && loadResultRef.current.kind === "invalid") {
         const nextWorkspace = createEmptyWorkspace();
-        const result = await repository.initializeWorkspace(nextWorkspace, loadResultRef.current.raw);
+        const result = await repository.initializeWorkspace(nextWorkspace, loadResultRef.current);
         if (result.kind === "saved") {
           setCurrentRevision(result.revision);
           setCurrentLoadResult({ kind: "loaded", workspace: nextWorkspace, revision: result.revision });
@@ -210,7 +211,7 @@ export function useLifeAppState(repository: LifeAppRepository = browserRepositor
       } else if (requested === "delete") {
         const deletionExpectation: WorkspaceDeletionExpectation =
           loadResultRef.current.kind === "invalid"
-            ? { kind: "invalid", raw: loadResultRef.current.raw }
+            ? loadResultRef.current
             : { kind: "revision", revision: revisionRef.current };
         const result = await repository.clearWorkspace(deletionExpectation);
         if (result.kind === "cleared") {

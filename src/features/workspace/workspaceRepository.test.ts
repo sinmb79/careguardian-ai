@@ -8,11 +8,21 @@ import {
   clearWorkspace,
   initializeWorkspace,
   loadWorkspace,
-  saveWorkspace
+  saveWorkspace,
+  type WorkspaceLoadResult
 } from "./workspaceRepository";
 
 const atRevision = (revision: number) => ({ kind: "revision", revision } as const);
-const expectInvalidRaw = (raw: string) => ({ kind: "invalid", raw } as const);
+
+function expectInvalid(
+  result: WorkspaceLoadResult,
+  raw?: string
+): Extract<WorkspaceLoadResult, { kind: "invalid" }> {
+  expect(result).toMatchObject({ kind: "invalid", ...(raw === undefined ? {} : { raw }) });
+  if (result.kind !== "invalid") throw new Error("expected an invalid workspace result");
+  expect(result.confirmationToken).toMatch(/^[a-f0-9]{32}$/);
+  return result;
+}
 
 function deleteWorkspaceDatabase(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -52,6 +62,36 @@ function putWorkspaceRecord(record: unknown): Promise<void> {
       };
     };
   });
+}
+
+function readWorkspaceRecord(): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKSPACE_DATABASE_NAME, 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const { storeName, userRecordKey } = WEB_PERSISTENCE_INVENTORY.indexedDb;
+      const transaction = database.transaction(storeName, "readonly");
+      const read = transaction.objectStore(storeName).get(userRecordKey);
+      read.onsuccess = () => resolve(read.result);
+      read.onerror = () => reject(read.error);
+      transaction.oncomplete = () => database.close();
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+      transaction.onabort = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+  });
+}
+
+function cyclicRecord(label: string): Record<string, unknown> {
+  const record: Record<string, unknown> = { label };
+  record.self = record;
+  return record;
 }
 
 describe("browser personal workspace repository", () => {
@@ -103,11 +143,11 @@ describe("browser personal workspace repository", () => {
     const workspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
     localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
 
-    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw: invalidRaw });
+    const confirmed = expectInvalid(await loadWorkspace(), invalidRaw);
     await expect(saveWorkspace(workspace, 0)).resolves.toEqual({ kind: "invalid" });
-    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw: invalidRaw });
+    expectInvalid(await loadWorkspace(), invalidRaw);
 
-    await expect(initializeWorkspace(workspace, invalidRaw)).resolves.toEqual({ kind: "saved", revision: 1 });
+    await expect(initializeWorkspace(workspace, confirmed)).resolves.toEqual({ kind: "saved", revision: 1 });
     await expect(loadWorkspace()).resolves.toEqual({ kind: "loaded", workspace, revision: 1 });
   });
 
@@ -116,9 +156,9 @@ describe("browser personal workspace repository", () => {
     const first = { ...createEmptyWorkspace("2026-07-30T00:00:00.000Z"), title: "첫 초기화" };
     const second = { ...first, title: "둘째 초기화" };
     localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
-    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw: invalidRaw });
+    const confirmed = expectInvalid(await loadWorkspace(), invalidRaw);
 
-    const results = await Promise.all([initializeWorkspace(first, invalidRaw), initializeWorkspace(second, invalidRaw)]);
+    const results = await Promise.all([initializeWorkspace(first, confirmed), initializeWorkspace(second, confirmed)]);
 
     expect(results.filter((result) => result.kind === "saved")).toHaveLength(1);
     expect(results.filter((result) => result.kind === "conflict")).toHaveLength(1);
@@ -129,9 +169,9 @@ describe("browser personal workspace repository", () => {
     const invalidRaw = JSON.stringify({ schemaVersion: 2 });
     localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
     localStorage.setItem(LEGACY_CARE_STORAGE_KEY, "legacy-sensitive");
-    await loadWorkspace();
+    const confirmed = expectInvalid(await loadWorkspace(), invalidRaw);
 
-    await expect(clearWorkspace(expectInvalidRaw(invalidRaw))).resolves.toEqual({ kind: "cleared" });
+    await expect(clearWorkspace(confirmed)).resolves.toEqual({ kind: "cleared" });
     expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(LEGACY_CARE_STORAGE_KEY)).toBeNull();
     await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
@@ -140,9 +180,9 @@ describe("browser personal workspace repository", () => {
   test("explicitly deletes malformed JSON after it is quarantined in IndexedDB", async () => {
     const corruptRaw = '{"schemaVersion":1,"workspace":';
     localStorage.setItem(WORKSPACE_STORAGE_KEY, corruptRaw);
-    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: corruptRaw });
+    const confirmed = expectInvalid(await loadWorkspace(), corruptRaw);
 
-    await expect(clearWorkspace(expectInvalidRaw(corruptRaw))).resolves.toEqual({ kind: "cleared" });
+    await expect(clearWorkspace(confirmed)).resolves.toEqual({ kind: "cleared" });
     await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
   });
 
@@ -151,8 +191,8 @@ describe("browser personal workspace repository", () => {
     const corruptRaw = JSON.stringify(corruptRecord);
     await putWorkspaceRecord(corruptRecord);
 
-    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: corruptRaw });
-    await expect(clearWorkspace(expectInvalidRaw(corruptRaw))).resolves.toEqual({ kind: "cleared" });
+    const confirmed = expectInvalid(await loadWorkspace(), corruptRaw);
+    await expect(clearWorkspace(confirmed)).resolves.toEqual({ kind: "cleared" });
     await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
   });
 
@@ -160,23 +200,80 @@ describe("browser personal workspace repository", () => {
     const originalRaw = JSON.stringify({ schemaVersion: 2, private: "original" });
     const replacementRaw = JSON.stringify({ schemaVersion: 3, private: "newer-tab" });
     await putWorkspaceRecord({ type: "invalid", raw: originalRaw });
-    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: originalRaw });
+    const confirmed = expectInvalid(await loadWorkspace(), originalRaw);
 
     await putWorkspaceRecord({ type: "invalid", raw: replacementRaw });
 
-    await expect(clearWorkspace(expectInvalidRaw(originalRaw))).resolves.toEqual({ kind: "conflict" });
-    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: replacementRaw });
+    await expect(clearWorkspace(confirmed)).resolves.toEqual({ kind: "conflict" });
+    expectInvalid(await loadWorkspace(), replacementRaw);
+  });
+
+  test("rejects stale deletion for losslessly distinct unsupported structured-clone records", async () => {
+    const cases: Array<[string, unknown, unknown]> = [
+      ["Map", new Map([["private", "original"]]), new Map([["private", "newer-tab"]])],
+      ["Set", new Set(["original"]), new Set(["newer-tab"])],
+      ["Date", new Date("2026-07-30T00:00:00.000Z"), new Date("2026-07-31T00:00:00.000Z")],
+      ["binary", new Uint8Array([1, 2]), new Uint16Array([1, 2])],
+      ["cycle", cyclicRecord("original"), cyclicRecord("newer-tab")]
+    ];
+
+    for (const [label, original, newer] of cases) {
+      await deleteWorkspaceDatabase();
+      localStorage.clear();
+      await putWorkspaceRecord(original);
+      const confirmed = await loadWorkspace();
+      expect(confirmed.kind, label).toBe("invalid");
+      if (confirmed.kind !== "invalid") continue;
+      const quarantined = await readWorkspaceRecord() as {
+        type: "invalid";
+        confirmationToken: string;
+        quarantinedValue: unknown;
+      };
+      expect(quarantined.type, label).toBe("invalid");
+      expect(quarantined.confirmationToken, label).toBe(confirmed.confirmationToken);
+      if (label === "Map") {
+        expect(quarantined.quarantinedValue, label).toBeInstanceOf(Map);
+        expect([...(quarantined.quarantinedValue as Map<unknown, unknown>).entries()], label)
+          .toEqual([["private", "original"]]);
+      } else if (label === "Set") {
+        expect(quarantined.quarantinedValue, label).toBeInstanceOf(Set);
+        expect([...(quarantined.quarantinedValue as Set<unknown>).values()], label)
+          .toEqual(["original"]);
+      } else if (label === "Date") {
+        expect(quarantined.quarantinedValue, label).toBeInstanceOf(Date);
+        expect((quarantined.quarantinedValue as Date).toISOString(), label)
+          .toBe("2026-07-30T00:00:00.000Z");
+      } else if (label === "binary") {
+        expect(
+          Object.prototype.toString.call(quarantined.quarantinedValue),
+          label
+        ).toBe("[object Uint8Array]");
+        expect([...(quarantined.quarantinedValue as Uint8Array)], label).toEqual([1, 2]);
+      } else {
+        const preservedCycle = quarantined.quarantinedValue as Record<string, unknown>;
+        expect(preservedCycle.label, label).toBe("original");
+        expect(preservedCycle.self, label).toBe(preservedCycle);
+      }
+
+      await putWorkspaceRecord(newer);
+
+      await expect(clearWorkspace(confirmed), label).resolves.toEqual({
+        kind: "conflict"
+      });
+      const newerResult = expectInvalid(await loadWorkspace());
+      expect(newerResult.confirmationToken, label).not.toBe(confirmed.confirmationToken);
+    }
   });
 
   test("serializes explicit deletion against initialization of the same invalid raw record", async () => {
     const invalidRaw = JSON.stringify({ schemaVersion: 999, private: "must-not-survive" });
     const replacement = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
     localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
-    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: invalidRaw });
+    const confirmed = expectInvalid(await loadWorkspace(), invalidRaw);
 
     const results = await Promise.all([
-      initializeWorkspace(replacement, invalidRaw),
-      clearWorkspace(expectInvalidRaw(invalidRaw))
+      initializeWorkspace(replacement, confirmed),
+      clearWorkspace(confirmed)
     ]);
 
     expect(results.filter((result) => result.kind === "saved" || result.kind === "cleared")).toHaveLength(1);

@@ -1,6 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
+  assertDeepFrozen,
+  deepFreeze,
   getInstallableModels,
   MODEL_REGISTRY,
   validateModelRegistry
@@ -74,6 +76,55 @@ describe("MODEL_REGISTRY", () => {
     }).toThrow(TypeError);
     expect(MODEL_REGISTRY[0].downloadUrl).toBe(originalUrl);
     expect(MODEL_REGISTRY[0].licenseAssets[0].sourceUrls).toEqual(originalSourceUrls);
+  });
+
+  test("uses trusted intrinsics when a React Native-only facade patch is active", () => {
+    const originalFreeze = Object.freeze;
+    const originalIsFrozen = Object.isFrozen;
+    const candidate = JSON.parse(JSON.stringify(MODEL_REGISTRY[0])) as {
+      downloadUrl?: string;
+      licenseAssets: Array<{ sourceUrls: string[] }>;
+    };
+    const approvedUrl =
+      "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF/resolve/27831169fdebe6fe30bb1b9d76b12a2d06693f26/HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf?download=true";
+    let facadePatchActivated = false;
+    let mutationRejected = false;
+
+    vi.stubGlobal("navigator", { product: "ReactNative" });
+    try {
+      if (navigator.product === "ReactNative") {
+        const probe = {};
+        const freezePatched = Reflect.set(Object, "freeze", <T>(input: T): T => input);
+        const frozenCheckPatched = Reflect.set(
+          Object,
+          "isFrozen",
+          (_input: unknown): boolean => true
+        );
+        facadePatchActivated =
+          freezePatched &&
+          frozenCheckPatched &&
+          Object.freeze(probe) === probe &&
+          !originalIsFrozen(probe) &&
+          Object.isFrozen(probe);
+      }
+
+      deepFreeze(candidate);
+      assertDeepFrozen(candidate);
+      try {
+        candidate.downloadUrl = "https://attacker.example/model.gguf";
+      } catch (error) {
+        mutationRejected = error instanceof TypeError;
+      }
+    } finally {
+      Reflect.set(Object, "freeze", originalFreeze);
+      Reflect.set(Object, "isFrozen", originalIsFrozen);
+      vi.unstubAllGlobals();
+    }
+
+    expectDeepFrozen(candidate);
+    expect(facadePatchActivated).toBe(true);
+    expect(mutationRejected).toBe(true);
+    expect(candidate.downloadUrl).toBe(approvedUrl);
   });
 
   test("rejects a mutable or non-commit revision", () => {

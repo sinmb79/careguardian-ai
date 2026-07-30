@@ -50,6 +50,40 @@ test("rejects shell overrides and success-masking command suffixes", () => {
   assert.match(validateReleaseWorkflow(ignoredFailure).problems.join("\n"), /audit-policy|failure-ignoring/);
 });
 
+test("rejects workflow and verify-job defaults, env, and working-directory execution overrides", () => {
+  const jobDefaultShell = source.replace(
+    "    permissions:\n      contents: read\n    steps:",
+    `    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash -c "bash {0} || true"
+    steps:`
+  );
+  const workflowDefaults = source.replace(
+    "permissions:\n  contents: read",
+    `defaults:
+  run:
+    shell: bash -c "bash {0} || true"
+
+permissions:
+  contents: read`
+  );
+  const jobEnv = source.replace(
+    "    permissions:\n      contents: read\n    steps:",
+    "    permissions:\n      contents: read\n    env:\n      NODE_OPTIONS: --require ./bypass.cjs\n    steps:"
+  );
+  const stepWorkingDirectory = source.replace(
+    "      - name: Production dependency audit\n        run: npm run release:audit-policy",
+    "      - name: Production dependency audit\n        working-directory: ./decoy\n        run: npm run release:audit-policy"
+  );
+
+  assert.match(validateReleaseWorkflow(jobDefaultShell).problems.join("\n"), /defaults|verify job/i);
+  assert.match(validateReleaseWorkflow(workflowDefaults).problems.join("\n"), /defaults|workflow root/i);
+  assert.match(validateReleaseWorkflow(jobEnv).problems.join("\n"), /env|verify job/i);
+  assert.match(validateReleaseWorkflow(stepWorkingDirectory).problems.join("\n"), /conditional|execution|working-directory/i);
+});
+
 test("rejects a required command moved into the deploy job", () => {
   const withoutAudit = source.replace(
     "      - name: Production dependency audit\n        run: npm run release:audit-policy\n\n",

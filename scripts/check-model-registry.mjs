@@ -160,15 +160,66 @@ function collectNamedDeclarations(sourceFile, name) {
   return declarations;
 }
 
-function isObjectMethodCall(node, method, argumentName) {
+function isNamedSingleArgumentCall(node, functionName, argumentName) {
   return (
     ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(unwrapExpression(node.expression)) &&
-    isIdentifier(unwrapExpression(node.expression).expression, "Object") &&
-    unwrapExpression(node.expression).name.text === method &&
+    isIdentifier(unwrapExpression(node.expression), functionName) &&
     node.arguments.length === 1 &&
     isIdentifier(unwrapExpression(node.arguments[0]), argumentName)
   );
+}
+
+function isCapturedObjectIntrinsic(declaration, methodName) {
+  if (
+    !declaration?.initializer ||
+    !ts.isCallExpression(declaration.initializer) ||
+    declaration.initializer.arguments.length !== 1 ||
+    !isIdentifier(unwrapExpression(declaration.initializer.arguments[0]), "Object")
+  ) {
+    return false;
+  }
+  const bindTarget = unwrapExpression(declaration.initializer.expression);
+  if (
+    !ts.isPropertyAccessExpression(bindTarget) ||
+    bindTarget.name.text !== "bind"
+  ) {
+    return false;
+  }
+  const intrinsic = unwrapExpression(bindTarget.expression);
+  return (
+    ts.isPropertyAccessExpression(intrinsic) &&
+    isIdentifier(unwrapExpression(intrinsic.expression), "Object") &&
+    intrinsic.name.text === methodName &&
+    ts.isVariableDeclarationList(declaration.parent) &&
+    (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
+    ts.isVariableStatement(declaration.parent.parent)
+  );
+}
+
+function hasCapturedObjectIntrinsics(sourceFile) {
+  const expected = new Map([
+    ["nativeObjectFreeze", "freeze"],
+    ["nativeObjectIsFrozen", "isFrozen"],
+    ["nativeObjectValues", "values"]
+  ]);
+  for (const [binding, method] of expected) {
+    const declarations = collectNamedDeclarations(sourceFile, binding);
+    if (declarations.length !== 1 || !isCapturedObjectIntrinsic(declarations[0], method)) {
+      return false;
+    }
+  }
+  const firstVariableNames = sourceFile.statements
+    .filter(ts.isVariableStatement)
+    .slice(0, 3)
+    .map((statement) => {
+      const declaration = statement.declarationList.declarations[0];
+      return ts.isIdentifier(declaration?.name) ? declaration.name.text : undefined;
+    });
+  return isDeepStrictEqual(firstVariableNames, [
+    "nativeObjectFreeze",
+    "nativeObjectIsFrozen",
+    "nativeObjectValues"
+  ]);
 }
 
 function hasExactDeepFreezeImplementation(sourceFile) {
@@ -191,7 +242,7 @@ function hasExactDeepFreezeImplementation(sourceFile) {
     !ts.isIfStatement(guard) ||
     guard.elseStatement ||
     guard.expression.getText(sourceFile).replace(/\s+/gu, "") !==
-      'typeofinput==="object"&&input!==null&&!Object.isFrozen(input)' ||
+      'typeofinput==="object"&&input!==null&&!nativeObjectIsFrozen(input)' ||
     !ts.isBlock(guard.thenStatement) ||
     guard.thenStatement.statements.length !== 2 ||
     !ts.isReturnStatement(returnStatement) ||
@@ -208,7 +259,7 @@ function hasExactDeepFreezeImplementation(sourceFile) {
     (loop.initializer.flags & ts.NodeFlags.Const) === 0 ||
     loop.initializer.declarations.length !== 1 ||
     !isIdentifier(loop.initializer.declarations[0].name, "value") ||
-    !isObjectMethodCall(loop.expression, "values", "input")
+    !isNamedSingleArgumentCall(loop.expression, "nativeObjectValues", "input")
   ) {
     return false;
   }
@@ -228,7 +279,7 @@ function hasExactDeepFreezeImplementation(sourceFile) {
   }
   return (
     ts.isExpressionStatement(freezeStatement) &&
-    isObjectMethodCall(freezeStatement.expression, "freeze", "input")
+    isNamedSingleArgumentCall(freezeStatement.expression, "nativeObjectFreeze", "input")
   );
 }
 
@@ -260,11 +311,22 @@ function findRegistryMutations(sourceFile) {
   const mutations = [];
   const evaluator = createStaticExpressionEvaluator(sourceFile);
   const declarations = new Map();
+  const collectBinding = (name, initializer) => {
+    if (ts.isIdentifier(name)) {
+      const existing = declarations.get(name.text) ?? [];
+      existing.push(initializer);
+      declarations.set(name.text, existing);
+      return;
+    }
+    if (ts.isArrayBindingPattern(name) || ts.isObjectBindingPattern(name)) {
+      for (const element of name.elements) {
+        if (ts.isBindingElement(element)) collectBinding(element.name, initializer);
+      }
+    }
+  };
   const collectDeclarations = (node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const existing = declarations.get(node.name.text) ?? [];
-      existing.push(node.initializer);
-      declarations.set(node.name.text, existing);
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      collectBinding(node.name, node.initializer);
     }
     ts.forEachChild(node, collectDeclarations);
   };
@@ -363,10 +425,205 @@ function findRegistryMutations(sourceFile) {
   return mutations;
 }
 
+function findBuiltInFacadeMutations(sourceFile) {
+  const mutations = [];
+  const evaluator = createStaticExpressionEvaluator(sourceFile);
+  const aliases = new Map();
+  const collectAliases = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const existing = aliases.get(node.name.text) ?? [];
+      existing.push(node.initializer);
+      aliases.set(node.name.text, existing);
+    }
+    ts.forEachChild(node, collectAliases);
+  };
+  collectAliases(sourceFile);
+
+  const resolveBuiltInRoot = (node, resolving = new Set()) => {
+    const expression = unwrapExpression(node);
+    if (!expression) return undefined;
+    if (
+      ts.isIdentifier(expression) &&
+      ["Object", "Reflect", "Function", "Proxy"].includes(expression.text)
+    ) {
+      return expression.text;
+    }
+    if (ts.isIdentifier(expression)) {
+      if (resolving.has(expression.text)) return undefined;
+      const initializers = aliases.get(expression.text);
+      if (initializers?.length !== 1) return undefined;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(expression.text);
+      return resolveBuiltInRoot(initializers[0], nextResolving);
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      return resolveBuiltInRoot(expression.expression, resolving);
+    }
+    return undefined;
+  };
+  const mutationHelpers = new Set([
+    "assign",
+    "defineProperties",
+    "defineProperty",
+    "deleteProperty",
+    "set",
+    "setPrototypeOf"
+  ]);
+  const isAssignmentOperator = (kind) =>
+    kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+
+  const visit = (node) => {
+    if (
+      ts.isBinaryExpression(node) &&
+      isAssignmentOperator(node.operatorToken.kind) &&
+      resolveBuiltInRoot(node.left)
+    ) {
+      mutations.push(node);
+    } else if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      resolveBuiltInRoot(node.operand)
+    ) {
+      mutations.push(node);
+    } else if (ts.isDeleteExpression(node) && resolveBuiltInRoot(node.expression)) {
+      mutations.push(node);
+    } else if (ts.isCallExpression(node)) {
+      const target = unwrapExpression(node.expression);
+      if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+        const helper = evaluator.evaluatePropertyName(target);
+        if (
+          helper &&
+          mutationHelpers.has(helper) &&
+          node.arguments[0] &&
+          resolveBuiltInRoot(node.arguments[0])
+        ) {
+          mutations.push(node);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return mutations;
+}
+
+function hasForbiddenBuiltInBindings(sourceFile) {
+  let forbidden = false;
+  const inspectBinding = (name) => {
+    if (ts.isIdentifier(name)) {
+      if (["Object", "Reflect", "Function", "Proxy"].includes(name.text)) forbidden = true;
+      return;
+    }
+    if (ts.isArrayBindingPattern(name) || ts.isObjectBindingPattern(name)) {
+      for (const element of name.elements) {
+        if (ts.isBindingElement(element)) inspectBinding(element.name);
+      }
+    }
+  };
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) ||
+      ts.isParameter(node) ||
+      ts.isBindingElement(node)
+    ) {
+      inspectBinding(node.name);
+    }
+    if (
+      (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+      node.name &&
+      ["Object", "Reflect", "Function", "Proxy"].includes(node.name.text)
+    ) {
+      forbidden = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return forbidden;
+}
+
+function hasExactRuntimeTopLevelContract(sourceFile) {
+  const allowedVariables = new Set([
+    "BASE_MODEL_KEYS",
+    "INSTALLABLE_MODEL_KEYS",
+    "LICENSE_ASSET_KEYS",
+    "INSTALLABLE_DOWNLOAD_URL",
+    "LICENSE_SOURCE_URL",
+    "nativeObjectFreeze",
+    "nativeObjectIsFrozen",
+    "nativeObjectValues",
+    "validatedRegistryData",
+    "MODEL_REGISTRY",
+    "INSTALLABLE_MODELS"
+  ]);
+  const allowedFunctions = new Set([
+    "isPlainObject",
+    "hasExactKeys",
+    "isPositiveInteger",
+    "hasSafeRepository",
+    "hasSafeArtifactFileName",
+    "hasSafeModelId",
+    "validateLicenseAssets",
+    "validateModelRegistry",
+    "deepFreeze",
+    "assertDeepFrozen",
+    "getInstallableModels"
+  ]);
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      if (
+        !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== "./model-registry.json"
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) continue;
+    if (ts.isVariableStatement(statement)) {
+      if (
+        statement.declarationList.declarations.length !== 1 ||
+        !ts.isIdentifier(statement.declarationList.declarations[0].name) ||
+        !allowedVariables.has(statement.declarationList.declarations[0].name.text)
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (ts.isFunctionDeclaration(statement)) {
+      if (!statement.name || !allowedFunctions.has(statement.name.text)) return false;
+      continue;
+    }
+    if (ts.isExpressionStatement(statement)) {
+      if (
+        !ts.isCallExpression(statement.expression) ||
+        !ts.isIdentifier(unwrapExpression(statement.expression.expression)) ||
+        !["validateModelRegistry", "assertDeepFrozen"].includes(
+          unwrapExpression(statement.expression.expression).text
+        )
+      ) {
+        return false;
+      }
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 export function validateRegistryRuntimeSource(source) {
   const problems = [];
   const sourceFile = ts.createSourceFile("modelRegistry.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   if (sourceFile.parseDiagnostics.length) problems.push("model registry runtime TypeScript has parse errors");
+  if (!hasExactRuntimeTopLevelContract(sourceFile)) {
+    problems.push("model registry runtime top-level contract contains an unapproved executable surface");
+  }
+  if (!hasCapturedObjectIntrinsics(sourceFile)) {
+    problems.push("model registry must capture trusted Object intrinsics before runtime work");
+  }
+  if (hasForbiddenBuiltInBindings(sourceFile) || findBuiltInFacadeMutations(sourceFile).length) {
+    problems.push("model registry runtime must not shadow or mutate built-in Object facades");
+  }
 
   const registryImports = sourceFile.statements.filter(
     (statement) =>
@@ -422,9 +679,7 @@ export function validateRegistryRuntimeSource(source) {
     installableBindings.length === 1 &&
     installableInitializer &&
     ts.isCallExpression(installableInitializer) &&
-    ts.isPropertyAccessExpression(installableInitializer.expression) &&
-    isIdentifier(installableInitializer.expression.expression, "Object") &&
-    installableInitializer.expression.name.text === "freeze"
+    isIdentifier(unwrapExpression(installableInitializer.expression), "nativeObjectFreeze")
       ? installableInitializer.arguments[0]
       : undefined;
   const derivesFromRegistry =

