@@ -36,7 +36,7 @@
 | 타깃 연령 | 18세 이상 | 최종 스토어 설정 시 |
 | IARC 콘텐츠 등급 | 설문 후 확정 | IARC 설문 완료 시 |
 | 제품 위치 | 기능 제한형 로컬 문서 정리 도구 | 현재 구현 기준 |
-| Play 앱 선언 | 해당 없음 | 새 AAB 정적 검사 뒤 |
+| Health apps declaration | `My app doesn't provide any health features` 선택 | 최종 AAB 검증 뒤 |
 | Ads / Advertising ID | 광고 없음 / 광고 ID 사용 안 함 | 새 AAB 정적 검사 뒤 |
 
 ### 개인정보처리방침
@@ -51,12 +51,12 @@ sinmb79@naver.com
 
 ### Short description
 
-An on-device AI tool for organizing schedules, notes, checklists, and personal features.
+A local-first workspace for schedules, notes, checklists, and personal tools.
 
 ### Full description
 
 Life Steward AI is a general personal-productivity, local-first tool for schedules, tasks, notes, checklists, and user-created personal features. It has no accounts, ads, analytics SDKs, or remote push. Mobile storage uses SQLCipher and a SecureStore/Android Keystore boundary. The displayed notification title is generic and its data payload contains only a task ID, never a note body.
 
-Optional local AI runs on device CPU after the user reviews a pinned Korean GGUF file’s source, size, SHA-256, and license. Installing that file requests it from Hugging Face; the host may see the device IP address and ordinary network metadata. Prompts and outputs are not sent with the download request. Results are not saved until the user approves them.
+Optional local AI runs on device CPU after the user reviews a pinned Korean GGUF file’s source, size, SHA-256, and license. It only summarizes or rewrites existing text, suggests a title, or drafts a checklist; it is not a free-form chat feature. Installing that file requests it from Hugging Face; the host may see the device IP address and ordinary network metadata. Prompts and outputs are not sent with the download request. Results are not saved until the user approves them.
 
 Use only synthetic, non-sensitive schedules and notes during closed testing.
