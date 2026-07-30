@@ -17,15 +17,25 @@ class FakeFileSystem implements ModelFileSystem {
   readonly files = new Map<string, number>();
   readonly directories = new Set<string>();
   readonly deleted: string[] = [];
-  readonly moved: Array<{ from: string; to: string }> = [];
+  readonly replacements: Array<{
+    partialUri: string;
+    completedUri: string;
+    expectedBytes: number;
+    expectedSha256: string;
+  }> = [];
+  readonly assertedPaths: string[] = [];
   readonly downloads: Array<{ url: string; destinationUri: string; resumeData?: string }> = [];
+  assertError?: Error;
   downloadError?: Error;
   downloadResult: { uri: string; status: number } | undefined;
   cancelDownload = false;
   downloadedBytes = installable.bytes!;
   deleteErrorFor?: string;
   ensureDirectoryError?: Error;
-  moveError?: Error;
+  replaceError?: Error;
+  createDownloadError?: Error;
+  cancelError?: Error;
+  progressEvent?: { written: number; total: number };
 
   async ensureDirectory(uri: string): Promise<void> {
     if (this.ensureDirectoryError) throw this.ensureDirectoryError;
@@ -44,13 +54,23 @@ class FakeFileSystem implements ModelFileSystem {
     this.files.delete(uri);
   }
 
-  async move(from: string, to: string): Promise<void> {
-    this.moved.push({ from, to });
-    if (this.moveError) throw this.moveError;
-    const size = this.files.get(from);
+  async assertModelPath(uri: string): Promise<void> {
+    this.assertedPaths.push(uri);
+    if (this.assertError) throw this.assertError;
+  }
+
+  async replaceVerified(
+    partialUri: string,
+    completedUri: string,
+    expectedBytes: number,
+    expectedSha256: string
+  ): Promise<void> {
+    this.replacements.push({ partialUri, completedUri, expectedBytes, expectedSha256 });
+    if (this.replaceError) throw this.replaceError;
+    const size = this.files.get(partialUri);
     if (size === undefined) throw new Error("source missing");
-    this.files.delete(from);
-    this.files.set(to, size);
+    this.files.delete(partialUri);
+    this.files.set(completedUri, size);
   }
 
   createDownload(
@@ -59,11 +79,15 @@ class FakeFileSystem implements ModelFileSystem {
     _onProgress: (written: number, total: number) => void,
     resumeData?: string
   ): DownloadHandle {
+    if (this.createDownloadError) throw this.createDownloadError;
     this.downloads.push({ url, destinationUri, resumeData });
     return {
       download: async () => {
         if (this.downloadError) throw this.downloadError;
         if (this.cancelDownload) return undefined;
+        if (this.progressEvent) {
+          _onProgress(this.progressEvent.written, this.progressEvent.total);
+        }
         if (this.downloadResult === undefined) {
           this.files.set(destinationUri, this.downloadedBytes);
           return { uri: destinationUri, status: 200 };
@@ -71,7 +95,9 @@ class FakeFileSystem implements ModelFileSystem {
         return this.downloadResult;
       },
         pause: async () => ({ resumeData: "123" }),
-      cancel: async () => undefined
+      cancel: async () => {
+        if (this.cancelError) throw this.cancelError;
+      }
     };
   }
 }
@@ -128,6 +154,24 @@ describe("download state reducer", () => {
     expect(resumed.kind).toBe("downloading");
     expect(failed).toMatchObject({ kind: "failed", code: "network_failed" });
   });
+
+  test("represents an unknown download total as null and rejects negative totals", () => {
+    const downloading = reduceDownloadState({ kind: "notInstalled" }, { type: "START" });
+    expect(
+      reduceDownloadState(downloading, {
+        type: "PROGRESS",
+        bytesWritten: 12,
+        totalBytes: null
+      })
+    ).toMatchObject({ kind: "downloading", bytesWritten: 12, totalBytes: null });
+    expect(() =>
+      reduceDownloadState(downloading, {
+        type: "PROGRESS",
+        bytesWritten: 12,
+        totalBytes: -1
+      })
+    ).toThrow("invalid_download_progress");
+  });
 });
 
 describe("model store", () => {
@@ -154,9 +198,11 @@ describe("model store", () => {
       destinationUri: expect.stringMatching(/\.gguf\.partial$/)
     });
     expect(hashFile).toHaveBeenCalledWith(expect.stringMatching(/\.partial$/));
-    expect(fileSystem.moved).toEqual([{
-      from: expect.stringMatching(/\.partial$/),
-      to: expect.stringMatching(new RegExp(`${installable.revision}\\.gguf$`))
+    expect(fileSystem.replacements).toEqual([{
+      partialUri: expect.stringMatching(/\.partial$/),
+      completedUri: expect.stringMatching(new RegExp(`${installable.revision}\\.gguf$`)),
+      expectedBytes: installable.bytes,
+      expectedSha256: installable.sha256
     }]);
     expect(installed).toMatchObject({
       modelId: installable.id,
@@ -166,15 +212,89 @@ describe("model store", () => {
     expect(states).toEqual(["downloading", "verifying", "ready"]);
   });
 
-  test("passes an opaque pause token only when resuming an existing partial file", async () => {
+  test("isolates throwing progress and state callbacks from the install transaction", async () => {
+    const { store, fileSystem } = createReadyStore();
+    fileSystem.progressEvent = { written: 10, total: -1 };
+    const totals: Array<number | null> = [];
+
+    await expect(store.downloadModel(installable, {
+      onProgress: (_written, total) => {
+        totals.push(total);
+        throw new Error("observer failed");
+      },
+      onStateChange: (state) => {
+        if (state.kind === "downloading" || state.kind === "ready") {
+          throw new Error("state observer failed");
+        }
+      }
+    })).resolves.toMatchObject({ modelId: installable.id });
+
+    expect(totals).toEqual([null]);
+    expect(fileSystem.files.has(
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf`
+    )).toBe(true);
+  });
+
+  test("types adapter creation failure, cleans its partial, and releases the install slot", async () => {
+    const { store, fileSystem } = createReadyStore();
+    fileSystem.createDownloadError = new Error("native task unavailable");
+    const partialUri =
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`;
+    fileSystem.files.set(partialUri, 12);
+
+    await expect(store.downloadModel(installable)).rejects.toMatchObject({
+      code: "filesystem_failed"
+    });
+    expect(fileSystem.files.has(partialUri)).toBe(false);
+
+    fileSystem.createDownloadError = undefined;
+    await expect(store.downloadModel(installable)).resolves.toMatchObject({
+      modelId: installable.id
+    });
+  });
+
+  test("resumes only from an identity-bound pause record", async () => {
     const { store, fileSystem } = createReadyStore();
     const partialUri =
       `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`;
     fileSystem.files.set(partialUri, 123);
 
-    await store.downloadModel(installable, { resumeData: "123" });
+    await store.downloadModel(installable, {
+      resume: {
+        modelId: installable.id,
+        revision: installable.revision,
+        partialUri,
+        bytesWritten: 123,
+        resumeData: "123"
+      }
+    });
 
     expect(fileSystem.downloads[0]?.resumeData).toBe("123");
+  });
+
+  test("rejects a cross-model pause record without touching the other model partial", async () => {
+    const { store, fileSystem } = createReadyStore();
+    const second = MODEL_REGISTRY[1];
+    const firstPartial =
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`;
+    const secondPartial =
+      `file:///documents/models/${second.id}/${second.revision}.gguf.partial`;
+    fileSystem.files.set(firstPartial, 123);
+    fileSystem.files.set(secondPartial, 123);
+
+    await expect(store.downloadModel(second, {
+      resume: {
+        modelId: installable.id,
+        revision: installable.revision,
+        partialUri: firstPartial,
+        bytesWritten: 123,
+        resumeData: "123"
+      }
+    })).rejects.toMatchObject({ code: "resume_state_invalid" });
+
+    expect(fileSystem.files.has(firstPartial)).toBe(true);
+    expect(fileSystem.files.has(secondPartial)).toBe(false);
+    expect(fileSystem.downloads).toEqual([]);
   });
 
   test("rejects resume metadata that does not match the partial byte length", async () => {
@@ -183,9 +303,18 @@ describe("model store", () => {
       `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`;
     fileSystem.files.set(partialUri, 123);
 
-    await expect(store.downloadModel(installable, { resumeData: "122" }))
+    await expect(store.downloadModel(installable, {
+      resume: {
+        modelId: installable.id,
+        revision: installable.revision,
+        partialUri,
+        bytesWritten: 122,
+        resumeData: "122"
+      }
+    }))
       .rejects.toMatchObject({ code: "resume_state_invalid" });
     expect(fileSystem.downloads).toEqual([]);
+    expect(fileSystem.files.has(partialUri)).toBe(false);
   });
 
   test("pauses an active download without deleting its resumable partial", async () => {
@@ -232,16 +361,71 @@ describe("model store", () => {
 
     expect(paused).toMatchObject({
       modelId: installable.id,
-      resumeData: "321"
+      revision: installable.revision,
+      bytesWritten: 321,
+      resumeData: "321",
+      partialUri: expect.stringMatching(/\.partial$/)
     });
     expect(states).toEqual(["downloading", "paused"]);
     expect(fileSystem.files.has(paused.partialUri)).toBe(true);
   });
 
+  test("waits for the native writer to terminate and rejects a pause token/size race", async () => {
+    const fileSystem = new FakeFileSystem();
+    let finishWriter!: () => void;
+    const writerTerminal = new Promise<void>((resolveWriter) => {
+      finishWriter = resolveWriter;
+    });
+    fileSystem.createDownload = (url, destinationUri) => {
+      fileSystem.downloads.push({ url, destinationUri });
+      return {
+        download: async () => {
+          fileSystem.files.set(destinationUri, 300);
+          await writerTerminal;
+          fileSystem.files.set(destinationUri, 321);
+          return undefined;
+        },
+        pause: async () => ({ resumeData: "300" }),
+        cancel: async () => undefined
+      };
+    };
+    const store = createModelStore({
+      fileSystem,
+      hasher: { hashFile: async () => installable.sha256! }
+    });
+    const downloading = store.downloadModel(installable);
+    while (fileSystem.downloads.length === 0) await Promise.resolve();
+    await Promise.resolve();
+
+    let pauseSettled = false;
+    const pausing = store.pauseActiveDownload().finally(() => {
+      pauseSettled = true;
+    });
+    await Promise.resolve();
+    const settledBeforeWriterTerminal = pauseSettled;
+    finishWriter();
+
+    await expect(downloading).rejects.toMatchObject({ code: "download_paused" });
+    await expect(pausing).rejects.toMatchObject({ code: "resume_state_invalid" });
+    expect(settledBeforeWriterTerminal).toBe(false);
+    expect(fileSystem.files.has(
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`
+    )).toBe(false);
+  });
+
   test("rejects resume metadata when its partial file is missing", async () => {
     const { store, fileSystem } = createReadyStore();
 
-    await expect(store.downloadModel(installable, { resumeData: "stale-token" }))
+    await expect(store.downloadModel(installable, {
+      resume: {
+        modelId: installable.id,
+        revision: installable.revision,
+        partialUri:
+          `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`,
+        bytesWritten: 123,
+        resumeData: "123"
+      }
+    }))
       .rejects.toMatchObject({ code: "resume_state_invalid" });
     expect(fileSystem.downloads).toEqual([]);
   });
@@ -264,7 +448,7 @@ describe("model store", () => {
 
     await expect(store.downloadModel(installable)).rejects.toMatchObject({ code: "sha256_mismatch" });
     expect(fileSystem.deleted).toEqual(expect.arrayContaining([expect.stringMatching(/\.partial$/)]));
-    expect(fileSystem.moved).toEqual([]);
+    expect(fileSystem.replacements).toEqual([]);
   });
 
   test("cleans partial files after network failure and cancellation", async () => {
@@ -308,7 +492,7 @@ describe("model store", () => {
     });
 
     const rename = createReadyStore();
-    rename.fileSystem.moveError = new Error("rename denied");
+    rename.fileSystem.replaceError = new Error("rename denied");
     const completedUri =
       `file:///documents/models/${installable.id}/${installable.revision}.gguf`;
     rename.fileSystem.files.set(completedUri, 111);
@@ -321,6 +505,20 @@ describe("model store", () => {
     );
   });
 
+  test("uses verified replacement and preserves a prior completed model on replacement failure", async () => {
+    const { store, fileSystem } = createReadyStore();
+    const completedUri =
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf`;
+    fileSystem.files.set(completedUri, installable.bytes!);
+    fileSystem.replaceError = new Error("native replace rollback");
+
+    await expect(store.downloadModel(installable)).rejects.toMatchObject({
+      code: "rename_failed"
+    });
+    expect(fileSystem.files.get(completedUri)).toBe(installable.bytes);
+    expect(fileSystem.replacements).toHaveLength(1);
+  });
+
   test("reports cleanup failure instead of hiding it", async () => {
     const { store, fileSystem } = createReadyStore();
     fileSystem.downloadedBytes = installable.bytes! - 1;
@@ -328,9 +526,18 @@ describe("model store", () => {
       `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`;
 
     fileSystem.files.set(fileSystem.deleteErrorFor, 1);
-    await expect(store.downloadModel(installable, { resumeData: "1" })).rejects.toMatchObject({
+    await expect(store.downloadModel(installable, {
+      resume: {
+        modelId: installable.id,
+        revision: installable.revision,
+        partialUri: fileSystem.deleteErrorFor,
+        bytesWritten: 1,
+        resumeData: "1"
+      }
+    })).rejects.toMatchObject({
       code: "cleanup_failed",
-      cause: expect.any(ModelStoreError)
+      primaryError: expect.any(ModelStoreError),
+      cleanupError: expect.any(Error)
     });
   });
 
@@ -359,6 +566,93 @@ describe("model store", () => {
     await expect(store.removeModel("unknown-model")).rejects.toMatchObject({
       code: "registry_not_allowlisted"
     });
+  });
+
+  test("confines every generated path to the app-specific models root", async () => {
+    const { store, fileSystem } = createReadyStore();
+
+    await store.downloadModel(installable);
+
+    expect(fileSystem.assertedPaths).toEqual(expect.arrayContaining([
+      "file:///documents/models/",
+      `file:///documents/models/${installable.id}/`,
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf.partial`,
+      `file:///documents/models/${installable.id}/${installable.revision}.gguf`
+    ]));
+  });
+
+  test("rejects a non-canonical document URI before any filesystem mutation", async () => {
+    const fileSystem = new FakeFileSystem();
+    Object.defineProperty(fileSystem, "documentDirectory", {
+      value: "file:///documents/../outside/"
+    });
+    const store = createModelStore({
+      fileSystem,
+      hasher: { hashFile: async () => installable.sha256! }
+    });
+
+    await expect(store.downloadModel(installable)).rejects.toMatchObject({
+      code: "filesystem_unavailable"
+    });
+    expect(fileSystem.deleted).toEqual([]);
+    expect(fileSystem.downloads).toEqual([]);
+  });
+
+  test("does not attempt cleanup when native path confinement fails", async () => {
+    const { store, fileSystem } = createReadyStore();
+    fileSystem.assertError = new Error("symlink escape");
+
+    await expect(store.downloadModel(installable)).rejects.toMatchObject({
+      code: "filesystem_unavailable"
+    });
+    expect(fileSystem.deleted).toEqual([]);
+    expect(fileSystem.downloads).toEqual([]);
+  });
+
+  test("removeAll cancels and waits for the active native writer before deleting models", async () => {
+    const fileSystem = new FakeFileSystem();
+    let finishWriter!: () => void;
+    const writerTerminal = new Promise<void>((resolveWriter) => {
+      finishWriter = resolveWriter;
+    });
+    const events: string[] = [];
+    fileSystem.createDownload = (url, destinationUri) => {
+      fileSystem.downloads.push({ url, destinationUri });
+      return {
+        download: async () => {
+          fileSystem.files.set(destinationUri, 10);
+          await writerTerminal;
+          events.push("writer-terminal");
+          return undefined;
+        },
+        pause: async () => ({ resumeData: "10" }),
+        cancel: async () => void events.push("cancel")
+      };
+    };
+    const originalDelete = fileSystem.delete.bind(fileSystem);
+    fileSystem.delete = async (uri) => {
+      if (uri === "file:///documents/models/") events.push("models-delete");
+      await originalDelete(uri);
+    };
+    const store = createModelStore({
+      fileSystem,
+      hasher: { hashFile: async () => installable.sha256! }
+    });
+    const downloading = store.downloadModel(installable);
+    while (fileSystem.downloads.length === 0) await Promise.resolve();
+
+    let removeSettled = false;
+    const removing = store.removeAllModels().finally(() => {
+      removeSettled = true;
+    });
+    await Promise.resolve();
+    expect(removeSettled).toBe(false);
+    expect(events).not.toContain("models-delete");
+
+    finishWriter();
+    await expect(downloading).rejects.toMatchObject({ code: "download_cancelled" });
+    await removing;
+    expect(events).toEqual(["cancel", "writer-terminal", "models-delete"]);
   });
 
   test("enforces one installation operation at a time", async () => {
@@ -416,5 +710,32 @@ describe("Android ModelIntegrity module contract", () => {
 
     expect(readFileSync(kotlinPath, "utf8")).toContain("reactContext.filesDir.canonicalFile");
     expect(readFileSync(expoDirectoriesPath, "utf8")).toContain("get() = context.filesDir");
+  });
+
+  test("rejects models-root and child symlink escapes in native canonical validation", () => {
+    const kotlinPath = resolve(
+      process.cwd(),
+      "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
+    );
+    const source = readFileSync(kotlinPath, "utf8");
+
+    expect(source).toContain("File(reactContext.filesDir, \"models\")");
+    expect(source).toContain("modelsRoot.absolutePath == canonicalModelsRoot.path");
+    expect(source).toContain("artifact.path.startsWith(modelsPrefix)");
+  });
+
+  test("implements native backup, rollback, fsync, and post-verification replacement", () => {
+    const kotlinPath = resolve(
+      process.cwd(),
+      "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
+    );
+    const source = readFileSync(kotlinPath, "utf8");
+
+    expect(source).toContain("AsyncFunction(\"replaceVerified\")");
+    expect(source).toContain(".backup");
+    expect(source).toContain("Os.rename");
+    expect(source).toContain("Os.fsync");
+    expect(source).toContain("verifyArtifact(completed");
+    expect(source).toContain("restoreBackup");
   });
 });

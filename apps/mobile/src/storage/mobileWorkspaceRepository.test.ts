@@ -21,6 +21,7 @@ function createHarness() {
   let failContextWrite = false;
   let failNextRun = false;
   let failNextExec = false;
+  let failSecureDeleteKey: string | null = null;
   let closeCalls = 0;
   let transactionSnapshot: Map<string, string> | null = null;
   const dependencies: MobileWorkspaceStorageDependencies = {
@@ -72,12 +73,27 @@ function createHarness() {
         }
         secure.set(key, value);
       },
-      deleteItem: async (key) => void secure.delete(key)
+      deleteItem: async (key) => {
+        if (key === failSecureDeleteKey) throw new Error(`secure delete failed: ${key}`);
+        secure.delete(key);
+      }
     },
     randomBytes: async () => new Uint8Array(32).fill(0xab)
   };
 
-  return { repository: createMobileWorkspaceRepository(dependencies), rows, secure, legacy, commands, databases, failContextWrite: () => { failContextWrite = true; }, failNextRun: () => { failNextRun = true; }, failNextExec: () => { failNextExec = true; }, getCloseCalls: () => closeCalls };
+  return {
+    repository: createMobileWorkspaceRepository(dependencies),
+    rows,
+    secure,
+    legacy,
+    commands,
+    databases,
+    failContextWrite: () => { failContextWrite = true; },
+    failNextRun: () => { failNextRun = true; },
+    failNextExec: () => { failNextExec = true; },
+    failSecureDelete: (key: string) => { failSecureDeleteKey = key; },
+    getCloseCalls: () => closeCalls
+  };
 }
 
 describe("mobile personal workspace repository", () => {
@@ -109,6 +125,24 @@ describe("mobile personal workspace repository", () => {
 
     await expect(harness.repository.loadWorkspace()).resolves.toBeNull();
     expect(harness.secure.size).toBe(0);
+  });
+
+  test.each([
+    "life-steward.mobile.context",
+    "life-steward.mobile.database-created",
+    "life-steward.mobile.database-key"
+  ])("attempts every repository-owned key deletion when %s fails", async (failedKey) => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    harness.failSecureDelete(failedKey);
+
+    await expect(harness.repository.deleteWorkspace()).rejects.toThrow(
+      `secure delete failed: ${failedKey}`
+    );
+
+    expect(harness.databases.has("test-life-workspace.db")).toBe(false);
+    expect(harness.rows.size).toBe(0);
+    expect([...harness.secure.keys()]).toEqual([failedKey]);
   });
 
   test("detects old test data without importing or converting it", async () => {

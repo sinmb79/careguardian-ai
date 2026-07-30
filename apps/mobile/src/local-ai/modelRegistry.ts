@@ -136,6 +136,15 @@ function hasSafeArtifactFileName(artifactFileName: string): boolean {
   );
 }
 
+function hasSafeModelId(modelId: string): boolean {
+  return (
+    /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(modelId) &&
+    modelId !== "." &&
+    modelId !== ".." &&
+    !modelId.includes("..")
+  );
+}
+
 function hasExactImmutableDownloadUrl(
   downloadUrl: string | undefined,
   repository: string,
@@ -168,6 +177,9 @@ export function validateModelRegistry(registry: readonly ModelArtifact[]): void 
   const seenIds = new Set<string>();
 
   for (const model of registry) {
+    if (!hasSafeModelId(model.id)) {
+      throw new Error(`${model.id}: model ID must be one safe lowercase ASCII path segment`);
+    }
     if (seenIds.has(model.id)) {
       throw new Error(`${model.id}: duplicate model ID is not allowed`);
     }

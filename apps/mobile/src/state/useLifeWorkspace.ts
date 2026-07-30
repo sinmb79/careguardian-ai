@@ -24,6 +24,8 @@ import {
   loadWorkspace,
   saveWorkspace
 } from "../storage/mobileWorkspaceRepository";
+import { removeAllModels } from "../local-ai/modelStore";
+import { clearMobileData } from "../security/clearMobileData";
 
 export type LifeWorkspaceSection = "today" | "lists" | "extensions" | "local-ai" | "settings";
 type OperationKind = "save" | "delete" | "unlock" | "previous-delete" | null;
@@ -64,6 +66,7 @@ export type LifeWorkspaceControllerDependencies = {
   deletePreviousTestData?(): Promise<void>;
   save(workspace: PersonalWorkspace): Promise<void>;
   deleteWorkspace(): Promise<void>;
+  removeAllModels(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
   cancelNotifications(): Promise<void>;
   cancelPreviousTestNotifications?(): Promise<void>;
@@ -179,11 +182,14 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       lifecycleGeneration += 1;
       patch({ isDeleting: true, privacyGate: "locked" });
       try {
-        await dependencies.cancelNotifications();
-        await dependencies.deleteWorkspace();
-        patch({
-          workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked",
-          statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
+        await clearMobileData({
+          cancelLifeNotifications: dependencies.cancelNotifications,
+          removeAllModels: dependencies.removeAllModels,
+          deleteWorkspace: dependencies.deleteWorkspace,
+          resetMemory: () => patch({
+            workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked",
+            statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
+          })
         });
       } finally {
         finish("delete", id, { isDeleting: false });
@@ -236,7 +242,8 @@ export function useLifeWorkspace(): LifeWorkspaceState {
   if (!controllerRef.current) {
     controllerRef.current = createLifeWorkspaceController({
       load: loadWorkspace, hasPreviousTestData, deletePreviousTestData, save: saveWorkspace,
-      deleteWorkspace, syncNotifications: syncLifeNotifications, cancelNotifications: cancelAllLifeNotifications,
+      deleteWorkspace, removeAllModels, syncNotifications: syncLifeNotifications,
+      cancelNotifications: cancelAllLifeNotifications,
       cancelPreviousTestNotifications, authenticate: authenticateForSensitiveAccess
     });
   }

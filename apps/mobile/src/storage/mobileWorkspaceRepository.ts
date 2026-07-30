@@ -186,9 +186,15 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
 
     async deleteWorkspace(): Promise<void> {
       await dependencies.deleteDatabase(databaseName);
-      await dependencies.secureStore.deleteItem(WORKSPACE_CONTEXT_KEY);
-      await dependencies.secureStore.deleteItem(DATABASE_CREATED_KEY);
-      await dependencies.secureStore.deleteItem(DATABASE_KEY);
+      let firstDeletionError: unknown;
+      for (const key of [WORKSPACE_CONTEXT_KEY, DATABASE_CREATED_KEY, DATABASE_KEY]) {
+        try {
+          await dependencies.secureStore.deleteItem(key);
+        } catch (error) {
+          firstDeletionError ??= error;
+        }
+      }
+      if (firstDeletionError) throw firstDeletionError;
     },
 
     async hasPreviousTestData(): Promise<boolean> {

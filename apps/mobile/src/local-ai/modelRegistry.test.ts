@@ -139,6 +139,25 @@ describe("MODEL_REGISTRY", () => {
     expect(() => validateModelRegistry([{ ...blocked, downloadUrl: "" }])).toThrow(/blocked/i);
     expect(() => validateModelRegistry([{ ...blocked, bytes: 0 }])).toThrow(/blocked/i);
   });
+
+  test("requires every model ID to be one safe ASCII path segment", () => {
+    const model = MODEL_REGISTRY[0];
+    const unsafeIds = [
+      "../other-data",
+      "folder/model",
+      "folder\\model",
+      "%2e%2e",
+      "/absolute",
+      "C:\\absolute",
+      ".",
+      "..",
+      "model id"
+    ];
+
+    for (const id of unsafeIds) {
+      expect(() => validateModelRegistry([{ ...model, id }])).toThrow(/model ID/i);
+    }
+  });
 });
 
 describe("getThirdPartyModelNotice", () => {

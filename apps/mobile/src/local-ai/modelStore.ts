@@ -9,6 +9,7 @@ export type { DownloadState, InstalledModel } from "./modelDownloadState";
 export type ModelStoreErrorCode =
   | "registry_not_allowlisted"
   | "install_in_progress"
+  | "operation_in_progress"
   | "resume_state_invalid"
   | "filesystem_unavailable"
   | "filesystem_failed"
@@ -18,6 +19,7 @@ export type ModelStoreErrorCode =
   | "download_cancelled"
   | "download_paused"
   | "pause_failed"
+  | "cancel_failed"
   | "size_mismatch"
   | "sha256_mismatch"
   | "verification_failed"
@@ -36,6 +38,17 @@ export class ModelStoreError extends Error {
   }
 }
 
+export class ModelStoreCleanupError extends ModelStoreError {
+  constructor(
+    readonly primaryError: ModelStoreError,
+    readonly cleanupError: unknown,
+    message: string
+  ) {
+    super("cleanup_failed", message, { cause: primaryError });
+    this.name = "ModelStoreCleanupError";
+  }
+}
+
 export interface DownloadResult {
   uri: string;
   status: number;
@@ -50,10 +63,16 @@ export interface DownloadHandle {
 export interface ModelFileSystem {
   readonly documentDirectory: string | null;
   initialize?(): Promise<void>;
+  assertModelPath(uri: string): Promise<void>;
   ensureDirectory(uri: string): Promise<void>;
   getFileInfo(uri: string): Promise<{ exists: boolean; size?: number }>;
   delete(uri: string): Promise<void>;
-  move(from: string, to: string): Promise<void>;
+  replaceVerified(
+    partialUri: string,
+    completedUri: string,
+    expectedBytes: number,
+    expectedSha256: string
+  ): Promise<void>;
   createDownload(
     url: string,
     destinationUri: string,
@@ -66,26 +85,48 @@ export interface ModelHasher {
   hashFile(uri: string): Promise<string>;
 }
 
-export interface DownloadModelCallbacks {
-  onStateChange?: (state: DownloadState) => void;
-  onProgress?: (written: number, total: number) => void;
-  /** Opaque value returned by pauseActiveDownload. Never construct this value manually. */
-  resumeData?: string;
-}
-
-export interface PausedModelDownload {
+export interface ModelResumeRecord {
   modelId: string;
+  revision: string;
   partialUri: string;
+  bytesWritten: number;
   resumeData: string;
 }
 
-interface ActiveDownload {
-  modelId: string;
+export interface DownloadModelCallbacks {
+  onStateChange?: (state: DownloadState) => void;
+  onProgress?: (written: number, total: number | null) => void;
+  /** Pass back only the complete record returned by pauseActiveDownload. */
+  resume?: ModelResumeRecord;
+}
+
+export type PausedModelDownload = ModelResumeRecord;
+
+type InstallIntent = "run" | "pause" | "cancel";
+
+interface ModelPaths {
+  root: string;
+  directory: string;
+  completedUri: string;
   partialUri: string;
-  handle: DownloadHandle;
+}
+
+interface ActiveInstall {
+  epoch: number;
+  model: InstallableModel;
+  paths: ModelPaths;
   callbacks: DownloadModelCallbacks;
   state: DownloadState;
-  paused: boolean;
+  intent: InstallIntent;
+  handle: DownloadHandle | null;
+  handleReady: Deferred<DownloadHandle | null>;
+  terminal: Deferred<void>;
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  settled: boolean;
 }
 
 type InstallableModel = ModelArtifact &
@@ -102,6 +143,22 @@ const registryIdentityFields = [
   "sha256"
 ] as const satisfies readonly (keyof ModelArtifact)[];
 
+function deferred<T>(): Deferred<T> {
+  let resolvePromise!: (value: T) => void;
+  const result: Deferred<T> = {
+    promise: new Promise<T>((resolve) => {
+      resolvePromise = resolve;
+    }),
+    resolve(value: T) {
+      if (result.settled) return;
+      result.settled = true;
+      resolvePromise(value);
+    },
+    settled: false
+  };
+  return result;
+}
+
 function approvedModel(candidate: ModelArtifact): InstallableModel {
   const approved = getInstallableModels().find((model) => model.id === candidate.id);
   if (
@@ -117,18 +174,6 @@ function approvedModel(candidate: ModelArtifact): InstallableModel {
   return approved as InstallableModel;
 }
 
-function modelPaths(documentDirectory: string, model: ModelArtifact) {
-  const root = `${documentDirectory.replace(/\/?$/, "/")}models/`;
-  const directory = `${root}${model.id}/`;
-  const completedUri = `${directory}${model.revision}.gguf`;
-  return {
-    root,
-    directory,
-    completedUri,
-    partialUri: `${completedUri}.partial`
-  };
-}
-
 function asStoreError(
   error: unknown,
   fallbackCode: ModelStoreErrorCode,
@@ -139,6 +184,70 @@ function asStoreError(
     : new ModelStoreError(fallbackCode, fallbackMessage, { cause: error });
 }
 
+function canonicalDocumentUrl(directory: string | null): URL {
+  if (!directory) {
+    throw new ModelStoreError(
+      "filesystem_unavailable",
+      "App-specific document storage is unavailable"
+    );
+  }
+  try {
+    const parsed = new URL(directory);
+    if (
+      parsed.protocol !== "file:" ||
+      parsed.host !== "" ||
+      parsed.search !== "" ||
+      parsed.hash !== "" ||
+      parsed.href !== directory ||
+      !parsed.pathname.endsWith("/")
+    ) {
+      throw new Error("document URI is not canonical");
+    }
+    return parsed;
+  } catch (error) {
+    throw new ModelStoreError(
+      "filesystem_unavailable",
+      "App-specific document storage URI is not canonical",
+      { cause: error }
+    );
+  }
+}
+
+function modelPaths(documentDirectory: string | null, model: ModelArtifact): ModelPaths {
+  const documentUrl = canonicalDocumentUrl(documentDirectory);
+  const rootUrl = new URL("models/", documentUrl);
+  const directoryUrl = new URL(`${model.id}/`, rootUrl);
+  const completedUrl = new URL(`${model.revision}.gguf`, directoryUrl);
+  const partialUrl = new URL(`${model.revision}.gguf.partial`, directoryUrl);
+  const rootPrefix = rootUrl.href;
+
+  for (const url of [directoryUrl, completedUrl, partialUrl]) {
+    if (!url.href.startsWith(rootPrefix) || url.protocol !== "file:") {
+      throw new ModelStoreError(
+        "filesystem_unavailable",
+        `${model.id}: generated model path escaped the models root`
+      );
+    }
+  }
+  return {
+    root: rootUrl.href,
+    directory: directoryUrl.href,
+    completedUri: completedUrl.href,
+    partialUri: partialUrl.href
+  };
+}
+
+function safeCallback<T extends readonly unknown[]>(
+  callback: ((...args: T) => void) | undefined,
+  ...args: T
+): void {
+  try {
+    callback?.(...args);
+  } catch {
+    // Observers are intentionally isolated from the install transaction.
+  }
+}
+
 export function createModelStore({
   fileSystem,
   hasher
@@ -146,41 +255,67 @@ export function createModelStore({
   fileSystem: ModelFileSystem;
   hasher: ModelHasher | null;
 }) {
-  let active: ActiveDownload | null = null;
+  let active: ActiveInstall | null = null;
   let installing = false;
+  let epoch = 0;
+  let pendingControls = 0;
+  let controlTail: Promise<void> = Promise.resolve();
+  let installReady: Deferred<ActiveInstall | null> | null = null;
 
-  function requireDocumentsDirectory(): string {
-    const directory = fileSystem.documentDirectory;
-    if (!directory?.startsWith("file:")) {
-      throw new ModelStoreError(
+  function emit(operation: ActiveInstall, next: DownloadState): void {
+    operation.state = next;
+    safeCallback(operation.callbacks.onStateChange, next);
+  }
+
+  function enqueueControl<T>(task: () => Promise<T>): Promise<T> {
+    pendingControls += 1;
+    const run = controlTail.then(task, task);
+    controlTail = run.then(() => undefined, () => undefined);
+    return run.finally(() => {
+      pendingControls -= 1;
+    });
+  }
+
+  async function initializeFileSystem(): Promise<void> {
+    try {
+      await fileSystem.initialize?.();
+    } catch (error) {
+      throw asStoreError(
+        error,
         "filesystem_unavailable",
-        "App-specific document storage is unavailable"
+        "Could not initialize app-specific document storage"
       );
     }
-    return directory;
   }
 
-  function emit(activeDownload: ActiveDownload, state: DownloadState): void {
-    activeDownload.state = state;
-    activeDownload.callbacks.onStateChange?.(state);
+  async function assertPaths(paths: ModelPaths): Promise<void> {
+    try {
+      for (const uri of [paths.root, paths.directory, paths.partialUri, paths.completedUri]) {
+        await fileSystem.assertModelPath(uri);
+      }
+    } catch (error) {
+      throw asStoreError(
+        error,
+        "filesystem_unavailable",
+        "Model path failed native models-root confinement"
+      );
+    }
   }
 
-  async function deletePartialOrThrow(
+  async function cleanupPartial(
     partialUri: string,
-    originalError: ModelStoreError
+    primaryError: ModelStoreError
   ): Promise<never> {
     try {
       await fileSystem.delete(partialUri);
     } catch (cleanupError) {
-      const error = new ModelStoreError(
-        "cleanup_failed",
-        `Could not remove untrusted partial model file: ${partialUri}`,
-        { cause: originalError }
+      throw new ModelStoreCleanupError(
+        primaryError,
+        cleanupError,
+        `Could not remove untrusted partial model file: ${partialUri}`
       );
-      Object.defineProperty(error, "cleanupCause", { value: cleanupError });
-      throw error;
     }
-    throw originalError;
+    throw primaryError;
   }
 
   async function verifyFileSha256(uri: string, expectedSha256: string): Promise<boolean> {
@@ -208,97 +343,165 @@ export function createModelStore({
     }
   }
 
-  async function performDownloadModel(
-    candidate: ModelArtifact,
-    callbacks: DownloadModelCallbacks = {}
-  ): Promise<InstalledModel> {
-    await fileSystem.initialize?.();
-    const model = approvedModel(candidate);
-    const paths = modelPaths(requireDocumentsDirectory(), model);
-
-    if (callbacks.resumeData) {
-      const partial = await fileSystem.getFileInfo(paths.partialUri);
-      if (
-        !partial.exists ||
-        !Number.isSafeInteger(partial.size) ||
-        partial.size! < 0 ||
-        callbacks.resumeData !== String(partial.size)
-      ) {
-        throw new ModelStoreError(
-          "resume_state_invalid",
-          "Resume metadata does not match the partial model file length"
-        );
-      }
-    } else {
-      await fileSystem.delete(paths.partialUri).catch((error) => {
-        throw new ModelStoreError(
-          "cleanup_failed",
-          `Could not reset stale partial file: ${paths.partialUri}`,
-          { cause: error }
-        );
-      });
+  function interruption(operation: ActiveInstall): ModelStoreError | null {
+    if (operation.intent === "pause") {
+      return new ModelStoreError("download_paused", "Model download was paused");
     }
+    if (operation.intent === "cancel") {
+      return new ModelStoreError("download_cancelled", "Model download was cancelled");
+    }
+    return null;
+  }
 
-    try {
-      await fileSystem.ensureDirectory(paths.directory);
-    } catch (error) {
-      throw asStoreError(
-        error,
-        "filesystem_failed",
-        `Could not create model directory: ${paths.directory}`
+  function validateResume(
+    model: InstallableModel,
+    paths: ModelPaths,
+    resume: ModelResumeRecord | undefined,
+    partial: { exists: boolean; size?: number }
+  ): string | undefined {
+    if (!resume) return undefined;
+    if (
+      resume.modelId !== model.id ||
+      resume.revision !== model.revision ||
+      resume.partialUri !== paths.partialUri ||
+      !Number.isSafeInteger(resume.bytesWritten) ||
+      resume.bytesWritten < 0 ||
+      resume.resumeData !== String(resume.bytesWritten) ||
+      !partial.exists ||
+      partial.size !== resume.bytesWritten
+    ) {
+      throw new ModelStoreError(
+        "resume_state_invalid",
+        "Resume record does not match the selected model and partial file"
       );
     }
+    return resume.resumeData;
+  }
 
-    const handle = await fileSystem.createDownload(
-      model.downloadUrl,
-      paths.partialUri,
-      (written, total) => {
-        if (active) {
-          emit(active, reduceDownloadState(active.state, {
-            type: "PROGRESS",
-            bytesWritten: written,
-            totalBytes: total
-          }));
-        }
-        callbacks.onProgress?.(written, total);
-      },
-      callbacks.resumeData
-    );
-    const startState = callbacks.resumeData
-      ? reduceDownloadState(
-        {
-          kind: "paused",
-          bytesWritten: (await fileSystem.getFileInfo(paths.partialUri)).size ?? 0,
-          resumeData: callbacks.resumeData
-        },
-        { type: "RESUME" }
-      )
-      : reduceDownloadState({ kind: "notInstalled" }, { type: "START" });
-    active = {
-      modelId: model.id,
-      partialUri: paths.partialUri,
-      handle,
+  async function performDownloadModel(
+    model: InstallableModel,
+    paths: ModelPaths,
+    callbacks: DownloadModelCallbacks,
+    ready: Deferred<ActiveInstall | null>,
+    terminal: Deferred<void>
+  ): Promise<InstalledModel> {
+    const operation: ActiveInstall = {
+      epoch: ++epoch,
+      model,
+      paths,
       callbacks,
-      state: startState,
-      paused: false
+      state: { kind: "notInstalled" },
+      intent: "run",
+      handle: null,
+      handleReady: deferred<DownloadHandle | null>(),
+      terminal
     };
-    callbacks.onStateChange?.(startState);
+    active = operation;
+    ready.resolve(operation);
+    let pathsConfined = false;
 
     try {
+      await assertPaths(paths);
+      pathsConfined = true;
+      const existingPartial = await fileSystem.getFileInfo(paths.partialUri);
+      const resumeData = validateResume(model, paths, callbacks.resume, existingPartial);
+      const earlyInterruption = interruption(operation);
+      if (earlyInterruption) throw earlyInterruption;
+
+      if (!callbacks.resume) {
+        try {
+          await fileSystem.delete(paths.partialUri);
+        } catch (error) {
+          throw asStoreError(
+            error,
+            "cleanup_failed",
+            `Could not reset stale partial file: ${paths.partialUri}`
+          );
+        }
+      }
+      const afterCleanupInterruption = interruption(operation);
+      if (afterCleanupInterruption) throw afterCleanupInterruption;
+
+      try {
+        await fileSystem.ensureDirectory(paths.directory);
+      } catch (error) {
+        throw asStoreError(
+          error,
+          "filesystem_failed",
+          `Could not create model directory: ${paths.directory}`
+        );
+      }
+      const beforeCreateInterruption = interruption(operation);
+      if (beforeCreateInterruption) throw beforeCreateInterruption;
+
+      let handle: DownloadHandle;
+      try {
+        handle = await fileSystem.createDownload(
+          model.downloadUrl,
+          paths.partialUri,
+          (written, total) => {
+            const normalizedWritten =
+              Number.isSafeInteger(written) && written >= 0 ? written : 0;
+            const normalizedTotal =
+              Number.isSafeInteger(total) && total >= 0 ? total : null;
+            if (operation.state.kind === "downloading") {
+              emit(operation, reduceDownloadState(operation.state, {
+                type: "PROGRESS",
+                bytesWritten: normalizedWritten,
+                totalBytes: normalizedTotal
+              }));
+            }
+            safeCallback(
+              callbacks.onProgress,
+              normalizedWritten,
+              normalizedTotal
+            );
+          },
+          resumeData
+        );
+      } catch (error) {
+        throw asStoreError(
+          error,
+          "filesystem_failed",
+          "Could not create native resumable download task"
+        );
+      }
+      operation.handle = handle;
+      operation.handleReady.resolve(handle);
+
+      const startState = callbacks.resume
+        ? reduceDownloadState(
+          {
+            kind: "paused",
+            bytesWritten: callbacks.resume.bytesWritten,
+            resumeData: callbacks.resume.resumeData
+          },
+          { type: "RESUME" }
+        )
+        : reduceDownloadState({ kind: "notInstalled" }, { type: "START" });
+      emit(operation, startState);
+
+      const beforeDownloadInterruption = interruption(operation);
+      if (beforeDownloadInterruption) throw beforeDownloadInterruption;
+
       let result: DownloadResult | undefined;
       try {
         result = await handle.download();
       } catch (error) {
+        const intended = interruption(operation);
+        if (intended) throw intended;
         throw asStoreError(error, "network_failed", "Model download failed");
       }
-      if (active?.paused) {
-        throw new ModelStoreError("download_paused", "Model download was paused");
-      }
+      const intended = interruption(operation);
+      if (intended) throw intended;
       if (!result) {
         throw new ModelStoreError("download_cancelled", "Model download was cancelled");
       }
       if (result.status < 200 || result.status >= 300) {
-        throw new ModelStoreError("http_failed", `Model download returned HTTP ${result.status}`);
+        throw new ModelStoreError(
+          "http_failed",
+          `Model download returned HTTP ${result.status}`
+        );
       }
 
       const partial = await fileSystem.getFileInfo(paths.partialUri);
@@ -308,21 +511,28 @@ export function createModelStore({
           `Expected ${model.bytes} bytes, received ${partial.size ?? 0}`
         );
       }
-      if (!active) {
-        throw new ModelStoreError("download_cancelled", "Model download was cancelled");
-      }
-      emit(active, reduceDownloadState(active.state, { type: "VERIFY" }));
+      emit(operation, reduceDownloadState(operation.state, { type: "VERIFY" }));
       if (!(await verifyFileSha256(paths.partialUri, model.sha256))) {
-        throw new ModelStoreError("sha256_mismatch", "Downloaded model SHA-256 did not match");
+        throw new ModelStoreError(
+          "sha256_mismatch",
+          "Downloaded model SHA-256 did not match"
+        );
       }
+      const beforeReplaceInterruption = interruption(operation);
+      if (beforeReplaceInterruption) throw beforeReplaceInterruption;
 
       try {
-        await fileSystem.move(paths.partialUri, paths.completedUri);
+        await fileSystem.replaceVerified(
+          paths.partialUri,
+          paths.completedUri,
+          model.bytes,
+          model.sha256
+        );
       } catch (error) {
         throw asStoreError(
           error,
           "rename_failed",
-          `Could not atomically install model at ${paths.completedUri}`
+          `Could not safely replace model at ${paths.completedUri}`
         );
       }
 
@@ -333,21 +543,37 @@ export function createModelStore({
         bytes: model.bytes,
         sha256: model.sha256
       };
-      emit(active, reduceDownloadState(active.state, { type: "COMPLETE", installed }));
+      emit(operation, reduceDownloadState(operation.state, {
+        type: "COMPLETE",
+        installed
+      }));
       return installed;
     } catch (error) {
-      const storeError = asStoreError(error, "network_failed", "Model installation failed");
-      if (active && storeError.code !== "download_paused") {
-        emit(active, reduceDownloadState(active.state, {
+      const storeError = asStoreError(
+        error,
+        "filesystem_failed",
+        "Model installation failed"
+      );
+      if (
+        storeError.code !== "download_paused" &&
+        operation.state.kind !== "ready" &&
+        operation.state.kind !== "notInstalled"
+      ) {
+        emit(operation, reduceDownloadState(operation.state, {
           type: "FAIL",
           code: storeError.code,
           message: storeError.message
         }));
       }
       if (storeError.code === "download_paused") throw storeError;
-      return await deletePartialOrThrow(paths.partialUri, storeError);
+      // Native confinement failure means even cleanup would be an untrusted
+      // filesystem mutation. Leave the path untouched and fail closed.
+      if (!pathsConfined) throw storeError;
+      return await cleanupPartial(paths.partialUri, storeError);
     } finally {
-      active = null;
+      operation.handleReady.resolve(null);
+      if (active?.epoch === operation.epoch) active = null;
+      terminal.resolve(undefined);
     }
   }
 
@@ -355,116 +581,218 @@ export function createModelStore({
     candidate: ModelArtifact,
     callbacks: DownloadModelCallbacks = {}
   ): Promise<InstalledModel> {
-    if (installing) {
+    if (installing || pendingControls > 0) {
       throw new ModelStoreError(
-        "install_in_progress",
-        "Another model installation is already in progress"
+        pendingControls > 0 ? "operation_in_progress" : "install_in_progress",
+        "Another model store operation is already in progress"
       );
     }
     installing = true;
+    const ready = deferred<ActiveInstall | null>();
+    const terminal = deferred<void>();
+    installReady = ready;
     try {
-      return await performDownloadModel(candidate, callbacks);
+      const model = approvedModel(candidate);
+      await initializeFileSystem();
+      const paths = modelPaths(fileSystem.documentDirectory, model);
+      return await performDownloadModel(model, paths, callbacks, ready, terminal);
     } finally {
+      ready.resolve(null);
+      terminal.resolve(undefined);
+      if (installReady === ready) installReady = null;
       installing = false;
     }
   }
 
-  async function pauseActiveDownload(): Promise<PausedModelDownload> {
-    if (!active) {
+  async function currentOrPendingInstall(): Promise<ActiveInstall | null> {
+    if (active) return active;
+    if (installing && installReady) return installReady.promise;
+    return null;
+  }
+
+  async function pauseInternal(): Promise<PausedModelDownload> {
+    const operation = await currentOrPendingInstall();
+    if (!operation) {
       throw new ModelStoreError("pause_failed", "No active model download to pause");
     }
-    const current = active;
-    // Set intent before awaiting native pause so a simultaneously resolving
-    // download cannot be misclassified as cancellation and delete the partial.
-    current.paused = true;
+    operation.intent = "pause";
+    const handle = operation.handle ?? await operation.handleReady.promise;
+    if (!handle) {
+      await operation.terminal.promise;
+      throw new ModelStoreError("pause_failed", "Download ended before it could be paused");
+    }
+
+    let pauseState: { resumeData?: string };
     try {
-      const pauseState = await current.handle.pause();
-      if (!pauseState.resumeData) throw new Error("No resume data returned");
-      const info = await fileSystem.getFileInfo(current.partialUri);
-      emit(current, reduceDownloadState(current.state, {
-        type: "PAUSE",
-        resumeData: pauseState.resumeData,
-        bytesWritten: info.size ?? 0
-      }));
-      return {
-        modelId: current.modelId,
-        partialUri: current.partialUri,
-        resumeData: pauseState.resumeData
-      };
+      pauseState = await handle.pause();
     } catch (error) {
+      operation.intent = "cancel";
+      let cleanupError: unknown;
       try {
-        await current.handle.cancel();
-        await fileSystem.delete(current.partialUri);
-      } catch (cleanupError) {
-        throw new ModelStoreError(
-          "cleanup_failed",
-          `Could not clean partial file after pause failure: ${current.partialUri}`,
-          { cause: cleanupError }
+        await handle.cancel();
+      } catch (cancelError) {
+        cleanupError = cancelError;
+      }
+      await operation.terminal.promise;
+      try {
+        await fileSystem.delete(operation.paths.partialUri);
+      } catch (deleteError) {
+        cleanupError = cleanupError ?? deleteError;
+      }
+      const primary = asStoreError(error, "pause_failed", "Could not pause model download");
+      if (cleanupError) {
+        throw new ModelStoreCleanupError(
+          primary,
+          cleanupError,
+          `Could not clean partial after pause failure: ${operation.paths.partialUri}`
         );
       }
-      throw asStoreError(error, "pause_failed", "Could not pause model download");
+      throw primary;
     }
-  }
 
-  async function cancelActiveDownload(): Promise<void> {
-    if (!active) return;
-    const current = active;
-    try {
-      await current.handle.cancel();
-      await fileSystem.delete(current.partialUri);
-    } catch (error) {
-      throw asStoreError(
-        error,
-        "cleanup_failed",
-        `Could not cancel and clean ${current.partialUri}`
+    await operation.terminal.promise;
+    const info = await fileSystem.getFileInfo(operation.paths.partialUri);
+    const resumeData = pauseState.resumeData;
+    if (
+      !resumeData ||
+      !info.exists ||
+      !Number.isSafeInteger(info.size) ||
+      info.size! < 0 ||
+      resumeData !== String(info.size)
+    ) {
+      const primary = new ModelStoreError(
+        "resume_state_invalid",
+        "Native pause token does not match the terminal partial file size"
       );
+      return await cleanupPartial(operation.paths.partialUri, primary);
     }
+
+    const paused: PausedModelDownload = {
+      modelId: operation.model.id,
+      revision: operation.model.revision,
+      partialUri: operation.paths.partialUri,
+      bytesWritten: info.size!,
+      resumeData
+    };
+    emit(operation, reduceDownloadState(operation.state, {
+      type: "PAUSE",
+      bytesWritten: paused.bytesWritten,
+      resumeData: paused.resumeData
+    }));
+    return paused;
   }
 
-  async function removeModel(modelId: string): Promise<void> {
-    await fileSystem.initialize?.();
-    const model = getInstallableModels().find((entry) => entry.id === modelId);
-    if (!model) {
-      throw new ModelStoreError(
-        "registry_not_allowlisted",
-        `${modelId}: model is not in the installable registry`
-      );
-    }
-    if (active?.modelId === modelId) await cancelActiveDownload();
-    const paths = modelPaths(requireDocumentsDirectory(), model);
-    try {
-      await fileSystem.delete(paths.directory);
-    } catch (error) {
-      throw asStoreError(error, "deletion_failed", `Could not remove model ${modelId}`);
-    }
-  }
-
-  async function cleanupPartialDownloads(): Promise<void> {
-    await fileSystem.initialize?.();
-    const documentDirectory = requireDocumentsDirectory();
-    for (const model of getInstallableModels()) {
-      const { partialUri } = modelPaths(documentDirectory, model);
+  async function cancelOperation(operation: ActiveInstall): Promise<void> {
+    operation.intent = "cancel";
+    const handle = operation.handle ?? await operation.handleReady.promise;
+    let cancelError: unknown;
+    if (handle) {
       try {
-        await fileSystem.delete(partialUri);
+        await handle.cancel();
       } catch (error) {
-        throw asStoreError(
-          error,
-          "cleanup_failed",
-          `Could not clean partial model download: ${partialUri}`
+        cancelError = error;
+      }
+    }
+    await operation.terminal.promise;
+
+    let cleanupError: unknown;
+    try {
+      await fileSystem.delete(operation.paths.partialUri);
+    } catch (error) {
+      cleanupError = error;
+    }
+    if (cancelError) {
+      const primary = asStoreError(
+        cancelError,
+        "cancel_failed",
+        "Native model download cancellation failed"
+      );
+      if (cleanupError) {
+        throw new ModelStoreCleanupError(
+          primary,
+          cleanupError,
+          `Could not clean partial after cancellation: ${operation.paths.partialUri}`
         );
       }
+      throw primary;
+    }
+    if (cleanupError) {
+      throw asStoreError(
+        cleanupError,
+        "cleanup_failed",
+        `Could not clean cancelled partial: ${operation.paths.partialUri}`
+      );
     }
   }
 
-  async function removeAllModels(): Promise<void> {
-    await fileSystem.initialize?.();
-    if (active) await cancelActiveDownload();
-    const root = `${requireDocumentsDirectory().replace(/\/?$/, "/")}models/`;
-    try {
-      await fileSystem.delete(root);
-    } catch (error) {
-      throw asStoreError(error, "deletion_failed", "Could not remove all model artifacts");
-    }
+  function pauseActiveDownload(): Promise<PausedModelDownload> {
+    return enqueueControl(pauseInternal);
+  }
+
+  function cancelActiveDownload(): Promise<void> {
+    return enqueueControl(async () => {
+      const operation = await currentOrPendingInstall();
+      if (operation) await cancelOperation(operation);
+    });
+  }
+
+  function removeModel(modelId: string): Promise<void> {
+    return enqueueControl(async () => {
+      const model = getInstallableModels().find((entry) => entry.id === modelId);
+      if (!model) {
+        throw new ModelStoreError(
+          "registry_not_allowlisted",
+          `${modelId}: model is not in the installable registry`
+        );
+      }
+      const operation = await currentOrPendingInstall();
+      if (operation) await cancelOperation(operation);
+      await initializeFileSystem();
+      const paths = modelPaths(fileSystem.documentDirectory, model);
+      await assertPaths(paths);
+      try {
+        await fileSystem.delete(paths.directory);
+      } catch (error) {
+        throw asStoreError(error, "deletion_failed", `Could not remove model ${modelId}`);
+      }
+    });
+  }
+
+  function cleanupPartialDownloads(): Promise<void> {
+    return enqueueControl(async () => {
+      const operation = await currentOrPendingInstall();
+      if (operation) await operation.terminal.promise;
+      await initializeFileSystem();
+      for (const model of getInstallableModels()) {
+        const paths = modelPaths(fileSystem.documentDirectory, model);
+        await assertPaths(paths);
+        try {
+          await fileSystem.delete(paths.partialUri);
+        } catch (error) {
+          throw asStoreError(
+            error,
+            "cleanup_failed",
+            `Could not clean partial model download: ${paths.partialUri}`
+          );
+        }
+      }
+    });
+  }
+
+  function removeAllModels(): Promise<void> {
+    return enqueueControl(async () => {
+      const operation = await currentOrPendingInstall();
+      if (operation) await cancelOperation(operation);
+      await initializeFileSystem();
+      const documentUrl = canonicalDocumentUrl(fileSystem.documentDirectory);
+      const root = new URL("models/", documentUrl).href;
+      try {
+        await fileSystem.assertModelPath(root);
+        await fileSystem.delete(root);
+      } catch (error) {
+        throw asStoreError(error, "deletion_failed", "Could not remove all model artifacts");
+      }
+    });
   }
 
   return {
@@ -478,15 +806,19 @@ export function createModelStore({
   };
 }
 
+let cachedDocumentDirectory: string | null = null;
+
 const expoFileSystemAdapter: ModelFileSystem = {
   get documentDirectory() {
-    // Expo initializes this field synchronously, but importing React Native at
-    // module evaluation time breaks the pure TypeScript/fake test environment.
     return cachedDocumentDirectory;
   },
   async initialize() {
     const ExpoFileSystem = await import("expo-file-system/legacy");
     cachedDocumentDirectory = ExpoFileSystem.documentDirectory;
+  },
+  async assertModelPath(uri) {
+    const integrity = await import("../../modules/model-integrity");
+    await integrity.assertModelPath(uri);
   },
   async ensureDirectory(uri) {
     const ExpoFileSystem = await import("expo-file-system/legacy");
@@ -501,9 +833,14 @@ const expoFileSystemAdapter: ModelFileSystem = {
     const ExpoFileSystem = await import("expo-file-system/legacy");
     await ExpoFileSystem.deleteAsync(uri, { idempotent: true });
   },
-  async move(from, to) {
-    const ExpoFileSystem = await import("expo-file-system/legacy");
-    await ExpoFileSystem.moveAsync({ from, to });
+  async replaceVerified(partialUri, completedUri, expectedBytes, expectedSha256) {
+    const integrity = await import("../../modules/model-integrity");
+    await integrity.replaceVerified(
+      partialUri,
+      completedUri,
+      expectedBytes,
+      expectedSha256
+    );
   },
   async createDownload(url, destinationUri, onProgress, resumeData) {
     const ExpoFileSystem = await import("expo-file-system/legacy");
@@ -523,8 +860,6 @@ const expoFileSystemAdapter: ModelFileSystem = {
     };
   }
 };
-
-let cachedDocumentDirectory: string | null = null;
 
 const defaultStore = createModelStore({
   fileSystem: expoFileSystemAdapter,

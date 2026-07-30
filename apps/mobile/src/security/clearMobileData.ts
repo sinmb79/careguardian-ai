@@ -4,7 +4,6 @@ export interface MobileDataDeletionDependencies {
   deleteWorkspace: () => Promise<void>;
   cancelLifeNotifications: () => Promise<void>;
   removeAllModels: () => Promise<void>;
-  deleteSecureStoreKey: () => Promise<void>;
   resetMemory: () => void | Promise<void>;
 }
 
@@ -13,13 +12,11 @@ export async function clearMobileData({
   deleteWorkspace,
   cancelLifeNotifications,
   removeAllModels,
-  deleteSecureStoreKey,
   resetMemory
 }: MobileDataDeletionDependencies): Promise<void> {
   await stopActiveInference?.();
   await cancelLifeNotifications();
   await removeAllModels();
   await deleteWorkspace();
-  await deleteSecureStoreKey();
   await resetMemory();
 }

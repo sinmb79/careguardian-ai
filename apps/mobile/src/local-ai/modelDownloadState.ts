@@ -8,7 +8,7 @@ export interface InstalledModel {
 
 export type DownloadState =
   | { kind: "notInstalled" }
-  | { kind: "downloading"; bytesWritten: number; totalBytes: number }
+  | { kind: "downloading"; bytesWritten: number; totalBytes: number | null }
   | { kind: "paused"; bytesWritten: number; resumeData: string }
   | { kind: "verifying" }
   | { kind: "ready"; installed: InstalledModel }
@@ -16,7 +16,7 @@ export type DownloadState =
 
 export type DownloadAction =
   | { type: "START" }
-  | { type: "PROGRESS"; bytesWritten: number; totalBytes: number }
+  | { type: "PROGRESS"; bytesWritten: number; totalBytes: number | null }
   | { type: "PAUSE"; bytesWritten: number; resumeData: string }
   | { type: "RESUME" }
   | { type: "VERIFY" }
@@ -40,6 +40,14 @@ export function reduceDownloadState(
       return { kind: "downloading", bytesWritten: 0, totalBytes: 0 };
     case "PROGRESS":
       if (state.kind !== "downloading") return invalidTransition(state, action);
+      if (
+        !Number.isSafeInteger(action.bytesWritten) ||
+        action.bytesWritten < 0 ||
+        (action.totalBytes !== null &&
+          (!Number.isSafeInteger(action.totalBytes) || action.totalBytes < 0))
+      ) {
+        throw new Error("invalid_download_progress");
+      }
       return {
         kind: "downloading",
         bytesWritten: action.bytesWritten,

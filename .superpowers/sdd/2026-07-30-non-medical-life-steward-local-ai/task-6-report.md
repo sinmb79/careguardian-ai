@@ -2,67 +2,64 @@
 
 ## Scaffold
 
-- `apps/mobile`에서 요구된 명령을 먼저 실행했습니다.
-
-```powershell
-$env:CI='1'
-npx create-expo-module@latest --local --name ModelIntegrity --description "Streaming SHA-256 for local model artifacts" --package expo.modules.modelintegrity
-```
-
-- `create-expo-module@57.0.0`의 local template이 `repo` 미정의 상태에서 podspec EJS를 렌더링하다 `repo is not defined`로 중단됐습니다.
-- 생성에 성공한 top-level Android scaffold를 `modules/model-integrity`로 옮겨 사용하고, 실패 중 생긴 `package/` 템플릿 사본, iOS, web, native view, 예제 이벤트·상수·함수를 모두 제거했습니다.
-- 최종 모듈에는 `package.json`, `index.ts`, Android `build.gradle`/manifest/Kotlin source, Android-only `expo-module.config.json`만 남겼습니다.
+- `apps/mobile`에서 요구된 `create-expo-module` 명령을 먼저 실행했습니다.
+- generator의 podspec EJS 오류(`repo is not defined`) 뒤 생성된 Android scaffold만 정리해 사용했습니다.
+- 최종 모듈은 Android 전용이며 iOS, web, native view와 실패 산출물은 제거했습니다.
 
 ## 구현
 
-- `modelDownloadState.ts`
-  - `notInstalled → downloading → paused/verifying → ready/failed`의 명시적 reducer를 추가했습니다.
-  - 정의되지 않은 상태 전이는 `invalid_download_state_transition`으로 거부합니다.
-- `modelStore.ts`
-  - Task 5의 installable registry identity 전체가 정확히 일치하는 경우만 설치하고, caller가 바꾼 URL이나 blocked 모델은 네트워크 호출 전에 거부합니다.
-  - SDK 54에 실제 설치된 `expo-file-system 19.0.23`의 `expo-file-system/legacy` `createDownloadResumable`을 사용합니다. 새 `File.downloadFileAsync`에는 pause/resume API가 없기 때문입니다.
-  - 앱 전용 `documentDirectory/models/<id>/<revision>.gguf.partial`에 받고, byte size와 Android native streaming SHA-256을 모두 확인한 뒤 같은 디렉터리의 `.gguf`로 `moveAsync`합니다.
-  - Android SDK 구현의 `moveAsync`는 같은 경로 계층에서 `File.renameTo`를 사용합니다. 기존 완료 파일을 사전 삭제하지 않으므로 rename 실패 시 정상본을 보존합니다.
-  - 명시적 pause는 resume token과 partial을 보존합니다. Android 19.0.23 token은 실제 partial byte length이므로 재개 시 파일 크기와 정확히 일치해야 합니다. pause intent를 native `pauseAsync()` await 전에 기록해 `downloadAsync()` 완료와의 race가 cancellation cleanup으로 오인되지 않게 했습니다.
-  - mismatch, cancellation, network/HTTP/disk/rename/verification 실패는 typed error로 닫고 partial을 삭제합니다. cleanup 자체가 실패하면 `cleanup_failed`를 별도로 반환해 숨기지 않습니다.
-  - 프로세스당 설치 작업은 하나만 허용합니다.
-  - `removeModel`, `removeAllModels`, `cleanupPartialDownloads`를 추가했습니다.
-- `ModelIntegrityModule.kt`
-  - `AsyncFunction("sha256") Coroutine`에서 `Dispatchers.IO`로 이동합니다.
-  - 1 MiB 고정 `ByteArray`와 `FileInputStream`으로 streaming SHA-256을 계산하며 `readBytes()`를 사용하지 않습니다.
-  - `file:` URI만 받고 canonical path가 Android app `filesDir` 아래인지 확인합니다.
-  - 설치된 Expo FileSystem의 `documentDirectory` 근거인 `persistentFilesDirectory = context.filesDir`와 같은 root를 사용합니다.
-- `clearMobileData.ts`
-  - 현재 순서는 알림 → 모델/partial → workspace DB → SecureStore key → memory입니다.
-  - Task 7이 `stopActiveInference` hook을 주입하면 전체 삭제보다 먼저 실행합니다.
-  - 각 단계는 순차 await하며 실패를 삼키거나 뒤 단계를 계속하지 않습니다.
+### 모델 저장소
 
-## 테스트와 검증
+- Task 5 registry의 installable identity 전체가 일치할 때만 다운로드합니다.
+- 모델 ID는 안전한 소문자 ASCII 단일 경로 segment만 허용하며 `.`, `..`, slash, backslash, URL 인코딩 우회를 거부합니다.
+- `documentDirectory`는 canonical `file:` URL만 받고 모든 생성 경로를 Android native `models/` root confinement로 재검증합니다.
+- download 생성 전 오류부터 callback 오류, HTTP/네트워크/디스크/검증/교체 오류까지 하나의 typed lifecycle에서 종료·partial cleanup·active slot 해제를 보장합니다.
+- pause record는 `modelId`, `revision`, `partialUri`, `bytesWritten`, `resumeData`를 함께 묶습니다. 재개 시 선택 모델, revision, canonical partial URI와 terminal byte length가 전부 일치해야 합니다.
+- pause/cancel/remove/cleanup/remove-all은 하나의 control queue에서 직렬화됩니다. pause/remove-all은 native writer terminal을 기다린 뒤 metadata 확인 또는 삭제를 수행합니다.
+- 관찰자 callback 오류는 설치 transaction과 격리했습니다.
+- 알 수 없는 download total은 `-1` 대신 `null`로 정규화합니다.
+- cleanup 실패는 `ModelStoreCleanupError.primaryError`와 `cleanupError`를 함께 노출합니다.
 
-- TDD red:
-  - `modelStore.ts`/`modelDownloadState.ts` 부재와 기존 삭제 순서 때문에 예상대로 실패했습니다.
-  - pause/download race와 기존 완료 파일 보존 회귀도 수정 전에 각각 `download_cancelled`, 기존 파일 삭제로 실패하는 것을 확인했습니다.
-- fake 기반 회귀:
-  - reducer, resume/pause, exact registry allowlist, single operation, size mismatch, SHA mismatch, partial cleanup, cancellation, network/HTTP/disk/rename, atomic replacement failure, model/removeAll 삭제, native bridge absent, cleanup failure를 검사합니다.
-  - Kotlin source는 `FileInputStream`, fixed buffer, incremental `MessageDigest.update`, `readBytes()` 부재를 정적으로 검사합니다.
-  - 설치된 Expo Android source와 Kotlin module이 모두 `context.filesDir` root를 쓰는 characterization test를 추가했습니다.
-- Expo autolinking:
-  - Android module `model-integrity`와 `expo.modules.modelintegrity.ModelIntegrityModule`을 중복 없이 발견했습니다.
-  - `expo-modules-autolinking verify --platform android`는 `Everything is fine`을 반환했습니다.
-- 앱 manifest, 모델 관리 UI, llama runtime은 변경하지 않았고 모델 파일도 다운로드하지 않았습니다.
+### Android 무결성 모듈
 
-## 남은 우려
+- SHA-256은 `Dispatchers.IO`, 1 MiB 고정 buffer, `FileInputStream`으로 streaming 계산합니다.
+- `filesDir/models` 자체와 각 child의 canonical path를 검사해 root/child symlink escape를 거부합니다.
+- 완료본 교체는 native `replaceVerified`에서 수행합니다.
+  - partial size/hash 사전 검증
+  - 동일 filesystem 확인
+  - file/directory fsync
+  - 기존 완료본을 `.backup`으로 보존
+  - `Os.rename` 교체
+  - 완료본 size/hash 사후 검증
+  - 오류 시 backup 복구
+- 기존 정상 완료본은 사전 삭제하지 않습니다.
 
-- 저장소에는 generated `apps/mobile/android` 프로젝트가 없으므로 이번 Task에서 Gradle Kotlin compile은 실행하지 않았습니다. manifest를 생성·변경하는 prebuild는 Task 7 경계를 침범하므로 수행하지 않았습니다. Task 7 dev client/AAB 빌드에서 Kotlin compile과 실제 Android pause/resume를 확인해야 합니다.
-- Expo resume token의 영속 저장은 UI/상태 저장 계층이 결정해야 합니다. 이번 API는 token을 반환하며, Android에서는 설치된 19.0.23 계약에 따라 token과 partial byte length이 정확히 일치할 때만 재개합니다.
-- 실모델 byte/hash 검증과 실기기 다운로드는 모델 파일을 받지 말라는 Task 6 범위에 따라 수행하지 않았습니다.
+### 전체 데이터 삭제
+
+- 생산 앱의 `useLifeWorkspace().actions.deleteAllData()`가 공통 `clearMobileData` coordinator를 직접 사용합니다.
+- 순서는 알림 취소 → active download 취소 및 모델 root 삭제 → repository 삭제(SQLite + repository-owned SecureStore keys) → memory reset입니다.
+- SecureStore를 별도 중복 삭제하던 hook은 제거했습니다.
+- repository는 한 SecureStore key 삭제가 실패해도 나머지 repository-owned key 삭제를 모두 시도한 뒤 첫 오류를 전달합니다.
+- 모델 삭제가 실패하면 repository와 메모리를 지우지 않고 오류를 그대로 전달합니다.
+- Task 7은 필요할 때 `stopActiveInference` hook만 가장 앞에 주입할 수 있습니다.
+
+## 회귀 검증
+
+- exact allowlist, unsafe ID/path, native confinement 실패 시 무변경
+- preflight/create/callback 실패와 install slot 회수
+- resume identity/byte mismatch 및 cross-model record 거부
+- pause token/writer terminal race, cancel/remove-all serialization
+- size/SHA/HTTP/network/disk/native replacement/cleanup typed 오류
+- 기존 완료본 보존과 Android backup/rollback/fsync/post-verify 계약
+- 생산 전체 삭제 순서와 model deletion fail-closed
+- 실제 repository fake에서 세 SecureStore key 각각의 삭제 실패와 잔존 key
 
 ## 최종 실행 결과
 
 ```text
 npm test -- --run
 Test Files  15 passed (15)
-Tests       110 passed (110)
+Tests       128 passed (128)
 
 npm run build
 TypeScript + Vite production build passed
@@ -70,9 +67,15 @@ TypeScript + Vite production build passed
 npm run mobile:typecheck
 passed
 
-npx expo-modules-autolinking verify --platform android
+npx expo-modules-autolinking verify --platform android --project-root apps/mobile
 Everything is fine
 
-npx expo-modules-autolinking resolve --platform android
+npx expo-modules-autolinking resolve --platform android --project-root apps/mobile
 model-integrity -> expo.modules.modelintegrity.ModelIntegrityModule
 ```
+
+## 검증 경계
+
+- 모델 weight는 다운로드하지 않았습니다.
+- generated `apps/mobile/android`가 없고 Task 7 manifest 경계를 지켜야 하므로 Gradle Kotlin compile과 실제 Android pause/resume는 이번 Task에서 실행하지 않았습니다.
+- Task 7 dev client/AAB 빌드에서 Kotlin compile, crash-recovery, 실제 기기 pause/resume를 추가 확인해야 합니다.

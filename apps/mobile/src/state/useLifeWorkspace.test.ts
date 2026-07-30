@@ -19,6 +19,9 @@ vi.mock("../storage/mobileWorkspaceRepository", () => ({
 vi.mock("../security/localAuthentication", () => ({
   authenticateForSensitiveAccess: async () => ({ authenticated: false, message: "test" })
 }));
+vi.mock("../local-ai/modelStore", () => ({
+  removeAllModels: async () => undefined
+}));
 import { createLifeWorkspaceController } from "./useLifeWorkspace";
 
 function deferred<T>() {
@@ -39,6 +42,7 @@ describe("life workspace state", () => {
       hasPreviousTestData: async () => false,
       save: async () => void events.push("save"),
       deleteWorkspace: async () => void events.push("delete"),
+      removeAllModels: async () => void events.push("models"),
       syncNotifications: async () => {
         events.push("notifications");
         return 1;
@@ -57,6 +61,7 @@ describe("life workspace state", () => {
       hasPreviousTestData: async () => false,
       save,
       deleteWorkspace: async () => undefined,
+      removeAllModels: async () => undefined,
       syncNotifications: async () => 0,
       cancelNotifications: async () => undefined
     });
@@ -74,6 +79,7 @@ describe("life workspace state", () => {
       hasPreviousTestData: async () => false,
       save: async () => undefined,
       deleteWorkspace,
+      removeAllModels: async () => undefined,
       syncNotifications: async () => 0,
       cancelNotifications: async () => { throw new Error("one reminder remains"); }
     });
@@ -90,6 +96,7 @@ describe("life workspace state", () => {
       deletePreviousTestData,
       save: async () => undefined,
       deleteWorkspace: async () => undefined,
+      removeAllModels: async () => undefined,
       syncNotifications: async () => 0,
       cancelNotifications: async () => undefined
     });
@@ -109,6 +116,7 @@ describe("life workspace state", () => {
     const controller = createLifeWorkspaceController({
       load: async () => null, hasPreviousTestData: async () => false,
       save: async () => pendingSave.promise, deleteWorkspace: async () => undefined,
+      removeAllModels: async () => undefined,
       syncNotifications, cancelNotifications: async () => undefined
     });
     controller.update(fixtureWorkspace);
@@ -128,6 +136,7 @@ describe("life workspace state", () => {
     const controller = createLifeWorkspaceController({
       load: async () => null, hasPreviousTestData: async () => false,
       save: async () => pendingSave.promise, deleteWorkspace: async () => undefined,
+      removeAllModels: async () => undefined,
       syncNotifications, cancelNotifications: async () => undefined
     });
     const emptyWorkspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
@@ -148,6 +157,7 @@ describe("life workspace state", () => {
     const controller = createLifeWorkspaceController({
       load, hasPreviousTestData: async () => false, authenticate: async () => authentication.promise,
       save: async () => undefined, deleteWorkspace: async () => undefined,
+      removeAllModels: async () => undefined,
       syncNotifications: async () => 0, cancelNotifications: async () => undefined
     });
     await controller.load();
@@ -167,6 +177,7 @@ describe("life workspace state", () => {
     const controller = createLifeWorkspaceController({
       load: async () => null, hasPreviousTestData: async () => false,
       save: async () => pendingSave.promise, deleteWorkspace,
+      removeAllModels: async () => undefined,
       syncNotifications: async () => 0, cancelNotifications: async () => undefined
     });
     const saving = controller.save(fixtureWorkspace);
@@ -184,6 +195,7 @@ describe("life workspace state", () => {
     const controller = createLifeWorkspaceController({
       load: async () => fixtureWorkspace, hasPreviousTestData: async () => false,
       save, deleteWorkspace, syncNotifications: async () => 0,
+      removeAllModels: async () => undefined,
       cancelNotifications: async () => pendingCancel.promise
     });
     const deleting = controller.deleteAll();
@@ -193,5 +205,52 @@ describe("life workspace state", () => {
     pendingCancel.resolve();
     await deleting;
     expect(deleteWorkspace).toHaveBeenCalledOnce();
+  });
+
+  test("production full deletion removes models before the repository and resets memory last", async () => {
+    const events: string[] = [];
+    const controller = createLifeWorkspaceController({
+      load: async () => fixtureWorkspace,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      deleteWorkspace: async () => void events.push("workspace"),
+      removeAllModels: async () => void events.push("models"),
+      syncNotifications: async () => 0,
+      cancelNotifications: async () => void events.push("notifications")
+    });
+    await controller.load();
+
+    await controller.deleteAll();
+
+    expect(events).toEqual(["notifications", "models", "workspace"]);
+    expect(controller.snapshot()).toMatchObject({
+      workspace: createEmptyWorkspace(),
+      hasStoredWorkspace: false,
+      privacyGate: "unlocked"
+    });
+  });
+
+  test("keeps memory and repository data intact when model deletion fails", async () => {
+    const deleteWorkspace = vi.fn();
+    const controller = createLifeWorkspaceController({
+      load: async () => fixtureWorkspace,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      deleteWorkspace,
+      removeAllModels: async () => { throw new Error("model deletion failed"); },
+      syncNotifications: async () => 0,
+      cancelNotifications: async () => undefined
+    });
+    await controller.load();
+
+    await expect(controller.deleteAll()).rejects.toThrow("model deletion failed");
+
+    expect(deleteWorkspace).not.toHaveBeenCalled();
+    expect(controller.snapshot()).toMatchObject({
+      workspace: fixtureWorkspace,
+      hasStoredWorkspace: true,
+      privacyGate: "locked",
+      isDeleting: false
+    });
   });
 });
