@@ -39,6 +39,26 @@ test("accepts exact line-level policy, legacy, and network contracts", () => {
   assert.equal(validateReleasePolicy(baseline).status, "pass");
 });
 
+test("rejects EAS production builds that can mutate the pinned Android version", () => {
+  const files = new Map(baseline);
+  files.set(
+    "apps/mobile/eas.json",
+    JSON.stringify({
+      cli: { appVersionSource: "local" },
+      build: {
+        production: {
+          autoIncrement: true,
+          android: { buildType: "app-bundle" }
+        }
+      }
+    })
+  );
+
+  const report = validateReleasePolicy(files);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /EAS production version policy/);
+});
+
 test("rejects a prohibited health feature hidden in a formerly allowlisted file", () => {
   const report = mutate(
     "apps/mobile/src/local-ai/assistantPolicy.ts",

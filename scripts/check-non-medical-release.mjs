@@ -15,6 +15,7 @@ const EXACT_FILES = new Set([
   "package.json",
   "vite.config.ts",
   "apps/mobile/app.json",
+  "apps/mobile/eas.json",
   "apps/mobile/package.json"
 ]);
 const FORBIDDEN_HEALTH = /(?:복약|투약|약물|처방약|진단|증상|치료|알레르기|질환|재활|건강|혈압|혈당|체온|심박|의료|caregiver|medication|prescription|diagnos(?:e|is)|symptom|treatment|allerg(?:y|ies|ic)|disease|rehabilitation|health(?:care)?|medical)/iu;
@@ -1713,9 +1714,11 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
 
 function validateIdentity(files, problems) {
   let app;
+  let eas;
   let mobilePackage;
   try {
     app = JSON.parse(files.get("apps/mobile/app.json") ?? "{}").expo;
+    eas = JSON.parse(files.get("apps/mobile/eas.json") ?? "{}");
     mobilePackage = JSON.parse(files.get("apps/mobile/package.json") ?? "{}");
   } catch (error) {
     problems.push(`mobile identity JSON is invalid: ${error instanceof Error ? error.message : String(error)}`);
@@ -1739,6 +1742,13 @@ function validateIdentity(files, problems) {
   }
   if (app?.android?.versionCode !== 7 || app?.android?.allowBackup !== false) {
     problems.push("Android release version or backup policy is unsafe");
+  }
+  if (
+    eas?.cli?.appVersionSource !== "local" ||
+    eas?.build?.production?.autoIncrement !== false ||
+    eas?.build?.production?.android?.buildType !== "app-bundle"
+  ) {
+    problems.push("EAS production version policy is not exact");
   }
   const permissions = app?.android?.permissions ?? [];
   if (permissions.length !== 1 || permissions[0] !== "android.permission.POST_NOTIFICATIONS") {
