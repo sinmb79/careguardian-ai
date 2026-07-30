@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom";
 export const EXPECTED_CSP = "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; form-action 'none'";
 
 const ALLOWED_POLICY_URL = "https://huggingface.co/privacy";
-const REMOTE_URL_PATTERN = /(?:https?:)?\/\/[^\s"'<>`]+/gi;
+const URL_CANDIDATE_PATTERN = /(?:https?\s*:[\s/\\]*|[\\/][\s/\\]*)[^\s"'<>`]*/gi;
 const CSS_REFERENCE_PATTERNS = [
   /@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)'|([^)]*?))\)?/gi,
   /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi
@@ -14,10 +14,17 @@ const CSS_REFERENCE_PATTERNS = [
 const CHARACTER_REFERENCE_PATTERN = /&(?:#x[0-9a-f]+|#\d+|[a-z][a-z\d]+);/i;
 
 function findRemoteUrls(value) {
-  return [...value.matchAll(REMOTE_URL_PATTERN)].flatMap(([candidate]) => {
+  return [...value.matchAll(URL_CANDIDATE_PATTERN)].flatMap(([candidate]) => {
     try {
-      const url = new URL(candidate.startsWith("//") ? `https:${candidate}` : candidate);
-      return url.protocol === "http:" || url.protocol === "https:" ? [{ candidate, normalized: url.href }] : [];
+      let normalizedInput = candidate.replace(/[\u0000-\u0020\u007f]/g, "").replaceAll("\\", "/");
+      if (/^https?:/i.test(normalizedInput)) {
+        normalizedInput = normalizedInput.replace(/^(https?):\/*/i, "$1://");
+      }
+      const isRemote = /^https?:\/\//i.test(normalizedInput) || normalizedInput.startsWith("//");
+      const url = new URL(normalizedInput.startsWith("//") ? `https:${normalizedInput}` : normalizedInput, "https://static-gate.invalid/");
+      return isRemote && (url.protocol === "http:" || url.protocol === "https:")
+        ? [{ candidate, normalized: url.href }]
+        : [];
     } catch {
       return [];
     }
@@ -93,18 +100,21 @@ function validateHtmlRemoteUrls(dom, html, file, problems) {
   }
 }
 
-function decodeCssReference(value) {
-  const decodedEscapes = value.replace(/\\([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(.)/gi, (_, hex, character) => {
+function decodeCssEscapes(value) {
+  return value.replace(/\\([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(.)/gi, (_, hex, character) => {
     if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
     return character;
   });
+}
+
+function decodeCssReference(value) {
   const decoder = new JSDOM("<textarea></textarea>").window.document.querySelector("textarea");
-  decoder.innerHTML = decodedEscapes;
+  decoder.innerHTML = value;
   return decoder.value;
 }
 
 function findCssReferences(css) {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const withoutComments = decodeCssEscapes(css).replace(/\/\*[\s\S]*?\*\//g, "");
   const references = new Set();
   for (const pattern of CSS_REFERENCE_PATTERNS) {
     for (const match of withoutComments.matchAll(pattern)) {

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { EXPECTED_CSP, validateBuiltHtmlDirectory, validateHtmlSecurity } from "./check-static-security.mjs";
+import { EXPECTED_CSP, validateBuiltHtmlDirectory, validateCssSecurity, validateHtmlSecurity } from "./check-static-security.mjs";
 
 const privacyHtml = readFileSync(resolve(import.meta.dirname, "../public/privacy-policy.html"), "utf8");
 const exactPolicyUrl = "https://huggingface.co/privacy";
@@ -120,6 +120,24 @@ test("rejects decoded entity, hex, decimal, and protocol-relative remote HTML UR
   }
 });
 
+test("rejects browser-normalized backslash and control-character HTML URLs", () => {
+  const vectors = [
+    '<img src="https:\\\\attacker.example/two.png">',
+    '<img src="\\\\attacker.example/protocol.png">',
+    '<img src="https:/&#x09;/attacker.example/tab.png">',
+    '<img src="https:/&#x0A;/attacker.example/newline.png">',
+    '<meta http-equiv="refresh" content="0;url=https:\\\\attacker.example/next">',
+    '<meta http-equiv="refresh" content="0;url=https:/&#x09;/attacker.example/next">',
+    '<meta http-equiv="refresh" content="0;url=https:/&#x0A;/attacker.example/next">',
+    '<script src="https:\\\\attacker.example/x.js"></script>',
+    '<link rel="stylesheet" href="https:\\\\attacker.example/x.css">'
+  ];
+
+  for (const vector of vectors) {
+    assert.match(validateHtmlSecurity(htmlWithCsp(vector), "privacy-policy.html").join("\n"), /unexpected remote URL/);
+  }
+});
+
 test("rejects remote URLs across network-capable element attributes", () => {
   const vectors = [
     '<a href="https://attacker.example/a">a</a>',
@@ -166,6 +184,18 @@ test("accepts deployed local CSS references", () => {
     assert.equal(validateBuiltHtmlDirectory(directory).status, "pass");
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects CSS escaped URL and import identifiers plus quoted backslash URLs", () => {
+  const vectors = [
+    'body { background-image: u\\72l("https://attacker.example/function.png"); }',
+    '@\\69mport "https://attacker.example/import.css";',
+    'body { background-image: url("https:\\\\attacker.example/backslash.png"); }'
+  ];
+
+  for (const css of vectors) {
+    assert.match(validateCssSecurity(css, "site.css").join("\n"), /unexpected remote CSS URL/);
   }
 });
 
