@@ -122,6 +122,47 @@ function getExpectedDownloadUrl(repository: string, revision: string, artifactFi
   return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
 }
 
+function hasSafeRepository(repository: string): boolean {
+  const segments = repository.split("/");
+  const safeSegment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$/;
+
+  return segments.length === 2 && segments.every((segment) => safeSegment.test(segment));
+}
+
+function hasSafeArtifactFileName(artifactFileName: string): boolean {
+  return (
+    /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?\.gguf$/.test(artifactFileName) &&
+    !artifactFileName.includes("..")
+  );
+}
+
+function hasExactImmutableDownloadUrl(
+  downloadUrl: string | undefined,
+  repository: string,
+  revision: string,
+  artifactFileName: string
+): boolean {
+  if (!downloadUrl) return false;
+
+  try {
+    const url = new URL(downloadUrl);
+    const expectedPathname = `/${repository}/resolve/${revision}/${artifactFileName}`;
+    const expectedUrl = getExpectedDownloadUrl(repository, revision, artifactFileName);
+
+    return (
+      url.origin === "https://huggingface.co" &&
+      url.pathname === expectedPathname &&
+      url.search === "?download=true" &&
+      url.searchParams.size === 1 &&
+      url.searchParams.get("download") === "true" &&
+      url.hash === "" &&
+      url.href === expectedUrl
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Throws when an artifact is unsafe to present as an installable download. */
 export function validateModelRegistry(registry: readonly ModelArtifact[]): void {
   const seenIds = new Set<string>();
@@ -131,7 +172,7 @@ export function validateModelRegistry(registry: readonly ModelArtifact[]): void 
       throw new Error(`${model.id}: duplicate model ID is not allowed`);
     }
     seenIds.add(model.id);
-    if (!/^[^/\\\s]+\/[^/\\\s]+$/.test(model.repository)) {
+    if (!hasSafeRepository(model.repository)) {
       throw new Error(`${model.id}: repository must use owner/repository format`);
     }
     if (!/^[a-f0-9]{40}$/.test(model.revision)) {
@@ -155,13 +196,15 @@ export function validateModelRegistry(registry: readonly ModelArtifact[]): void 
       throw new Error(`${model.id}: attribution and license assets are required`);
     }
     if (model.availability === "installable") {
-      if (!model.artifactFileName || !/^[^/\\]+\.gguf$/.test(model.artifactFileName)) {
+      if (!model.artifactFileName || !hasSafeArtifactFileName(model.artifactFileName)) {
         throw new Error(`${model.id}: installable artifact must be a single GGUF file name`);
       }
-      if (
-        model.downloadUrl !==
-        getExpectedDownloadUrl(model.repository, model.revision, model.artifactFileName)
-      ) {
+      if (!hasExactImmutableDownloadUrl(
+        model.downloadUrl,
+        model.repository,
+        model.revision,
+        model.artifactFileName
+      )) {
         throw new Error(`${model.id}: installable download URL must exactly match repository, revision, and file`);
       }
       const bytes = model.bytes;

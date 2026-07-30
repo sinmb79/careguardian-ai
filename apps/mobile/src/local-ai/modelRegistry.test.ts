@@ -13,6 +13,10 @@ import { createRequire } from "node:module";
 
 const nodeRequire = createRequire(import.meta.url);
 
+function expectedDownloadUrl(repository: string, revision: string, artifactFileName: string): string {
+  return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
+}
+
 describe("MODEL_REGISTRY", () => {
   test("pins the approved 0.5B GGUF artifact to its immutable supply-chain identity", () => {
     const model = MODEL_REGISTRY.find(
@@ -80,6 +84,35 @@ describe("MODEL_REGISTRY", () => {
         }
       ])
     ).toThrow(/download URL/i);
+  });
+
+  test("rejects repository and filename URL normalization or control-character payloads", () => {
+    const model = MODEL_REGISTRY[0];
+    const unsafeRepositories = ["naver-ellm/..", "naver?x/repo", "naver#x/repo", "naver%2f/path"];
+    const unsafeFileNames = ["../model.gguf", "model?.gguf", "model#.gguf", "model%2f.gguf"];
+
+    for (const repository of unsafeRepositories) {
+      expect(() =>
+        validateModelRegistry([
+          {
+            ...model,
+            repository,
+            downloadUrl: expectedDownloadUrl(repository, model.revision, model.artifactFileName!)
+          }
+        ])
+      ).toThrow(/repository/i);
+    }
+    for (const artifactFileName of unsafeFileNames) {
+      expect(() =>
+        validateModelRegistry([
+          {
+            ...model,
+            artifactFileName,
+            downloadUrl: expectedDownloadUrl(model.repository, model.revision, artifactFileName)
+          }
+        ])
+      ).toThrow(/artifact/i);
+    }
   });
 
   test("requires a safe integer byte count and an app default context no larger than official context", () => {
@@ -150,15 +183,52 @@ describe("getThirdPartyModelNotice", () => {
           expect(moduleId).toBe(73);
           return {
             uri: "asset://license",
-            localUri: "file://cached-license.txt",
+            localUri: "file:///cached-license.txt",
             downloadAsync: async () => ({
               uri: "asset://license",
-              localUri: "file://cached-license.txt"
+              localUri: "file:///cached-license.txt"
             })
           };
         }
       })
-    ).resolves.toBe("file://cached-license.txt");
+    ).resolves.toBe("file:///cached-license.txt");
+  });
+
+  test("fails closed when Expo Asset does not return a non-empty device-local URI", async () => {
+    const asset = getThirdPartyModelNotice("hyperclovax-seed-text-instruct-0.5b-q4km")!
+      .licenseAssets[0];
+    const moduleLoader = () => 73;
+    const factoryFor = (localUri: string | null, uri: string) => ({
+      fromModule: () => ({
+        uri,
+        localUri,
+        downloadAsync: async () => ({ uri, localUri })
+      })
+    });
+
+    await expect(
+      getOfflineLicenseAssetUri({ ...asset, moduleLoader }, factoryFor(null, "https://cdn.example/license.txt"))
+    ).rejects.toThrow(/local/i);
+    await expect(
+      getOfflineLicenseAssetUri({ ...asset, moduleLoader }, factoryFor("", "asset://license"))
+    ).rejects.toThrow(/local/i);
+    await expect(
+      getOfflineLicenseAssetUri(
+        { ...asset, moduleLoader },
+        factoryFor("https://cdn.example/license.txt", "asset://license")
+      )
+    ).rejects.toThrow(/local/i);
+    await expect(
+      getOfflineLicenseAssetUri({ ...asset, moduleLoader }, {
+        fromModule: () => ({
+          uri: "asset://license",
+          localUri: null,
+          downloadAsync: async () => {
+            throw new Error("download failed");
+          }
+        })
+      })
+    ).rejects.toThrow("download failed");
   });
 
   test("registers txt exactly once in the live Metro resolver configuration", () => {

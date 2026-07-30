@@ -69,13 +69,30 @@ function getExpoAssetFactory(): ExpoAssetFactory {
   return require("expo-asset").Asset as ExpoAssetFactory;
 }
 
+function isDeviceLocalUri(uri: string | null): uri is string {
+  if (!uri) return false;
+
+  try {
+    const parsed = new URL(uri);
+    return (
+      (parsed.protocol === "file:" || parsed.protocol === "content:") &&
+      parsed.pathname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Downloads a bundled asset if needed, then returns its device-local URI for offline display. */
 export async function getOfflineLicenseAssetUri(
   asset: BundledLicenseAsset,
   assetFactory: ExpoAssetFactory = getExpoAssetFactory()
 ): Promise<string> {
   const downloadedAsset = await assetFactory.fromModule(asset.moduleLoader()).downloadAsync();
-  return downloadedAsset.localUri ?? downloadedAsset.uri;
+  if (!isDeviceLocalUri(downloadedAsset.localUri)) {
+    throw new Error(`Offline license asset did not resolve to a device-local URI: ${asset.path}`);
+  }
+  return downloadedAsset.localUri;
 }
 
 export interface ThirdPartyModelNotice {
