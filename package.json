@@ -25,9 +25,11 @@
     "mobile:web": "npm --workspace apps/mobile run web",
     "mobile:typecheck": "tsc --noEmit -p apps/mobile/tsconfig.json",
     "mobile:doctor": "npm --workspace apps/mobile run doctor",
+    "mobile:verify:native-contracts": "npm --workspace apps/mobile run verify:native-contracts",
     "preview": "vite preview",
     "test": "vitest",
-    "verify": "npm test -- --run && npm run build && npm run mobile:typecheck && npm run mobile:doctor"
+    "verify": "npm test -- --run && npm run build && npm run mobile:typecheck && npm run mobile:doctor",
+    "verify:android-release": "node apps/mobile/scripts/verify-android-release.mjs"
   },
   "dependencies": {
     "@life-steward/life-core": "file:packages/life-core",

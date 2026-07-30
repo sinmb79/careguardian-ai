@@ -75,6 +75,7 @@
           "enableOpenCL": false
         }
       ],
+      "./plugins/with-mobile-react-root",
       "./plugins/with-cpu-only-llama"
     ],
     "extra": {

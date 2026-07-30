@@ -2,6 +2,7 @@ package expo.modules.modelintegrity
 
 import android.system.Os
 import android.system.OsConstants
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
@@ -83,9 +84,10 @@ class ModelIntegrityModule : Module() {
   }
 
   private fun syncDirectory(directory: File) {
+    require(directory.isDirectory) { "Directory sync target does not exist or is not a directory" }
     val descriptor = Os.open(
       directory.path,
-      OsConstants.O_RDONLY or OsConstants.O_DIRECTORY,
+      OsConstants.O_RDONLY,
       0
     )
     try {

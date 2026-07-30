@@ -6,6 +6,7 @@ dist/
 apps/mobile/*.log
 apps/mobile/android-emulator-*.png
 apps/mobile/*.aab
+apps/mobile/modules/*/android/build/
 
 # Local project-memory vaults may include raw conversation context.
 docs/project-memory/source/
