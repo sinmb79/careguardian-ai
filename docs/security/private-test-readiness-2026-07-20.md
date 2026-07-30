@@ -1,6 +1,6 @@
 # 역사 자료 — 이전 CareGuardian AI 비공개 테스트 보안·안전 준비도 감사
 
-> **역사 자료 전용:** 이 문서는 이전 건강형 구현과 폐기된 제출 흐름을 기록합니다. 현재 `생활후견 AI` 출시, 스토어 등록, 개인정보처리방침 또는 Data safety의 근거로 사용하지 마세요. 현재 근거는 `private-test-readiness-2026-07-30.md`입니다.
+> **역사 기록 전용 — 현재 제출 근거 아님:** 이 문서는 이전 CareGuardian 건강·복약 구현과 폐기된 제출 흐름을 기록합니다. 현재 `생활후견 AI 1.1.0 (7)`의 기능, Play 선언, Data safety 또는 개인정보처리방침의 근거로 사용하지 마세요. 현재 기준은 `private-test-readiness-2026-07-30.md`, `../store-listing.md`, `../../public/privacy-policy.html`입니다.
 
 - 감사일: 2026-07-20 (Asia/Seoul)
 - Play 정책 후속 확인: 2026-07-22

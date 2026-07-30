@@ -53,7 +53,7 @@ cd apps/mobile
 npx eas-cli build --platform android --profile production --non-interactive
 ```
 
-Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트 ABI, `allowBackup=false`, 불필요 권한 부재를 확인하고 SHA-256을 기록합니다. Data safety 최종값은 그 AAB와 Samsung/Pixel 실기기 네트워크 관찰 후에만 확정합니다.
+새 production AAB에서는 package, versionName, versionCode, target SDK, 64비트 ABI, `allowBackup=false`, 불필요 권한 부재를 확인하고 SHA-256을 기록합니다. `docs/store-listing.md`의 Data safety 입력값은 그 AAB와 Samsung/Pixel 실기기 네트워크 관찰로 대조한 뒤 실제 Console에 저장합니다. 관찰이 설치 직전 고지·사용자 시작 다운로드 예외와 다르면 공유값은 보수적으로 수정합니다.
 
 ## 스크린샷과 Play 자산
 
@@ -66,14 +66,14 @@ Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트
 | `tablet7-screenshot-{1-2}.png` | 900×1536 | 7-inch tablet 2장 |
 | `tablet10-screenshot-{1-2}.png` | 1600×2560 | 10-inch tablet 2장 |
 
-재생성은 `npm run build` 뒤 `npx vite preview --port 4173`와 별도 터미널의 `node scripts/capture-screenshots.mjs`로 수행합니다. 스크립트는 phone을 1080×1920 9:16, tablet을 2:1 이하, 8-bit opaque RGB, 각 8MB 이하로 검사합니다. 현재 캡처는 웹 PWA 실제 렌더입니다. **Task 10에서 Android Expo 앱을 에뮬레이터 또는 실기기에서 재캡처해 동일 파일을 최종 교체하는 것이 출시 차단 게이트입니다.**
+재생성은 `npm run build` 뒤 `npx vite preview --port 4173`와 별도 터미널의 `node scripts/capture-screenshots.mjs`로 수행합니다. 스크립트는 phone을 1080×1920 9:16, tablet을 2:1 이하, 8-bit opaque RGB, 각 8MB 이하로 검사합니다. 현재 캡처는 웹 PWA 실제 렌더입니다. **Android Expo 앱을 에뮬레이터 또는 실기기에서 재캡처해 동일 파일을 교체하기 전에는 어떤 현재 PNG도 Play에 업로드하지 않습니다.**
 
 ## 출시 전 남은 외부 게이트
 
-1. Task 10의 native prebuild, production AAB, 정적 검사와 Samsung·Pixel 검증
+1. native prebuild, production AAB, 정적 검사와 Samsung·Pixel 검증
 2. 모델 다운로드를 포함한 실기기 네트워크 관찰
 3. Play Console에서 Productivity, 타깃 연령, 최신 문안·자산·AAB로 이전 대기 변경을 교체
-4. 최종 Data safety 답변 확정과 비공개 테스트 opt-in 운영
+4. Data safety Console 입력값 대조 및 비공개 테스트 opt-in 운영
 5. Android Expo 실제 화면으로 Play 자산을 재캡처·교체하고 업로드 전 확인
 
 현재 준비도는 [2026-07-30 준비도 기록](./security/private-test-readiness-2026-07-30.md)을 따릅니다.

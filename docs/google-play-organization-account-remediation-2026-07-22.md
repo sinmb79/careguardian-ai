@@ -1,5 +1,7 @@
 # Google Play 조직 계정 거부 보완 계획
 
+> **역사 기록 전용 — 현재 제출 근거 아님:** 이 문서는 이전 CareGuardian 건강·복약 구현의 조직 계정 거부 기록입니다. 현재 `생활후견 AI 1.1.0 (7)`의 기능, Play 선언, Data safety 또는 개인정보처리방침의 근거로 사용하지 마세요.
+
 - 확인일: 2026-07-22 (Asia/Seoul)
 - 앱: CareGuardian AI (`com.sinmb.careguardianai`)
 - 거부 적용일: 2026-07-20

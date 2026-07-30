@@ -25,7 +25,7 @@ flowchart LR
 
 There are no accounts, ads, analytics, remote push, or contact, location, microphone, camera, or external-storage permissions. Choosing a model install makes a request for a pinned GGUF file from Hugging Face; the host may see the device IP address and ordinary network metadata. Prompts and outputs are not sent with that request.
 
-Data safety values are not final until the Task 10 production-AAB and real-device network observation are complete. Closed testing uses only synthetic, non-sensitive schedules and notes.
+The privacy policy distinguishes Hugging Face’s possible external installation-request records from on-device deletion. Closed testing uses only synthetic, non-sensitive schedules and notes.
 
 ## Delivery target
 
