@@ -7,6 +7,9 @@ export const EXPECTED_CSP = "default-src 'self'; base-uri 'none'; object-src 'no
 
 const ALLOWED_POLICY_URL = "https://huggingface.co/privacy";
 const URL_CANDIDATE_PATTERN = /(?:https?\s*:[\s/\\]*|[\\/][\s/\\]*)[^\s"'<>`]*/gi;
+const CSS_ESCAPE_NORMALIZATION_LIMIT = 8;
+const PERCENT_ENCODING_PATTERN = /%[0-9a-f]{2}/i;
+const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
 function findRemoteUrls(value) {
   return [...value.matchAll(URL_CANDIDATE_PATTERN)].flatMap(([candidate]) => {
@@ -95,11 +98,53 @@ function validateHtmlRemoteUrls(dom, html, file, problems) {
   }
 }
 
-function decodeCssEscapes(value) {
-  return value.replace(/\\([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(.)/gi, (_, hex, character) => {
-    if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
-    return character;
-  });
+function decodeCssEscapesOnce(value) {
+  let decoded = "";
+  let malformed = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character !== "\\") {
+      decoded += character;
+      continue;
+    }
+
+    if (index + 1 >= value.length) {
+      malformed = true;
+      decoded += character;
+      continue;
+    }
+
+    const escaped = value[index + 1];
+    if (escaped === "\n" || escaped === "\f") {
+      index += 1;
+      continue;
+    }
+    if (escaped === "\r") {
+      index += value[index + 2] === "\n" ? 2 : 1;
+      continue;
+    }
+
+    const hex = value.slice(index + 1).match(/^[0-9a-f]{1,6}/i)?.[0];
+    if (hex) {
+      const codePoint = Number.parseInt(hex, 16);
+      if (codePoint === 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+        malformed = true;
+        decoded += "\ufffd";
+      } else {
+        decoded += String.fromCodePoint(codePoint);
+      }
+      index += hex.length;
+      if (/[ \t\r\n\f]/.test(value[index + 1] ?? "")) {
+        if (value[index + 1] === "\r" && value[index + 2] === "\n") index += 1;
+        index += 1;
+      }
+      continue;
+    }
+
+    decoded += escaped;
+    index += 1;
+  }
+  return { decoded, malformed };
 }
 
 function decodeCssReference(value) {
@@ -108,17 +153,65 @@ function decodeCssReference(value) {
   return decoder.value;
 }
 
+function removeCssComments(value) {
+  return value.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
 function normalizeCssForRemoteScan(css) {
-  const withoutSourceComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const decodedEscapes = decodeCssEscapes(withoutSourceComments);
-  const withoutDecodedComments = decodedEscapes.replace(/\/\*[\s\S]*?\*\//g, "");
-  return decodeCssReference(withoutDecodedComments);
+  const variants = [];
+  let current = removeCssComments(css);
+  for (let pass = 0; pass < CSS_ESCAPE_NORMALIZATION_LIMIT; pass += 1) {
+    variants.push(current);
+    const escapeResult = decodeCssEscapesOnce(current);
+    if (escapeResult.malformed) return { variants, malformed: true, limitReached: false };
+    const normalized = removeCssComments(decodeCssReference(escapeResult.decoded));
+    if (normalized === current) return { variants, malformed: false, limitReached: false };
+    current = normalized;
+  }
+  return { variants, malformed: false, limitReached: true };
+}
+
+function findCssNetworkTokens(css) {
+  const tokens = [];
+  for (const string of css.matchAll(/"([^"]*)"|'([^']*)'/g)) tokens.push(string[1] ?? string[2] ?? "");
+  for (const url of css.matchAll(/\burl\s*\(([^)]*)\)/gi)) tokens.push(url[1]);
+  return tokens;
+}
+
+function findNonRelativeUriSchemes(css) {
+  return findCssNetworkTokens(css).flatMap((token) => {
+    const scheme = token.trim().match(URI_SCHEME_PATTERN)?.[0];
+    return scheme ? [scheme] : [];
+  });
 }
 
 export function validateCssSecurity(css, file = "unknown.css") {
   const problems = [];
-  for (const remoteUrl of findRemoteUrls(normalizeCssForRemoteScan(css))) {
-    problems.push(`${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`);
+  const normalized = normalizeCssForRemoteScan(css);
+  if (normalized.malformed) problems.push(`${file}: malformed CSS escape is present`);
+  if (normalized.limitReached) problems.push(`${file}: CSS escape normalization limit was reached`);
+
+  const reported = new Set();
+  const finalVariant = normalized.variants.at(-1) ?? "";
+  for (const remoteUrl of findRemoteUrls(finalVariant)) {
+    const problem = `${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`;
+    if (!reported.has(problem)) problems.push(problem);
+    reported.add(problem);
+  }
+  for (const variant of normalized.variants) {
+    if (PERCENT_ENCODING_PATTERN.test(variant)) problems.push(`${file}: unsafe CSS encoding is present`);
+    for (const token of findCssNetworkTokens(variant)) {
+      for (const remoteUrl of findRemoteUrls(token)) {
+        const problem = `${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`;
+        if (!reported.has(problem)) problems.push(problem);
+        reported.add(problem);
+      }
+    }
+    for (const scheme of findNonRelativeUriSchemes(variant)) {
+      const problem = `${file}: unexpected remote CSS URL is present: ${scheme}`;
+      if (!reported.has(problem)) problems.push(problem);
+      reported.add(problem);
+    }
   }
   return problems;
 }

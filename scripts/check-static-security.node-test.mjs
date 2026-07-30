@@ -198,6 +198,12 @@ test("accepts deployed local CSS references", () => {
   }
 });
 
+test("accepts local escaped selectors and media feature conditions", () => {
+  const localCss = String.raw`.bg-surface\/90 { color: rgb(24 37 37 / .9); }
+@media (min-width: 640px) { .sm\:p-6 { padding: 1.5rem; } }`;
+  assert.deepEqual(validateCssSecurity(localCss, "site.css"), []);
+});
+
 test("rejects CSS escaped URL and import identifiers plus quoted backslash URLs", () => {
   const vectors = [
     'body { background-image: u\\72l("https://attacker.example/function.png"); }',
@@ -241,6 +247,69 @@ test("rejects image-set remote strings in the deployed CSS gate", () => {
   try {
     writeFileSync(join(directory, "index.html"), htmlWithCsp('<link rel="stylesheet" href="site.css">'), "utf8");
     writeFileSync(join(directory, "site.css"), 'body { background: -webkit-image-set("https://attacker.example/webkit.png" 1x); }', "utf8");
+    const report = validateBuiltHtmlDirectory(directory);
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /site\.css: unexpected remote CSS URL/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects percent-encoded and base64 data stylesheet payloads", () => {
+  const vectors = [
+    '@import url("data:text/css,%40import%20url(%22https%3A%2F%2Fattacker.example%2Fnested.css%22)%3B");',
+    '@import url("data:text/css;charset=utf-8,%40import%20%22https%3A%2F%2Fattacker.example%2Fnested.css%22%3B");',
+    '@import url("data:application/css,%40import%20url(%22https%3A%2F%2Fattacker.example%2Fnested.css%22)%3B");',
+    '@import url("data:text/css;base64,QGltcG9ydCB1cmwoImh0dHBzOi8vYXR0YWNrZXIuZXhhbXBsZS9uZXN0ZWQuY3NzIik7");'
+  ];
+
+  for (const css of vectors) {
+    assert.match(validateCssSecurity(css, "site.css").join("\n"), /unexpected remote CSS URL/);
+  }
+});
+
+test("rejects every non-relative CSS URI scheme and encoded scheme form", () => {
+  const schemes = [
+    'url("data:text/css,body{}")',
+    'url("blob:opaque-identifier")',
+    'url("javascript:alert(1)")',
+    'url("file:///private/site.css")',
+    'url("filesystem:temporary/site.css")',
+    'url("ftp://attacker.example/site.css")',
+    'url("custom+transport:opaque")',
+    'url("d\\61ta:text/css,body{}")',
+    'url("d&#97;ta:text/css,body{}")'
+  ];
+
+  for (const reference of schemes) {
+    assert.match(validateCssSecurity(`body { background: ${reference}; }`, "site.css").join("\n"), /unexpected remote CSS URL/);
+  }
+
+  const percentEncodedScheme = 'body { background: url("%64%61%74%61%3Atext/css,body{}"); }';
+  assert.match(validateCssSecurity(percentEncodedScheme, "site.css").join("\n"), /unsafe CSS encoding/);
+});
+
+test("normalizes CSS escapes to a bounded fixed point and fails closed on malformed input", () => {
+  const twiceEscapedData = 'body { background: url("d\\5c 61ta:text/css,body{}"); }';
+  assert.match(validateCssSecurity(twiceEscapedData, "site.css").join("\n"), /unexpected remote CSS URL/);
+
+  let overLimit = 'd\\61ta:text/css,body{}';
+  for (let depth = 0; depth < 10; depth += 1) overLimit = overLimit.replaceAll("\\", "\\5c ");
+  assert.match(validateCssSecurity(`body { background: url("${overLimit}"); }`, "site.css").join("\n"), /CSS escape normalization limit/);
+
+  const malformed = 'body { --local-token: "local' + "\\";
+  assert.match(validateCssSecurity(malformed, "site.css").join("\n"), /malformed CSS escape/);
+});
+
+test("rejects data stylesheets in the deployed CSS gate", () => {
+  const directory = mkdtempSync(join(tmpdir(), "careguardian-static-security-"));
+  try {
+    writeFileSync(join(directory, "index.html"), htmlWithCsp('<link rel="stylesheet" href="site.css">'), "utf8");
+    writeFileSync(
+      join(directory, "site.css"),
+      '@import url("data:text/css,%40import%20url(%22https%3A%2F%2Fattacker.example%2Fnested.css%22)%3B");',
+      "utf8"
+    );
     const report = validateBuiltHtmlDirectory(directory);
     assert.equal(report.status, "fail");
     assert.match(report.problems.join("\n"), /site\.css: unexpected remote CSS URL/);
