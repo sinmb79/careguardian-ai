@@ -10,9 +10,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const expoCli = fileURLToPath(import.meta.resolve("expo/bin/cli"));
-const expoResolveAppEntryCli = fileURLToPath(
-  import.meta.resolve("expo/scripts/resolveAppEntry.js")
-);
 const mobileRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
@@ -24,11 +21,11 @@ const gradleWrapper = path.join(
   process.platform === "win32" ? "gradlew.bat" : "gradlew"
 );
 const requestedContract = process.argv[2] ?? "all";
-const supportedContracts = new Set(["all", "kotlin", "metro"]);
+const supportedContracts = new Set(["all", "entry", "kotlin", "metro"]);
 
 if (!supportedContracts.has(requestedContract)) {
   throw new Error(
-    `Unsupported native contract "${requestedContract}". Use all, kotlin, or metro.`
+    `Unsupported native contract "${requestedContract}". Use all, entry, kotlin, or metro.`
   );
 }
 
@@ -61,7 +58,39 @@ function runGradleContract(task, environment) {
   requireSuccessfulProcess(result, task);
 }
 
+function verifyAndroidEntry() {
+  const entryResult = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      "require('expo/scripts/resolveAppEntry')",
+      mobileRoot,
+      "android",
+      "absolute"
+    ],
+    { cwd: mobileRoot, encoding: "utf8" }
+  );
+  if (entryResult.status !== 0) {
+    process.stderr.write(entryResult.stderr ?? "");
+  }
+  requireSuccessfulProcess(entryResult, "Expo Android entry resolution");
+
+  const resolvedEntry = path.resolve(entryResult.stdout.trim());
+  const expectedEntry = path.join(mobileRoot, "index.ts");
+  if (resolvedEntry !== expectedEntry) {
+    throw new Error(
+      `Expo resolved an unexpected Android entry: ${resolvedEntry}; expected ${expectedEntry}`
+    );
+  }
+  return resolvedEntry;
+}
+
 function runNativeContracts() {
+  if (requestedContract === "entry") {
+    process.stdout.write(`${verifyAndroidEntry()}\n`);
+    return;
+  }
+
   const prebuildResult = spawnSync(
     process.execPath,
     [
@@ -96,28 +125,7 @@ function runNativeContracts() {
     }
   }
 
-  const entryResult = spawnSync(
-    process.execPath,
-    [
-      expoResolveAppEntryCli,
-      mobileRoot,
-      "android",
-      "absolute"
-    ],
-    { cwd: mobileRoot, encoding: "utf8" }
-  );
-  if (entryResult.status !== 0) {
-    process.stderr.write(entryResult.stderr ?? "");
-  }
-  requireSuccessfulProcess(entryResult, "Expo Android entry resolution");
-
-  const resolvedEntry = path.resolve(entryResult.stdout.trim());
-  const expectedEntry = path.join(mobileRoot, "index.ts");
-  if (resolvedEntry !== expectedEntry) {
-    throw new Error(
-      `Expo resolved an unexpected Android entry: ${resolvedEntry}; expected ${expectedEntry}`
-    );
-  }
+  verifyAndroidEntry();
 
   if (requestedContract === "all" || requestedContract === "kotlin") {
     runGradleContract(":model-integrity:compileDebugKotlin", {
