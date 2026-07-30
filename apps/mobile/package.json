@@ -14,7 +14,6 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@careguardian/care-core": "^0.1.0",
     "@life-steward/life-core": "file:../../packages/life-core",
     "expo": "~54.0.36",
     "expo-crypto": "~15.0.9",
