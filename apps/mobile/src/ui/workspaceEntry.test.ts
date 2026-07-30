@@ -1,4 +1,6 @@
 import { validateWorkspace } from "@life-steward/life-core";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { listAssistantSources } from "../local-ai/assistantSources";
 import { fixtureWorkspace } from "../test/fixtureWorkspace";
@@ -7,6 +9,18 @@ import { addWorkspaceList, addWorkspaceTask } from "./workspaceEntry";
 const now = "2026-07-31T01:02:03.000Z";
 
 describe("workspace entry", () => {
+  test("keeps the task and list forms in natural Korean", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/mobile/src/ui/LifeWorkspaceScreen.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain('const label = isTask ? "새 작업" : "새 개인 목록"');
+    expect(source).toContain('placeholder={isTask ? "무엇을 해야 하나요?" : "목록 이름"}');
+    expect(source).toContain('accessibilityLabel={`${label} 제목`}');
+    expect(source).toContain('accessibilityLabel={`새 ${isTask ? "작업" : "개인 목록"} 추가`}');
+  });
+
   test("adds an open task with a deterministic id and timestamp", () => {
     const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", {
       now: () => now,
@@ -52,7 +66,7 @@ describe("workspace entry", () => {
       createId: () => "task-unused"
     });
 
-    expect(result).toEqual({ ok: false, error: "Enter a title." });
+    expect(result).toEqual({ ok: false, error: "제목을 입력해 주세요." });
     expect(fixtureWorkspace.tasks).toHaveLength(1);
   });
 
@@ -62,7 +76,7 @@ describe("workspace entry", () => {
       createId: () => "list-unused"
     });
 
-    expect(result).toEqual({ ok: false, error: "Titles can be at most 500 characters." });
+    expect(result).toEqual({ ok: false, error: "제목은 500자 이하로 입력해 주세요." });
   });
 
   test("uses a later injected id when the first task id collides", () => {

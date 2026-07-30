@@ -19,6 +19,7 @@ import {
   useLocalAssistant
 } from "../local-ai/useLocalAssistant";
 import { LocalAiSettingsScreen } from "./LocalAiSettingsScreen";
+import { openHuggingFacePrivacyPolicy } from "../legal/externalLinking";
 
 const ACTIONS: ReadonlyArray<{
   id: AiAction;
@@ -367,6 +368,16 @@ function ModelCard(props: ModelCardProps) {
     activeDownloadModelId,
     activeSessionModelId
   } = props;
+  const [privacyPolicyStatus, setPrivacyPolicyStatus] = useState("");
+  const openHuggingFacePrivacy = async () => {
+    setPrivacyPolicyStatus("");
+    const result = await openHuggingFacePrivacyPolicy();
+    if (!result.ok) {
+      setPrivacyPolicyStatus(
+        "Hugging Face 개인정보처리방침을 열지 못했습니다. 아래 고지는 계속 확인할 수 있습니다."
+      );
+    }
+  };
   const isRecommended = model.id.includes("0.5b");
   const isDownloading =
     activeDownloadModelId === model.id &&
@@ -428,6 +439,45 @@ function ModelCard(props: ModelCardProps) {
       !isPaused &&
       downloadState?.kind !== "verifying" ? (
         <>
+          <View style={styles.externalDownloadDisclosure}>
+            <Text style={styles.externalDownloadDisclosureTitle}>
+              모델 다운로드 외부 처리 고지
+            </Text>
+            <Text style={styles.consentText}>수신자: Hugging Face</Text>
+            <Text style={styles.consentText}>
+              전송/자동 기록 가능 정보: IP 주소, IP 기반 대략적 위치, 기기·운영체제·브라우저/네트워크 정보, 선택한 모델 요청 경로와 서비스 이용 기록
+            </Text>
+            <Text style={styles.consentText}>
+              목적: 파일 제공, 서비스 운영·개선·분석, 보안 및 법적 의무
+            </Text>
+            <Text style={styles.consentText}>
+              처리 지역·보존: 미국 등 다른 국가에서 처리될 수 있고 필요한 기간 보존
+            </Text>
+            <Text style={styles.consentText}>
+              권리/문의: Hugging Face 정책과 privacy@huggingface.co
+            </Text>
+            <Text style={styles.consentText}>
+              프롬프트·AI 결과·생활 작업 내용은 Hugging Face에 보내지지 않습니다.
+            </Text>
+            <Text style={styles.consentText}>
+              설치는 선택 사항이며 거부해도 일반 생활 기능은 사용 가능하고, 사용자가 명시적으로 체크하기 전에는 설치할 수 없습니다.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Hugging Face 개인정보처리방침 열기"
+              style={styles.huggingFacePrivacyButton}
+              onPress={() => void openHuggingFacePrivacy()}
+            >
+              <Text style={styles.huggingFacePrivacyButtonText}>
+                Hugging Face 개인정보처리방침 열기
+              </Text>
+            </Pressable>
+            {privacyPolicyStatus ? (
+              <Text accessibilityLiveRegion="polite" style={styles.errorText}>
+                {privacyPolicyStatus}
+              </Text>
+            ) : null}
+          </View>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityState={{ checked: accepted }}
@@ -683,6 +733,15 @@ const styles = StyleSheet.create({
   },
   blockedText: { color: "#655f55", fontWeight: "700" },
   consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  externalDownloadDisclosure: {
+    gap: 7,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#eef4f1",
+    borderWidth: 1,
+    borderColor: "#b9cfbf"
+  },
+  externalDownloadDisclosureTitle: { color: "#25474a", fontWeight: "800", fontSize: 15 },
   checkbox: {
     width: 26,
     height: 26,
@@ -696,6 +755,15 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: "#6f8a70" },
   checkboxMark: { color: "#fff", fontWeight: "900" },
   consentText: { flex: 1, color: "#45575b", fontSize: 14, lineHeight: 20 },
+  huggingFacePrivacyButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "#315f55"
+  },
+  huggingFacePrivacyButtonText: { color: "#fff", fontWeight: "800", textAlign: "center" },
   installButton: {
     minHeight: 48,
     flexGrow: 1,

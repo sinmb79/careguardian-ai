@@ -58,11 +58,11 @@ function addEntry<T extends LifeTask | LifeList>(
   createEntry: (id: string, title: string) => T
 ): WorkspaceEntryResult {
   const title = inputTitle.trim();
-  if (title.length === 0) return { ok: false, error: "Enter a title." };
-  if (title.length > MAX_TITLE_LENGTH) return { ok: false, error: "Titles can be at most 500 characters." };
+  if (title.length === 0) return { ok: false, error: "제목을 입력해 주세요." };
+  if (title.length > MAX_TITLE_LENGTH) return { ok: false, error: "제목은 500자 이하로 입력해 주세요." };
 
   const id = createAvailableId(prefix, collection, dependencies);
-  if (id === null) return { ok: false, error: "Unable to create a unique item identifier." };
+  if (id === null) return { ok: false, error: "새 항목의 고유 식별자를 만들지 못했습니다." };
 
   const nextWorkspace = prefix === "task-"
     ? { ...workspace, updatedAt: dependencies.now(), tasks: [...workspace.tasks, createEntry(id, title) as LifeTask] }
@@ -70,7 +70,7 @@ function addEntry<T extends LifeTask | LifeList>(
   const validation = validateWorkspace(nextWorkspace);
   return validation.ok
     ? { ok: true, workspace: validation.value }
-    : { ok: false, error: "Unable to save this item. Please check its title." };
+    : { ok: false, error: "이 항목을 저장할 수 없습니다. 제목을 확인해 주세요." };
 }
 
 function createAvailableId<T extends { id: string }>(
