@@ -28,6 +28,30 @@ coverage that was not actually performed.
 - Google Play upload/publication and GitHub push/Pages deployment are outside
   this task. Record only artifacts and facts that those later steps need.
 
+## Candidate identity invariant
+
+Select one immutable `CANDIDATE_SHA` only after all source and independent
+review gates have passed. It is an explicit input to this task, not an
+after-the-fact value recorded from a moving branch tip.
+
+- Before every source build, require `git rev-parse HEAD` to equal
+  `CANDIDATE_SHA` and `git status --porcelain` to be empty. Repeat both checks
+  after prebuild/native generation. Any mismatch or generated drift stops the
+  candidate; do not refresh the SHA or silently use a newer checkout.
+- Bind `CANDIDATE_SHA` to the ASCII source checkout, signed local APK,
+  generated merged manifest, normal production source, EAS submission/build
+  metadata, downloaded AAB, bundletool APKS, and final evidence document. A
+  hash/source mismatch invalidates the candidate rather than being explained
+  away by equivalent version numbers.
+- The capture-only worktree must be based on `CANDIDATE_SHA` and may differ
+  only in the named `FLAG_SECURE` control. Preserve the parent SHA and exact
+  single-file/single-diff proof; it is never the EAS upload directory.
+- Obtain EAS source attestation from submitted build details/metadata (the
+  source commit/revision, build profile, project ID, and submission timestamp)
+  and retain the exported metadata or API/CLI output beside the AAB evidence.
+  If EAS cannot attest the submitted source revision as `CANDIDATE_SHA`, mark
+  AAB-to-source identity `BLOCKED`; local checkout state is not a substitute.
+
 ## Reproducible build environment
 
 1. Create or refresh an ASCII-only temporary worktree from the exact candidate
@@ -43,7 +67,10 @@ coverage that was not actually performed.
    command completes.
 5. Build a signed x86_64 production release APK for emulator QA. Retain the
    APK path and SHA-256 outside Git; do not silently substitute a debug or
-   Expo Go artifact.
+   Expo Go artifact. Before installing it, run `apksigner verify --verbose
+   --print-certs` on that exact SHA-256-named file, record all enabled signing
+   schemes and certificate SHA-256, and reject the known Android debug
+   certificate or any unexpected signer.
 
 ## Generated Android contract and static inspection
 
@@ -71,6 +98,15 @@ Inspect the signed APK and final AAB/APKS for all of the following:
 - only the fixed HTTPS model artifact paths are represented by the approved
   model registry.
 
+For the local APK specifically, bind the artifact hash to the tested install:
+inspect the APK manifest and use `pm path`, `dumpsys package`, and resolved
+launcher activity after install to record package `com.sinmb.careguardianai`,
+version `1.1.0 (7)`, target SDK 36, `android:debuggable=false`, and
+`allowBackup=false`. Record the APK SHA-256, merged-manifest SHA-256, signer
+certificate digest, and installed package facts in one evidence row. This is
+local signing evidence only; it must not be confused with Google Play App
+Signing evidence for the EAS AAB.
+
 ## Emulator functional QA
 
 Use a clean x86_64 Android emulator. Fresh-install the signed release APK,
@@ -79,12 +115,28 @@ the first-launch result. Re-run cold launch after the important destructive
 flows below.
 
 1. **Workspace and deletion**
-   - From an empty install, exercise the full-delete action and prove it
-     returns to a clean usable state without crash or stale scheduled notice.
-   - Create and explicitly save a synthetic task/list workspace, then full
-     delete it. Verify the created workspace does not reappear after restart.
-   - Treat any typed full-delete failure as a release blocker; do not turn it
-     into a success claim merely because part of the cleanup ran.
+   - From an empty install, exercise the full-delete action as its own variant,
+     cold restart, and prove it returns to a clean usable state. Verify zero
+     app-owned SQLCipher/current-and-legacy database state, SecureStore keys,
+     model/partial/temp/backup files, scheduled notifications, and native
+     inference state remain; record the exact package-state checks used.
+   - In a second fresh signed-APK variant, create and explicitly save a
+     synthetic task/list workspace with a future local notification, start the
+     approved 0.5B download, pause it while its partial file is retained, then
+     invoke the **full-delete action**. Cold restart and prove that the
+     workspace/database/current-and-legacy state, SecureStore keys, scheduled
+     notification, model metadata, partial/temp/backup file, and inference
+     residual are all absent.
+   - In a third fresh signed-APK variant, install and load the verified 0.5B
+     model, schedule a synthetic local reminder, invoke full delete, and cold
+     restart. Prove the model cannot load without an explicit reinstall and no
+     scheduled reminder remains. This composite run, not separate `cancel` or
+     `removeModel` successes, is the deletion proof.
+   - Treat every typed deletion error, remaining scheduled item, model state,
+     model/partial/temp/backup file, workspace row, legacy persistence value,
+     key, or live inference context as a release blocker. Record exact
+     synthetic values, postconditions, commands, and cold-restart observations
+     in the final evidence document.
 2. **Local notifications**
    - Grant the Android notification permission where required; schedule a
      synthetic local reminder, observe the displayed notification, cancel it,
@@ -154,8 +206,12 @@ off so the source-reviewed `1.1.0 (7)` is the cloud artifact identity.
 Create/update one honest final evidence document under
 `docs/security/android-aab-evidence-2026-07-30.md` with:
 
-- exact source commit, tools/versions, commands, environment/device profiles;
+- immutable `CANDIDATE_SHA`, tools/versions, commands, environment/device
+  profiles, and all before/after clean-state checks;
 - APK/AAB/APKS/merged-manifest/screenshot paths and SHA-256 values;
+- APK signer verification output/certificate SHA-256, APK manifest facts, and
+  installed-package binding; EAS source-attestation metadata and its relation
+  to `CANDIDATE_SHA`;
 - pass/fail results for every acceptance item, including explicit test data;
 - notification, model, deletion, approval, link, crash, and network evidence;
 - residual dependencies/permissions/components actually present, if any;
@@ -164,29 +220,39 @@ Create/update one honest final evidence document under
   AAB evidence.
 
 Clean only exact, verified temporary directories and emulator helper packages
-created for this task. Do not delete source worktrees, user-owned files, or
-the final AAB/evidence artifact. Preserve enough command output to reproduce
-each assertion.
+created for this task. Before any cleanup, resolve and validate each literal
+target path as a task-created directory beneath the dedicated temporary
+artifact root, list its contents, and record that validation. Do not use
+globs, computed broad parents, source worktrees, user-owned files, or the
+final AAB/evidence artifact as deletion targets. Preserve enough command
+output to reproduce each assertion.
 
 ## Acceptance criteria
 
 Task 14 is `DONE` only when all of the following are true:
 
-1. ASCII-worktree `npm ci`, full `npm run verify`, Android release gate,
+1. One immutable `CANDIDATE_SHA` binds the clean ASCII checkout, normal local
+   APK/merged manifest, capture-only parent/diff proof, EAS source attestation,
+   downloaded AAB, APKS, and final report; any mismatch is discarded/blocked.
+2. ASCII-worktree `npm ci`, full `npm run verify`, Android release gate,
    clean prebuild, signed APK build, and semantic merged-manifest verifier
    pass without unexplained generated drift.
-2. A freshly installed signed APK completes cold launch, empty/full deletion,
-   created-workspace deletion, local notification schedule/display/cancel,
-   the 0.5B pause/resume/SHA/load/Korean inference/cancel/delete path, and
-   exact privacy/Hugging Face link checks without a release-blocking crash.
-3. Eight valid Android-native synthetic screenshots exist (4 phone, 2 tablet
+3. The signed local APK has verified non-debug signing schemes/certificate and
+   is bound by hash to its manifest and installed release package
+   (`debuggable=false`); it completes cold launch, empty full-delete, partial
+   download plus notification composite full-delete, installed/loaded model
+   plus notification composite full-delete, local notification
+   schedule/display/cancel, the 0.5B pause/resume/SHA/load/Korean
+   inference/cancel/delete path, and exact privacy/Hugging Face link checks
+   without a release-blocking crash.
+4. Eight valid Android-native synthetic screenshots exist (4 phone, 2 tablet
    7-inch, 2 tablet 10-inch), with documented capture-only isolation; the
    production candidate still protects screenshots.
-4. A finished EAS production AAB is downloaded, hashed, bundletool-inspected,
+5. A finished EAS production AAB is downloaded, hashed, bundletool-inspected,
    converted to APKS, installed, and cold-launched; it passes all package,
    version, ABI, CPU-only, backup/debug/development, permission, and
    FCM/remote-push absence checks.
-5. The final evidence document is committed and contains no unsupported claim.
+6. The final evidence document is committed and contains no unsupported claim.
    In particular, there is **no claim of Samsung or Pixel physical-device
    validation** unless it was actually run. Their evidence remains required
    before real personal/sensitive data or general release, but is not a
