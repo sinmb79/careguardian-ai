@@ -95,6 +95,20 @@ describe("browser personal workspace repository", () => {
     await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw: invalidRaw });
   });
 
+  test("keeps a cleared tombstone so legacy raw data cannot reappear after cleanup is blocked", async () => {
+    const workspace = { ...createEmptyWorkspace("2026-07-30T00:00:00.000Z"), title: "지워야 할 이전 데이터" };
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new DOMException("blocked", "SecurityError"); });
+
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "loaded", workspace, revision: 1 });
+    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "cleared" });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
+
+    const replacement = { ...workspace, title: "새 작업공간" };
+    await expect(saveWorkspace(replacement, 0)).resolves.toEqual({ kind: "saved", revision: 1 });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "loaded", workspace: replacement, revision: 1 });
+  });
+
   test("serializes two concurrent saves from the same revision so exactly one succeeds", async () => {
     const first = { ...createEmptyWorkspace("2026-07-30T00:00:00.000Z"), title: "첫 탭" };
     const second = { ...first, title: "둘째 탭" };

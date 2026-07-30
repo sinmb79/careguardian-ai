@@ -20,7 +20,11 @@ type StoredWorkspace = {
 };
 
 type InvalidWorkspace = { type: "invalid"; raw: string };
-type StoredRecord = StoredWorkspace | InvalidWorkspace;
+// A tombstone is deliberately retained after deletion.  It contains no user
+// data, but stops a legacy localStorage copy from being imported again when a
+// browser has blocked removal of that old key.
+type ClearedWorkspace = { type: "cleared" };
+type StoredRecord = StoredWorkspace | InvalidWorkspace | ClearedWorkspace;
 
 export type WorkspaceLoadResult =
   | { kind: "missing" }
@@ -113,7 +117,7 @@ export async function clearWorkspace(expectedRevision: number): Promise<Workspac
       if (current.kind === "invalid") return { result: { kind: "invalid" } };
       const revision = current.kind === "loaded" ? current.revision : 0;
       if (revision !== expectedRevision) return { result: { kind: "conflict" } };
-      return { result: { kind: "cleared" }, remove: true };
+      return { result: { kind: "cleared" }, record: { type: "cleared" } };
     });
     if (result.kind === "cleared") publishWorkspaceChange();
     return result;
@@ -260,6 +264,7 @@ function mutateRecord<T>(
 
 function toLoadResult(record: unknown): WorkspaceLoadResult {
   if (record === undefined) return { kind: "missing" };
+  if (isClearedWorkspace(record)) return { kind: "missing" };
   if (isStoredWorkspace(record)) return { kind: "loaded", workspace: record.workspace, revision: record.revision };
   if (isInvalidWorkspace(record)) return { kind: "invalid", raw: record.raw };
   return { kind: "invalid", raw: serializeRecord(record) };
@@ -284,6 +289,10 @@ function isStoredWorkspace(input: unknown): input is StoredWorkspace {
 
 function isInvalidWorkspace(input: unknown): input is InvalidWorkspace {
   return isPlainObject(input) && input.type === "invalid" && typeof input.raw === "string" && Object.keys(input).every((key) => key === "type" || key === "raw");
+}
+
+function isClearedWorkspace(input: unknown): input is ClearedWorkspace {
+  return isPlainObject(input) && input.type === "cleared" && Object.keys(input).length === 1;
 }
 
 function isValidWorkspace(input: unknown): input is PersonalWorkspace {

@@ -3,6 +3,7 @@ import { validateExtension, type ExtensionDefinition } from "@life-steward/life-
 
 type WorkspaceEditorProps = {
   extensions: ExtensionDefinition[];
+  disabled: boolean;
   onAddExtension(extension: ExtensionDefinition): void;
 };
 
@@ -10,7 +11,7 @@ function createExtensionId(): string {
   return `extension-${Date.now()}`;
 }
 
-export function WorkspaceEditor({ extensions, onAddExtension }: WorkspaceEditorProps) {
+export function WorkspaceEditor({ extensions, disabled, onAddExtension }: WorkspaceEditorProps) {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
 
@@ -44,9 +45,10 @@ export function WorkspaceEditor({ extensions, onAddExtension }: WorkspaceEditorP
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="예: 여행 준비"
+          disabled={disabled}
         />
       </label>
-      <button className="workspace-button workspace-button-secondary" type="button" onClick={addExtension}>
+      <button className="workspace-button workspace-button-secondary" type="button" disabled={disabled} onClick={addExtension}>
         기능 추가
       </button>
       {message ? <p className="workspace-message" role="status">{message}</p> : null}
