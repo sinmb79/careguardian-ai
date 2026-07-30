@@ -1,0 +1,110 @@
+[
+  {
+    "id": "hyperclovax-seed-text-instruct-0.5b-q4km",
+    "provider": "NAVER",
+    "displayName": "HyperCLOVA X SEED Text Instruct 0.5B Q4_K_M",
+    "availability": "installable",
+    "repository": "naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF",
+    "revision": "27831169fdebe6fe30bb1b9d76b12a2d06693f26",
+    "licenseName": "HyperCLOVA X SEED Model License Agreement",
+    "licenseAssets": [
+      {
+        "id": "license",
+        "path": "assets/model-licenses/hyperclovax-seed/LICENSE.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE"
+        ]
+      },
+      {
+        "id": "notice",
+        "path": "assets/model-licenses/hyperclovax-seed/NOTICE.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-31",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-31"
+        ]
+      },
+      {
+        "id": "prohibited-use-policy",
+        "path": "assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-23",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-23"
+        ]
+      }
+    ],
+    "attribution": "Powered by HyperCLOVA X",
+    "minimumRamGb": 4,
+    "appDefaultContextTokens": 2048,
+    "officialModelContextTokens": 8192,
+    "artifactFileName": "HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf",
+    "downloadUrl": "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF/resolve/27831169fdebe6fe30bb1b9d76b12a2d06693f26/HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf?download=true",
+    "bytes": 431882784,
+    "sha256": "bc6a93b452648e8e90b06dc04f81edbdce9703fa76bdf589a63cc8418699d44f"
+  },
+  {
+    "id": "hyperclovax-seed-text-instruct-1.5b-q4km",
+    "provider": "NAVER",
+    "displayName": "HyperCLOVA X SEED Text Instruct 1.5B Q4_K_M",
+    "availability": "installable",
+    "repository": "naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF",
+    "revision": "b9bbb68d6635a8b80263bf7165c8b908d64f28de",
+    "licenseName": "HyperCLOVA X SEED Model License Agreement",
+    "licenseAssets": [
+      {
+        "id": "license",
+        "path": "assets/model-licenses/hyperclovax-seed/LICENSE.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE"
+        ]
+      },
+      {
+        "id": "notice",
+        "path": "assets/model-licenses/hyperclovax-seed/NOTICE.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-31",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-31"
+        ]
+      },
+      {
+        "id": "prohibited-use-policy",
+        "path": "assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt",
+        "sourceUrls": [
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-23",
+          "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-23"
+        ]
+      }
+    ],
+    "attribution": "Powered by HyperCLOVA X",
+    "minimumRamGb": 6,
+    "appDefaultContextTokens": 4096,
+    "officialModelContextTokens": 131072,
+    "artifactFileName": "HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M.gguf",
+    "downloadUrl": "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF/resolve/b9bbb68d6635a8b80263bf7165c8b908d64f28de/HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M.gguf?download=true",
+    "bytes": 1006572160,
+    "sha256": "6e0841f886f55411327d4659308f2408424f0ac55a2d32f60a49f470c71381a6"
+  },
+  {
+    "id": "kanana-1.5-2.1b-instruct",
+    "provider": "Kakao",
+    "displayName": "Kanana 1.5 2.1B Instruct",
+    "availability": "blocked_no_approved_gguf",
+    "repository": "kakaocorp/kanana-1.5-2.1b-instruct-2505",
+    "revision": "7df4bc35ccd610e451809d7106e1c3cf82bfd44c",
+    "licenseName": "Apache License 2.0",
+    "licenseAssets": [
+      {
+        "id": "license",
+        "path": "assets/model-licenses/apache-2.0/LICENSE.txt",
+        "sourceUrls": [
+          "https://huggingface.co/kakaocorp/kanana-1.5-2.1b-instruct-2505/resolve/7df4bc35ccd610e451809d7106e1c3cf82bfd44c/LICENSE"
+        ]
+      }
+    ],
+    "attribution": "Kanana 1.5 by Kakao",
+    "minimumRamGb": 6,
+    "appDefaultContextTokens": 4096,
+    "officialModelContextTokens": 32768
+  }
+]

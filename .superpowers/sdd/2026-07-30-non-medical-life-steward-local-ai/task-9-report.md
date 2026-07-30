@@ -6,19 +6,21 @@
 
 ## Implemented controls
 
-1. Full deletion enumerates current and legacy CareGuardian SQLite/SQLCipher, SecureStore, and Expo SQLite KV namespaces; it stops inference, cancels every scheduled notification, removes models/partials, verifies deletion, and reports typed namespace failures.
+1. Full deletion enumerates current and legacy CareGuardian SQLite/SQLCipher, SecureStore, Expo SQLite KV, browser IndexedDB, and browser localStorage namespaces. Mobile failures publish typed failed domains, leave the UI locked, and are observed by the Alert Promise handler without a false success message. Web deletion retains only a data-free tombstone, verifies both app-owned legacy keys are absent, retries cleanup on reload, and leaves unrelated origin data/caches untouched.
 2. Device credential authentication no longer rejects PIN-only Android devices based on biometric hardware preflight; unsuccessful native authentication remains locked.
-3. The Vite document has a strict self-only CSP and the generated `dist/index.html` is checked after each production build.
-4. The non-medical release checker uses `git ls-files`, verifies exact mobile identity/linkage and minimal permission set, rejects deprecated care-core/cloud services and unapproved runtime URLs, with narrow documented policy/legacy-cleanup exceptions.
-5. The model checker accepts only two pinned HyperCLOVA X artifacts with exact repository/revision/GGUF filename/bytes/SHA-256/RAM/context and offline license files. Kakao remains blocked.
-6. CI uses full-SHA pins for all third-party Actions, Node 22 (within the repository `>=20.19.4 <25` engine range and the Expo 54-supported Node LTS line), and runs reproducible install, tests, build, CSP, mobile typecheck/doctor, policy/model gates, and baseline-aware audit policy under least `contents: read` privilege.
+3. Every deployed HTML document has the same strict self-only CSP. The privacy page uses external self-hosted CSS, and `dist/**/*.html` is checked for CSP, inline execution/style, event handlers, and remote URLs.
+4. The non-medical release checker inventories tracked and non-ignored untracked release files. Whole-file exceptions were replaced by exact single-line policy/legacy/cloud-disable/network contracts plus AST checks for computed/template/concatenated endpoints.
+5. The model registry is strict JSON with exact schema/value comparison. Runtime validation and deep-freezing occur before export; AST mutation tests reject duplicate declarations, URL construction, filter bypasses, and getter bypasses. Only two pinned HyperCLOVA X artifacts remain installable; Kakao remains blocked.
+6. The production audit gate uses exact sorted equality for counts, packages, and GHSA IDs, validates acceptance dates/order, and fails closed on command, parser, network, signal, or exit-status errors.
+7. `.github/workflows/ci.yml` is the single full-SHA-pinned `verify -> deploy` chain. The exact checked-out SHA is tested, built, statically checked, mobile-checked, policy/model mutation-tested, audited, and workflow-checked before its artifact can be uploaded. Only the deploy job receives Pages/OIDC write permissions.
 
 ## Verification
 
 | Command | Result |
 |---|---|
-| `npm run verify` | PASS — 20 Vitest files / 175 tests; build, static CSP, mobile typecheck, Expo doctor, policy/model/audit gates |
-| `npm run release:model-check:test` | PASS — 3 mutation tests |
+| `npm run verify` | PASS — 21 Vitest files / 181 tests; build; all generated HTML CSP; mobile typecheck; Expo doctor; policy/model; 24 mutation/contract tests; exact audit; workflow contract |
+| `npm run release:gate-tests` | PASS — 24 Node mutation/contract tests (3 static + 5 policy + 5 model + 6 audit + 5 workflow) |
+| `npm run release:audit-policy` | PASS — exact accepted baseline: Critical 0, High 19, Moderate 10, 29 packages, 6 GHSA IDs |
 
 ## Remaining release blockers
 

@@ -275,7 +275,37 @@ describe("life workspace state", () => {
       workspace: expect.objectContaining({ id: "personal-workspace", tasks: [], lists: [], records: [] }),
       hasStoredWorkspace: false,
       privacyGate: "locked",
-      isDeleting: false
+      isDeleting: false,
+      deletionFailure: {
+        failedDomains: ["local-model-files"]
+      }
     });
+    expect(controller.snapshot().statusMessage).toContain("로컬 모델 파일");
+    expect(controller.snapshot().statusMessage).not.toContain("모든 로컬 데이터를 삭제했습니다");
+  });
+
+  test("records a persistent workspace deletion failure without reporting success", async () => {
+    const controller = createLifeWorkspaceController({
+      load: async () => fixtureWorkspace,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      deleteWorkspace: async () => { throw new Error("secure store key remains"); },
+      removeAllModels: async () => undefined,
+      syncNotifications: async () => 0,
+      cancelNotifications: async () => undefined
+    });
+    await controller.load();
+
+    await expect(controller.deleteAll()).rejects.toMatchObject({ name: "AggregateError" });
+
+    expect(controller.snapshot()).toMatchObject({
+      privacyGate: "locked",
+      hasStoredWorkspace: true,
+      workspace: expect.objectContaining({ tasks: [], records: [], lists: [] }),
+      deletionFailure: {
+        failedDomains: ["workspace-and-legacy-storage"]
+      }
+    });
+    expect(controller.snapshot().statusMessage).toContain("작업공간 및 이전 저장소");
   });
 });

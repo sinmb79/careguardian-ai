@@ -7,12 +7,26 @@ export interface MobileDataDeletionDependencies {
   resetMemory: () => void | Promise<void>;
 }
 
+export type MobileDeletionDomain =
+  | "active-inference"
+  | "scheduled-notifications"
+  | "local-model-files"
+  | "workspace-and-legacy-storage"
+  | "in-memory-state";
+
 export class MobileFullDeletionError extends Error {
-  constructor(readonly domain: string, cause: unknown) {
+  constructor(readonly domain: MobileDeletionDomain, cause: unknown) {
     super(`mobile full deletion failed for ${domain}`);
     this.name = "MobileFullDeletionError";
     this.cause = cause;
   }
+}
+
+export function getMobileDeletionFailedDomains(error: unknown): MobileDeletionDomain[] {
+  if (!(error instanceof AggregateError)) return [];
+  return error.errors
+    .filter((failure): failure is MobileFullDeletionError => failure instanceof MobileFullDeletionError)
+    .map((failure) => failure.domain);
 }
 
 /**
@@ -29,7 +43,10 @@ export async function clearMobileData({
   resetMemory
 }: MobileDataDeletionDependencies): Promise<void> {
   const failures: MobileFullDeletionError[] = [];
-  const attempt = async (domain: string, operation: (() => void | Promise<void>) | undefined) => {
+  const attempt = async (
+    domain: MobileDeletionDomain,
+    operation: (() => void | Promise<void>) | undefined
+  ) => {
     if (!operation) return;
     try {
       await operation();

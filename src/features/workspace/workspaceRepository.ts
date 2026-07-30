@@ -5,6 +5,7 @@ import {
 } from "@life-steward/life-core";
 
 export const WORKSPACE_STORAGE_KEY = "life-steward.workspace.v1";
+export const LEGACY_CARE_STORAGE_KEY = "careguardian.manual";
 export const WORKSPACE_DATABASE_NAME = "life-steward-workspace";
 export const WORKSPACE_CHANGE_EVENT = "life-steward-workspace-change";
 
@@ -12,6 +13,16 @@ const WORKSPACE_STORE_NAME = "workspaces";
 const WORKSPACE_RECORD_KEY = "current";
 const WORKSPACE_CHANNEL_NAME = "life-steward-workspace";
 const WORKSPACE_SOURCE_ID = `workspace-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+export const WEB_PERSISTENCE_INVENTORY = Object.freeze({
+  indexedDb: Object.freeze({
+    databaseName: WORKSPACE_DATABASE_NAME,
+    storeName: WORKSPACE_STORE_NAME,
+    userRecordKey: WORKSPACE_RECORD_KEY,
+    tombstone: Object.freeze({ type: "cleared" as const })
+  }),
+  localStorageKeys: Object.freeze([WORKSPACE_STORAGE_KEY, LEGACY_CARE_STORAGE_KEY])
+});
 
 type StoredWorkspace = {
   schemaVersion: 1;
@@ -45,6 +56,9 @@ export async function loadWorkspace(): Promise<WorkspaceLoadResult> {
 
   try {
     const record = await readRecord(database);
+    if (isClearedWorkspace(record)) {
+      return eraseAppOwnedLegacyStorageAndVerify() ? { kind: "missing" } : { kind: "unavailable" };
+    }
     if (record !== undefined) return toLoadResult(record);
     return await importLegacyWorkspace(database);
   } catch {
@@ -119,7 +133,10 @@ export async function clearWorkspace(expectedRevision: number): Promise<Workspac
       if (revision !== expectedRevision) return { result: { kind: "conflict" } };
       return { result: { kind: "cleared" }, record: { type: "cleared" } };
     });
-    if (result.kind === "cleared") publishWorkspaceChange();
+    if (result.kind === "cleared") {
+      if (!eraseAppOwnedLegacyStorageAndVerify()) return { kind: "unavailable" };
+      publishWorkspaceChange();
+    }
     return result;
   } catch {
     return { kind: "unavailable" };
@@ -198,6 +215,16 @@ function removeLegacyWorkspace(): void {
     window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
   } catch {
     // IndexedDB is already authoritative; a blocked legacy cleanup must not erase the durable record.
+  }
+}
+
+function eraseAppOwnedLegacyStorageAndVerify(): boolean {
+  try {
+    const storage = window.localStorage;
+    for (const key of WEB_PERSISTENCE_INVENTORY.localStorageKeys) storage.removeItem(key);
+    return WEB_PERSISTENCE_INVENTORY.localStorageKeys.every((key) => storage.getItem(key) === null);
+  } catch {
+    return false;
   }
 }
 

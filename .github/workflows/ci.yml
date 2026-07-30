@@ -1,9 +1,13 @@
-name: Security and release gates
+name: Verify and deploy GitHub Pages
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read
@@ -11,9 +15,13 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout
+      - name: Checkout exact workflow SHA
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -21,7 +29,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
+      - name: Install exact lockfile
         run: npm ci
 
       - name: Unit tests
@@ -30,7 +38,7 @@ jobs:
       - name: Web production build
         run: npm run build
 
-      - name: Static CSP shell check
+      - name: Static security for every deployed HTML file
         run: npm run release:static-security-check
 
       - name: Mobile type check
@@ -42,11 +50,38 @@ jobs:
       - name: Non-medical release policy
         run: npm run release:policy-check
 
-      - name: Pinned model registry policy
+      - name: Pinned structured model registry policy
         run: npm run release:model-check
 
-      - name: Model registry mutation tests
-        run: npm run release:model-check:test
+      - name: Security gate mutation tests
+        run: npm run release:gate-tests
 
       - name: Production dependency audit
         run: npm run release:audit-policy
+
+      - name: Release workflow contract
+        run: npm run release:workflow-check
+
+      - name: Upload verified Pages artifact
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: ./dist
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy artifact built and gated at the exact workflow SHA
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

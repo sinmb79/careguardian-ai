@@ -27,7 +27,11 @@ import {
 } from "../storage/mobileWorkspaceRepository";
 import { removeAllModels } from "../local-ai/modelStore";
 import { stopAndReleaseLocalModel } from "../local-ai/llamaRuntime";
-import { clearMobileData } from "../security/clearMobileData";
+import {
+  clearMobileData,
+  getMobileDeletionFailedDomains,
+  type MobileDeletionDomain
+} from "../security/clearMobileData";
 
 export type LifeWorkspaceSection = "today" | "lists" | "extensions" | "local-ai" | "settings";
 type OperationKind = "save" | "delete" | "unlock" | "previous-delete" | null;
@@ -41,6 +45,10 @@ export type LifeWorkspaceSnapshot = {
   isDeleting: boolean;
   isAuthenticating: boolean;
   privacyGate: PrivacyGateState;
+  deletionFailure: {
+    failedDomains: MobileDeletionDomain[];
+    message: string;
+  } | null;
   statusMessage: string;
   section: LifeWorkspaceSection;
 };
@@ -93,9 +101,18 @@ function initialSnapshot(): LifeWorkspaceSnapshot {
   return {
     workspace: createEmptyWorkspace(), hasStoredWorkspace: false, previousTestData: false,
     isLoaded: false, isSaving: false, isDeleting: false, isAuthenticating: false,
-    privacyGate: "unlocked", statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
+    privacyGate: "unlocked", deletionFailure: null,
+    statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
   };
 }
+
+const DELETION_DOMAIN_LABELS: Record<MobileDeletionDomain, string> = {
+  "active-inference": "실행 중인 로컬 AI",
+  "scheduled-notifications": "예약된 알림",
+  "local-model-files": "로컬 모델 파일",
+  "workspace-and-legacy-storage": "작업공간 및 이전 저장소",
+  "in-memory-state": "메모리 상태"
+};
 
 export function createLifeWorkspaceController(dependencies: LifeWorkspaceControllerDependencies) {
   let current = initialSnapshot();
@@ -186,7 +203,7 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       const id = start("delete");
       if (id === null) throw new Error("workspace operation in progress");
       lifecycleGeneration += 1;
-      patch({ isDeleting: true, privacyGate: "locked" });
+      patch({ isDeleting: true, privacyGate: "locked", deletionFailure: null });
       try {
         await clearMobileData({
           stopActiveInference: dependencies.stopActiveInference,
@@ -194,11 +211,28 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
           removeAllModels: dependencies.removeAllModels,
           deleteAllKnownWorkspaceData: dependencies.deleteAllKnownWorkspaceData ?? dependencies.deleteWorkspace,
           resetMemory: () => patch({
-            workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "locked",
-            statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
+            workspace: createEmptyWorkspace(), privacyGate: "locked"
           })
         });
-        patch({ privacyGate: "unlocked", statusMessage: "이 기기의 모든 로컬 데이터를 삭제했습니다." });
+        patch({
+          hasStoredWorkspace: false,
+          privacyGate: "unlocked",
+          deletionFailure: null,
+          statusMessage: "이 기기의 모든 로컬 데이터를 삭제했습니다."
+        });
+      } catch (error) {
+        const failedDomains = getMobileDeletionFailedDomains(error);
+        const failedLabels = failedDomains.map((domain) => DELETION_DOMAIN_LABELS[domain]);
+        const message = failedLabels.length > 0
+          ? `모든 데이터 삭제를 완료하지 못했습니다. 실패 영역: ${failedLabels.join(", ")}. 남은 데이터를 확인한 뒤 다시 시도해 주세요.`
+          : "모든 데이터 삭제를 완료하지 못했습니다. 남은 데이터를 확인한 뒤 다시 시도해 주세요.";
+        patch({
+          hasStoredWorkspace: failedDomains.includes("workspace-and-legacy-storage"),
+          privacyGate: "locked",
+          deletionFailure: { failedDomains, message },
+          statusMessage: message
+        });
+        throw error;
       } finally {
         finish("delete", id, { isDeleting: false });
       }
