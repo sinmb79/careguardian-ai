@@ -248,9 +248,19 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
       const allSecureStoreKeys = [...currentSecureStoreKeys, ...legacySecureStoreKeys];
 
       for (const name of allDatabases) {
+        let deletionError: unknown;
         try {
           await dependencies.deleteDatabase(name);
-          if (await dependencies.databaseExists(name)) throw new Error("database file remains after deletion");
+        } catch (error) {
+          deletionError = error;
+        }
+        try {
+          if (await dependencies.databaseExists(name)) {
+            failures.push(new MobileDataDeletionError(
+              `sqlite:${name}`,
+              deletionError ?? new Error("database file remains after deletion")
+            ));
+          }
         } catch (error) {
           failures.push(new MobileDataDeletionError(`sqlite:${name}`, error));
         }

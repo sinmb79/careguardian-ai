@@ -24,6 +24,8 @@ function createHarness() {
   let failSecureDeleteKey: string | null = null;
   let closeCalls = 0;
   let transactionSnapshot: Map<string, string> | null = null;
+  const deleteCalls: string[] = [];
+  const deleteBehaviors = new Map<string, "throws-before-removal" | "throws-not-found-before-removal" | "removes-then-throws" | "returns-with-file-remaining">();
   const dependencies: MobileWorkspaceStorageDependencies = {
     databaseName: "test-life-workspace.db",
     databaseExists: async (name) => databases.has(name),
@@ -59,7 +61,16 @@ function createHarness() {
       closeAsync: async () => { closeCalls += 1; }
       };
     },
-    deleteDatabase: async (name) => { rows.clear(); databases.delete(name); },
+    deleteDatabase: async (name) => {
+      deleteCalls.push(name);
+      const behavior = deleteBehaviors.get(name);
+      if (behavior === "throws-before-removal") throw new Error("native database deletion unavailable");
+      if (behavior === "throws-not-found-before-removal") throw new Error("DatabaseNotFoundException");
+      if (behavior === "returns-with-file-remaining") return;
+      rows.clear();
+      databases.delete(name);
+      if (behavior === "removes-then-throws") throw new Error("native database deletion reported failure");
+    },
     legacyStorage: {
       getItem: async (key) => legacy.get(key) ?? null,
       removeItem: async (key) => void legacy.delete(key)
@@ -92,6 +103,11 @@ function createHarness() {
     failNextRun: () => { failNextRun = true; },
     failNextExec: () => { failNextExec = true; },
     failSecureDelete: (key: string) => { failSecureDeleteKey = key; },
+    deleteThrowsWhileRemaining: (name: string) => { deleteBehaviors.set(name, "throws-before-removal"); },
+    deleteThrowsNotFound: (name: string) => { deleteBehaviors.set(name, "throws-not-found-before-removal"); },
+    deleteRemovesThenThrows: (name: string) => { deleteBehaviors.set(name, "removes-then-throws"); },
+    deleteReturnsWhileRemaining: (name: string) => { deleteBehaviors.set(name, "returns-with-file-remaining"); },
+    deleteCalls,
     getCloseCalls: () => closeCalls
   };
 }
@@ -233,6 +249,68 @@ describe("mobile personal workspace repository", () => {
     });
     expect(harness.secure.has("careguardian.mobile.database-key")).toBe(true);
     expect(harness.databases.size).toBe(0);
+  });
+
+  test("full deletion accepts absent current and legacy databases after native not-found errors", async () => {
+    const harness = createHarness();
+    harness.deleteThrowsNotFound("test-life-workspace.db");
+    harness.deleteThrowsNotFound("careguardian-caremanual-encrypted.db");
+
+    await expect(harness.repository.deleteAllKnownData()).resolves.toBeUndefined();
+    expect(harness.deleteCalls).toEqual([
+      "test-life-workspace.db",
+      "careguardian-caremanual-encrypted.db"
+    ]);
+  });
+
+  test("full deletion accepts a database that native deletion removed before throwing", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteRemovesThenThrows("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).resolves.toBeUndefined();
+    expect(harness.databases.has("test-life-workspace.db")).toBe(false);
+  });
+
+  test("full deletion reports the SQLite namespace when native deletion throws and the database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteThrowsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.databases.has("test-life-workspace.db")).toBe(true);
+  });
+
+  test("full deletion reports the SQLite namespace when native deletion returns and the database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteReturnsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.databases.has("test-life-workspace.db")).toBe(true);
+  });
+
+  test("full deletion attempts every database namespace after a database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.databases.add("careguardian-caremanual-encrypted.db");
+    harness.deleteThrowsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.deleteCalls).toEqual([
+      "test-life-workspace.db",
+      "careguardian-caremanual-encrypted.db"
+    ]);
+    expect(harness.databases.has("careguardian-caremanual-encrypted.db")).toBe(false);
   });
 
   test("closes a database handle when encrypted setup fails before it can be returned", async () => {
