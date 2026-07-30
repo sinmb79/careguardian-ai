@@ -207,13 +207,22 @@ function deepFreeze<T>(input: T): T {
   return input;
 }
 
+function assertDeepFrozen(input: unknown, seen = new Set<object>()): void {
+  if (typeof input !== "object" || input === null || seen.has(input)) return;
+  if (!Object.isFrozen(input)) throw new Error("model registry must be deeply frozen");
+  seen.add(input);
+  for (const value of Object.values(input)) assertDeepFrozen(value, seen);
+}
+
 const validatedRegistryData: unknown = modelRegistryData;
 validateModelRegistry(validatedRegistryData);
 
 export const MODEL_REGISTRY: readonly ModelArtifact[] = deepFreeze(validatedRegistryData);
+assertDeepFrozen(MODEL_REGISTRY);
 const INSTALLABLE_MODELS: readonly ModelArtifact[] = Object.freeze(
   MODEL_REGISTRY.filter((model) => model.availability === "installable")
 );
+assertDeepFrozen(INSTALLABLE_MODELS);
 
 export function getInstallableModels(): readonly ModelArtifact[] {
   return INSTALLABLE_MODELS;

@@ -7,7 +7,8 @@ import {
   saveWorkspace,
   subscribeWorkspaceChanges,
   type WorkspaceLoadResult,
-  type WorkspaceMutationResult
+  type WorkspaceMutationResult,
+  type WorkspaceDeletionExpectation
 } from "../../features/workspace/workspaceRepository";
 
 type PendingConfirmation = "delete" | "initialize" | null;
@@ -17,7 +18,7 @@ export type LifeAppRepository = {
   loadWorkspace(): Promise<WorkspaceLoadResult>;
   saveWorkspace(workspace: PersonalWorkspace, expectedRevision: number): Promise<WorkspaceMutationResult>;
   initializeWorkspace(workspace: PersonalWorkspace, expectedInvalidRaw: string): Promise<WorkspaceMutationResult>;
-  clearWorkspace(expectedRevision: number): Promise<WorkspaceMutationResult>;
+  clearWorkspace(expectation: WorkspaceDeletionExpectation): Promise<WorkspaceMutationResult>;
   subscribeWorkspaceChanges(listener: () => void): () => void;
 };
 
@@ -207,7 +208,11 @@ export function useLifeAppState(repository: LifeAppRepository = browserRepositor
           setStatusMessage("이 브라우저의 작업공간을 초기화하지 못했습니다.");
         }
       } else if (requested === "delete") {
-        const result = await repository.clearWorkspace(revisionRef.current);
+        const deletionExpectation: WorkspaceDeletionExpectation =
+          loadResultRef.current.kind === "invalid"
+            ? { kind: "invalid", raw: loadResultRef.current.raw }
+            : { kind: "revision", revision: revisionRef.current };
+        const result = await repository.clearWorkspace(deletionExpectation);
         if (result.kind === "cleared") {
           setCurrentRevision(0);
           setCurrentLoadResult({ kind: "missing" });

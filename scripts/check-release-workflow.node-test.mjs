@@ -22,6 +22,49 @@ test("rejects a missing gate or a gate moved after artifact upload", () => {
   assert.match(validateReleaseWorkflow(moved).problems.join("\n"), /mobile:doctor/);
 });
 
+test("rejects if false and expression-based continue-on-error on required verify steps", () => {
+  const conditional = source.replace(
+    "      - name: Production dependency audit\n        run: npm run release:audit-policy",
+    "      - name: Production dependency audit\n        if: false\n        run: npm run release:audit-policy"
+  );
+  const continuing = source.replace(
+    "      - name: Pinned structured model registry policy\n        run: npm run release:model-check",
+    "      - name: Pinned structured model registry policy\n        continue-on-error: ${{ true }}\n        run: npm run release:model-check"
+  );
+
+  assert.match(validateReleaseWorkflow(conditional).problems.join("\n"), /cannot be conditional/);
+  assert.match(validateReleaseWorkflow(continuing).problems.join("\n"), /continue-on-error/);
+});
+
+test("rejects shell overrides and success-masking command suffixes", () => {
+  const shellOverride = source.replace(
+    "      - name: Non-medical release policy\n        run: npm run release:policy-check",
+    "      - name: Non-medical release policy\n        shell: bash\n        run: npm run release:policy-check"
+  );
+  const ignoredFailure = source.replace(
+    "        run: npm run release:audit-policy",
+    "        run: npm run release:audit-policy || true"
+  );
+
+  assert.match(validateReleaseWorkflow(shellOverride).problems.join("\n"), /cannot be conditional/);
+  assert.match(validateReleaseWorkflow(ignoredFailure).problems.join("\n"), /audit-policy|failure-ignoring/);
+});
+
+test("rejects a required command moved into the deploy job", () => {
+  const withoutAudit = source.replace(
+    "      - name: Production dependency audit\n        run: npm run release:audit-policy\n\n",
+    ""
+  );
+  const moved = withoutAudit.replace(
+    "    steps:\n      - name: Deploy artifact built and gated at the exact workflow SHA",
+    "    steps:\n      - name: Production dependency audit\n        run: npm run release:audit-policy\n\n      - name: Deploy artifact built and gated at the exact workflow SHA"
+  );
+  const problems = validateReleaseWorkflow(moved).problems.join("\n");
+
+  assert.match(problems, /verify command must run exactly once.*audit-policy/);
+  assert.match(problems, /without checkout or rebuild/);
+});
+
 test("rejects mutable Action refs and a non-exact checkout SHA", () => {
   const mutableAction = source.replace(
     "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",

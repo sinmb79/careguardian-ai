@@ -3,6 +3,10 @@ import { isDeepStrictEqual } from "node:util";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import {
+  createStaticExpressionEvaluator,
+  unwrapExpression
+} from "./typescript-static-analysis.mjs";
 
 const HYPERCLOVAX_LICENSE_ASSETS = [
   {
@@ -156,6 +160,209 @@ function collectNamedDeclarations(sourceFile, name) {
   return declarations;
 }
 
+function isObjectMethodCall(node, method, argumentName) {
+  return (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(unwrapExpression(node.expression)) &&
+    isIdentifier(unwrapExpression(node.expression).expression, "Object") &&
+    unwrapExpression(node.expression).name.text === method &&
+    node.arguments.length === 1 &&
+    isIdentifier(unwrapExpression(node.arguments[0]), argumentName)
+  );
+}
+
+function hasExactDeepFreezeImplementation(sourceFile) {
+  const declarations = sourceFile.statements.filter(
+    (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "deepFreeze"
+  );
+  if (declarations.length !== 1) return false;
+  const declaration = declarations[0];
+  if (
+    declaration.parameters.length !== 1 ||
+    !isIdentifier(declaration.parameters[0].name, "input") ||
+    !declaration.body ||
+    declaration.body.statements.length !== 2
+  ) {
+    return false;
+  }
+
+  const [guard, returnStatement] = declaration.body.statements;
+  if (
+    !ts.isIfStatement(guard) ||
+    guard.elseStatement ||
+    guard.expression.getText(sourceFile).replace(/\s+/gu, "") !==
+      'typeofinput==="object"&&input!==null&&!Object.isFrozen(input)' ||
+    !ts.isBlock(guard.thenStatement) ||
+    guard.thenStatement.statements.length !== 2 ||
+    !ts.isReturnStatement(returnStatement) ||
+    !returnStatement.expression ||
+    !isIdentifier(unwrapExpression(returnStatement.expression), "input")
+  ) {
+    return false;
+  }
+
+  const [loop, freezeStatement] = guard.thenStatement.statements;
+  if (
+    !ts.isForOfStatement(loop) ||
+    !ts.isVariableDeclarationList(loop.initializer) ||
+    (loop.initializer.flags & ts.NodeFlags.Const) === 0 ||
+    loop.initializer.declarations.length !== 1 ||
+    !isIdentifier(loop.initializer.declarations[0].name, "value") ||
+    !isObjectMethodCall(loop.expression, "values", "input")
+  ) {
+    return false;
+  }
+  const loopBody = ts.isBlock(loop.statement)
+    ? loop.statement.statements.length === 1
+      ? loop.statement.statements[0]
+      : undefined
+    : loop.statement;
+  if (
+    !loopBody ||
+    !ts.isExpressionStatement(loopBody) ||
+    !isNamedCall(loopBody.expression, "deepFreeze") ||
+    loopBody.expression.arguments.length !== 1 ||
+    !isIdentifier(unwrapExpression(loopBody.expression.arguments[0]), "value")
+  ) {
+    return false;
+  }
+  return (
+    ts.isExpressionStatement(freezeStatement) &&
+    isObjectMethodCall(freezeStatement.expression, "freeze", "input")
+  );
+}
+
+function hasDeepFreezeAssertions(sourceFile, registries, installableBindings) {
+  const assertions = sourceFile.statements.filter(
+    (statement) =>
+      ts.isExpressionStatement(statement) &&
+      isNamedCall(statement.expression, "assertDeepFrozen") &&
+      statement.expression.arguments.length === 1
+  );
+  const registryAssertion = assertions.filter((statement) =>
+    isIdentifier(unwrapExpression(statement.expression.arguments[0]), "MODEL_REGISTRY")
+  );
+  const installableAssertion = assertions.filter((statement) =>
+    isIdentifier(unwrapExpression(statement.expression.arguments[0]), "INSTALLABLE_MODELS")
+  );
+  return (
+    assertions.length === 2 &&
+    registryAssertion.length === 1 &&
+    installableAssertion.length === 1 &&
+    registries.length === 1 &&
+    installableBindings.length === 1 &&
+    registryAssertion[0].getStart(sourceFile) > registries[0].getStart(sourceFile) &&
+    installableAssertion[0].getStart(sourceFile) > installableBindings[0].getStart(sourceFile)
+  );
+}
+
+function findRegistryMutations(sourceFile) {
+  const mutations = [];
+  const evaluator = createStaticExpressionEvaluator(sourceFile);
+  const declarations = new Map();
+  const collectDeclarations = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const existing = declarations.get(node.name.text) ?? [];
+      existing.push(node.initializer);
+      declarations.set(node.name.text, existing);
+    }
+    ts.forEachChild(node, collectDeclarations);
+  };
+  collectDeclarations(sourceFile);
+
+  const resolveRegistryRoot = (node, resolving = new Set()) => {
+    const expression = unwrapExpression(node);
+    if (!expression) return undefined;
+    if (
+      ts.isIdentifier(expression) &&
+      (expression.text === "MODEL_REGISTRY" || expression.text === "INSTALLABLE_MODELS")
+    ) {
+      return expression.text;
+    }
+    if (ts.isIdentifier(expression)) {
+      if (resolving.has(expression.text)) return undefined;
+      const initializers = declarations.get(expression.text);
+      if (initializers?.length !== 1) return undefined;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(expression.text);
+      return resolveRegistryRoot(initializers[0], nextResolving);
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      return resolveRegistryRoot(expression.expression, resolving);
+    }
+    if (ts.isCallExpression(expression)) {
+      const target = unwrapExpression(expression.expression);
+      if (isIdentifier(target, "getInstallableModels")) return "INSTALLABLE_MODELS";
+      if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+        return resolveRegistryRoot(target.expression, resolving);
+      }
+    }
+    return undefined;
+  };
+
+  const mutatingMethods = new Set([
+    "copyWithin",
+    "fill",
+    "pop",
+    "push",
+    "reverse",
+    "shift",
+    "sort",
+    "splice",
+    "unshift"
+  ]);
+  const objectMutationMethods = new Set([
+    "assign",
+    "defineProperties",
+    "defineProperty",
+    "setPrototypeOf"
+  ]);
+  const reflectMutationMethods = new Set(["deleteProperty", "defineProperty", "set", "setPrototypeOf"]);
+  const isAssignmentOperator = (kind) =>
+    kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+
+  const visit = (node) => {
+    if (
+      ts.isBinaryExpression(node) &&
+      isAssignmentOperator(node.operatorToken.kind) &&
+      resolveRegistryRoot(node.left)
+    ) {
+      mutations.push(node);
+    } else if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      resolveRegistryRoot(node.operand)
+    ) {
+      mutations.push(node);
+    } else if (ts.isDeleteExpression(node) && resolveRegistryRoot(node.expression)) {
+      mutations.push(node);
+    } else if (ts.isCallExpression(node)) {
+      const target = unwrapExpression(node.expression);
+      if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+        const method = evaluator.evaluatePropertyName(target);
+        const receiver = unwrapExpression(target.expression);
+        if (method && mutatingMethods.has(method) && resolveRegistryRoot(receiver)) {
+          mutations.push(node);
+        } else if (
+          method &&
+          ts.isIdentifier(receiver) &&
+          (
+            (receiver.text === "Object" && objectMutationMethods.has(method)) ||
+            (receiver.text === "Reflect" && reflectMutationMethods.has(method))
+          ) &&
+          node.arguments[0] &&
+          resolveRegistryRoot(node.arguments[0])
+        ) {
+          mutations.push(node);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return mutations;
+}
+
 export function validateRegistryRuntimeSource(source) {
   const problems = [];
   const sourceFile = ts.createSourceFile("modelRegistry.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -205,6 +412,9 @@ export function validateRegistryRuntimeSource(source) {
   ) {
     problems.push("structured registry validation must execute before MODEL_REGISTRY export");
   }
+  if (!hasExactDeepFreezeImplementation(sourceFile)) {
+    problems.push("deepFreeze must recursively freeze every nested registry value");
+  }
 
   const installableBindings = collectNamedDeclarations(sourceFile, "INSTALLABLE_MODELS");
   const installableInitializer = installableBindings[0]?.initializer;
@@ -243,6 +453,9 @@ export function validateRegistryRuntimeSource(source) {
   if (!derivesFromRegistry || !exactInstallablePredicate) {
     problems.push("installable models must be the exact filtered and frozen output of MODEL_REGISTRY");
   }
+  if (!hasDeepFreezeAssertions(sourceFile, registries, installableBindings)) {
+    problems.push("runtime must assert both exported registry surfaces are deeply frozen");
+  }
 
   const getters = sourceFile.statements.filter(
     (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "getInstallableModels"
@@ -258,18 +471,22 @@ export function validateRegistryRuntimeSource(source) {
     problems.push("getInstallableModels must return only the validated installable binding");
   }
 
+  const registryMutations = findRegistryMutations(sourceFile);
+  if (registryMutations.length) {
+    problems.push("runtime must not mutate MODEL_REGISTRY, INSTALLABLE_MODELS, or their nested values");
+  }
+
+  const evaluator = createStaticExpressionEvaluator(sourceFile);
+  const reportedRemoteNodes = new Set();
   const visitUnsafeUrlConstruction = (node) => {
+    const value = evaluator.evaluateString(node);
     if (
-      (ts.isTemplateExpression(node) || ts.isBinaryExpression(node)) &&
-      /https?|:\/\/|huggingface|resolve/i.test(node.getText(sourceFile))
+      value !== undefined &&
+      /^https?:\/\//i.test(value) &&
+      !reportedRemoteNodes.has(node.getStart(sourceFile))
     ) {
-      problems.push("runtime contains computed, template, or concatenated remote URL construction");
-    }
-    if (
-      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
-      /^https?:\/\//i.test(node.text)
-    ) {
-      problems.push("runtime embeds a remote URL outside the structured registry");
+      reportedRemoteNodes.add(node.getStart(sourceFile));
+      problems.push("runtime embeds a literal or statically computed remote URL outside the structured registry");
     }
     ts.forEachChild(node, visitUnsafeUrlConstruction);
   };

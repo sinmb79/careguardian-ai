@@ -17,6 +17,13 @@ function expectedDownloadUrl(repository: string, revision: string, artifactFileN
   return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
 }
 
+function expectDeepFrozen(value: unknown, seen = new Set<object>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value)).toBe(true);
+  for (const nested of Object.values(value)) expectDeepFrozen(nested, seen);
+}
+
 describe("MODEL_REGISTRY", () => {
   test("pins the approved 0.5B GGUF artifact to its immutable supply-chain identity", () => {
     const model = MODEL_REGISTRY.find(
@@ -48,6 +55,25 @@ describe("MODEL_REGISTRY", () => {
       "hyperclovax-seed-text-instruct-0.5b-q4km",
       "hyperclovax-seed-text-instruct-1.5b-q4km"
     ]);
+  });
+
+  test("deep-freezes every exported registry object and nested array at runtime", () => {
+    const originalUrl = MODEL_REGISTRY[0].downloadUrl;
+    const originalSourceUrls = [...MODEL_REGISTRY[0].licenseAssets[0].sourceUrls];
+
+    expectDeepFrozen(MODEL_REGISTRY);
+    expectDeepFrozen(getInstallableModels());
+    expect(() => {
+      (MODEL_REGISTRY[0] as { downloadUrl?: string }).downloadUrl =
+        "https://attacker.example/model.gguf";
+    }).toThrow(TypeError);
+    expect(() => {
+      (MODEL_REGISTRY[0].licenseAssets[0].sourceUrls as string[]).push(
+        "https://attacker.example/license"
+      );
+    }).toThrow(TypeError);
+    expect(MODEL_REGISTRY[0].downloadUrl).toBe(originalUrl);
+    expect(MODEL_REGISTRY[0].licenseAssets[0].sourceUrls).toEqual(originalSourceUrls);
   });
 
   test("rejects a mutable or non-commit revision", () => {

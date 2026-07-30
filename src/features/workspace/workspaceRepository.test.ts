@@ -11,6 +11,9 @@ import {
   saveWorkspace
 } from "./workspaceRepository";
 
+const atRevision = (revision: number) => ({ kind: "revision", revision } as const);
+const expectInvalidRaw = (raw: string) => ({ kind: "invalid", raw } as const);
+
 function deleteWorkspaceDatabase(): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase(WORKSPACE_DATABASE_NAME);
@@ -20,13 +23,47 @@ function deleteWorkspaceDatabase(): Promise<void> {
   });
 }
 
+function putWorkspaceRecord(record: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(WORKSPACE_DATABASE_NAME, 1);
+    request.onupgradeneeded = () => {
+      const { storeName } = WEB_PERSISTENCE_INVENTORY.indexedDb;
+      if (!request.result.objectStoreNames.contains(storeName)) {
+        request.result.createObjectStore(storeName);
+      }
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const { storeName, userRecordKey } = WEB_PERSISTENCE_INVENTORY.indexedDb;
+      const transaction = database.transaction(storeName, "readwrite");
+      transaction.objectStore(storeName).put(record, userRecordKey);
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+      transaction.onabort = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+  });
+}
+
 describe("browser personal workspace repository", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     localStorage.clear();
     await deleteWorkspaceDatabase();
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   test("stores and loads a valid workspace in the authoritative IndexedDB record", async () => {
     const workspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
@@ -88,13 +125,67 @@ describe("browser personal workspace repository", () => {
     await expect(loadWorkspace()).resolves.toMatchObject({ kind: "loaded", revision: 1 });
   });
 
-  test("refuses deletion of an invalid original until explicit initialization", async () => {
+  test("explicitly deletes an unknown-schema record and every app-owned legacy key", async () => {
     const invalidRaw = JSON.stringify({ schemaVersion: 2 });
     localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
+    localStorage.setItem(LEGACY_CARE_STORAGE_KEY, "legacy-sensitive");
     await loadWorkspace();
 
-    await expect(clearWorkspace(0)).resolves.toEqual({ kind: "invalid" });
-    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw: invalidRaw });
+    await expect(clearWorkspace(expectInvalidRaw(invalidRaw))).resolves.toEqual({ kind: "cleared" });
+    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(LEGACY_CARE_STORAGE_KEY)).toBeNull();
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
+  });
+
+  test("explicitly deletes malformed JSON after it is quarantined in IndexedDB", async () => {
+    const corruptRaw = '{"schemaVersion":1,"workspace":';
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, corruptRaw);
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: corruptRaw });
+
+    await expect(clearWorkspace(expectInvalidRaw(corruptRaw))).resolves.toEqual({ kind: "cleared" });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
+  });
+
+  test("explicitly deletes a corrupt unknown-schema IndexedDB record", async () => {
+    const corruptRecord = { schemaVersion: 9001, private: "must-be-deleted" };
+    const corruptRaw = JSON.stringify(corruptRecord);
+    await putWorkspaceRecord(corruptRecord);
+
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: corruptRaw });
+    await expect(clearWorkspace(expectInvalidRaw(corruptRaw))).resolves.toEqual({ kind: "cleared" });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
+  });
+
+  test("rejects deletion when an invalid IndexedDB record changes after confirmation", async () => {
+    const originalRaw = JSON.stringify({ schemaVersion: 2, private: "original" });
+    const replacementRaw = JSON.stringify({ schemaVersion: 3, private: "newer-tab" });
+    await putWorkspaceRecord({ type: "invalid", raw: originalRaw });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: originalRaw });
+
+    await putWorkspaceRecord({ type: "invalid", raw: replacementRaw });
+
+    await expect(clearWorkspace(expectInvalidRaw(originalRaw))).resolves.toEqual({ kind: "conflict" });
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: replacementRaw });
+  });
+
+  test("serializes explicit deletion against initialization of the same invalid raw record", async () => {
+    const invalidRaw = JSON.stringify({ schemaVersion: 999, private: "must-not-survive" });
+    const replacement = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, invalidRaw);
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "invalid", raw: invalidRaw });
+
+    const results = await Promise.all([
+      initializeWorkspace(replacement, invalidRaw),
+      clearWorkspace(expectInvalidRaw(invalidRaw))
+    ]);
+
+    expect(results.filter((result) => result.kind === "saved" || result.kind === "cleared")).toHaveLength(1);
+    expect(results.filter((result) => result.kind === "conflict")).toHaveLength(1);
+    const loaded = await loadWorkspace();
+    expect(
+      loaded.kind === "missing" ||
+      (loaded.kind === "loaded" && loaded.workspace.id === replacement.id)
+    ).toBe(true);
   });
 
   test("keeps a cleared tombstone so legacy raw data cannot reappear after cleanup is blocked", async () => {
@@ -103,7 +194,7 @@ describe("browser personal workspace repository", () => {
     vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new DOMException("blocked", "SecurityError"); });
 
     await expect(loadWorkspace()).resolves.toEqual({ kind: "loaded", workspace, revision: 1 });
-    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "unavailable" });
+    await expect(clearWorkspace(atRevision(1))).resolves.toEqual({ kind: "unavailable" });
     await expect(loadWorkspace()).resolves.toEqual({ kind: "unavailable" });
   });
 
@@ -114,7 +205,7 @@ describe("browser personal workspace repository", () => {
     localStorage.setItem("unrelated.example.preference", "keep-me");
     await loadWorkspace();
 
-    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "cleared" });
+    await expect(clearWorkspace(atRevision(1))).resolves.toEqual({ kind: "cleared" });
 
     expect(WEB_PERSISTENCE_INVENTORY).toEqual({
       indexedDb: { databaseName: WORKSPACE_DATABASE_NAME, storeName: "workspaces", userRecordKey: "current", tombstone: { type: "cleared" } },
@@ -135,7 +226,7 @@ describe("browser personal workspace repository", () => {
       if (key === LEGACY_CARE_STORAGE_KEY) this.setItem(key, "late-writer-sensitive-value");
     });
 
-    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "unavailable" });
+    await expect(clearWorkspace(atRevision(1))).resolves.toEqual({ kind: "unavailable" });
     expect(localStorage.getItem(LEGACY_CARE_STORAGE_KEY)).toBe("late-writer-sensitive-value");
 
     vi.restoreAllMocks();
@@ -146,7 +237,7 @@ describe("browser personal workspace repository", () => {
   test("rejects a stale multi-tab writer after the deletion tombstone commits", async () => {
     const workspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
     await saveWorkspace(workspace, 0);
-    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "cleared" });
+    await expect(clearWorkspace(atRevision(1))).resolves.toEqual({ kind: "cleared" });
 
     await expect(saveWorkspace({ ...workspace, title: "늦은 탭" }, 1)).resolves.toEqual({ kind: "conflict" });
     await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
@@ -158,7 +249,7 @@ describe("browser personal workspace repository", () => {
     localStorage.setItem(LEGACY_CARE_STORAGE_KEY, "sensitive");
     vi.spyOn(window, "localStorage", "get").mockImplementation(() => { throw new DOMException("blocked", "SecurityError"); });
 
-    await expect(clearWorkspace(1)).resolves.toEqual({ kind: "unavailable" });
+    await expect(clearWorkspace(atRevision(1))).resolves.toEqual({ kind: "unavailable" });
   });
 
   test("serializes two concurrent saves from the same revision so exactly one succeeds", async () => {
@@ -177,7 +268,7 @@ describe("browser personal workspace repository", () => {
     const updated = { ...original, title: "보존할 변경" };
     await saveWorkspace(original, 0);
 
-    const results = await Promise.all([saveWorkspace(updated, 1), clearWorkspace(1)]);
+    const results = await Promise.all([saveWorkspace(updated, 1), clearWorkspace(atRevision(1))]);
 
     expect(results.filter((result) => result.kind === "conflict")).toHaveLength(1);
     expect(results.some((result) => result.kind === "saved" || result.kind === "cleared")).toBe(true);
@@ -188,6 +279,6 @@ describe("browser personal workspace repository", () => {
 
     await expect(loadWorkspace()).resolves.toEqual({ kind: "unavailable" });
     await expect(saveWorkspace(createEmptyWorkspace(), 0)).resolves.toEqual({ kind: "unavailable" });
-    await expect(clearWorkspace(0)).resolves.toEqual({ kind: "unavailable" });
+    await expect(clearWorkspace(atRevision(0))).resolves.toEqual({ kind: "unavailable" });
   });
 });

@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { APPROVED_MODEL_REMOTE_URLS } from "./check-model-registry.mjs";
+import {
+  createStaticExpressionEvaluator,
+  unwrapExpression
+} from "./typescript-static-analysis.mjs";
 
 const RELEASE_ROOTS = ["apps/mobile/", "src/", "packages/life-core/", "public/"];
 const EXACT_FILES = new Set([
@@ -16,7 +20,15 @@ const EXACT_FILES = new Set([
 const FORBIDDEN_HEALTH = /(?:복약|투약|약물|처방약|진단|증상|치료|알레르기|질환|재활|건강|혈압|혈당|체온|심박|의료|caregiver|medication|prescription|diagnos(?:e|is)|symptom|treatment|allerg(?:y|ies|ic)|disease|rehabilitation|health(?:care)?|medical)/iu;
 const FORBIDDEN_CLOUD = /(?:firebase|sentry|amplitude|mixpanel|analytics|openai|anthropic|generative-ai)/iu;
 const FORBIDDEN_SERVICE_IMPORT = /(?:from\s*["']|require\s*\(\s*["'])(?:firebase|@sentry|@amplitude|mixpanel|analytics|@segment|openai|@anthropic|@google\/generative-ai)/iu;
-const NETWORK_API = /(?:\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b|\.createDownloadResumable\s*\(|\.downloadAsync\s*\()/u;
+const NETWORK_CAPABILITIES = new Set([
+  "fetch",
+  "XMLHttpRequest",
+  "WebSocket",
+  "EventSource",
+  "sendBeacon",
+  "createDownloadResumable",
+  "downloadAsync"
+]);
 
 // These are line-level, single-occurrence contracts for explicit policy
 // denials, migration identifiers, and cloud-disable metadata. No whole file is
@@ -105,16 +117,104 @@ function checkExactContractCounts(files, contracts, problems, label) {
   }
 }
 
-function checkComputedRemoteUrls(file, text, problems) {
+function checkTypeScriptSecuritySurface(file, text, problems) {
   if (!/\.[cm]?[jt]sx?$/i.test(file)) return;
   const scriptKind = /\.tsx$/i.test(file) ? ts.ScriptKind.TSX : /\.jsx$/i.test(file) ? ts.ScriptKind.JSX : ts.ScriptKind.TS;
   const sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKind);
-  const visit = (node) => {
+  const evaluator = createStaticExpressionEvaluator(sourceFile);
+  const lines = text.split(/\r?\n/);
+  const reportedNetworkNodes = new Set();
+  const reportedRemoteNodes = new Set();
+
+  const classifyNetworkMember = (expression) => {
+    if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) {
+      return undefined;
+    }
+    const propertyName = evaluator.evaluatePropertyName(expression);
+    if (propertyName && NETWORK_CAPABILITIES.has(propertyName)) return propertyName;
     if (
-      (ts.isTemplateExpression(node) || ts.isBinaryExpression(node)) &&
-      /https?:\/\/|:\/\/|huggingface/i.test(node.getText(sourceFile))
+      ts.isElementAccessExpression(expression) &&
+      propertyName === undefined &&
+      evaluator.resolvesToGlobalObject(expression.expression)
     ) {
-      problems.push(`${file}: computed, template, or concatenated remote URL surface`);
+      return "dynamic global network capability";
+    }
+    return undefined;
+  };
+
+  const classifyNetworkCallee = (node, resolving = new Set()) => {
+    const expression = unwrapExpression(node);
+    if (!expression) return undefined;
+    if (ts.isIdentifier(expression)) {
+      if (NETWORK_CAPABILITIES.has(expression.text)) return expression.text;
+      if (resolving.has(expression.text)) return undefined;
+      const initializer = evaluator.resolveConstInitializer(expression);
+      if (!initializer) return undefined;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(expression.text);
+      return classifyNetworkCallee(initializer, nextResolving);
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const capability = classifyNetworkMember(expression);
+      if (capability) return capability;
+      if (
+        ts.isElementAccessExpression(expression) &&
+        evaluator.evaluatePropertyName(expression) === undefined
+      ) {
+        return "dynamic computed call";
+      }
+    }
+    if (ts.isCallExpression(expression)) {
+      const target = unwrapExpression(expression.expression);
+      if (
+        (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) &&
+        ["apply", "bind", "call"].includes(evaluator.evaluatePropertyName(target) ?? "")
+      ) {
+        return classifyNetworkCallee(target.expression, resolving);
+      }
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return (
+        classifyNetworkCallee(expression.whenTrue, resolving) ??
+        classifyNetworkCallee(expression.whenFalse, resolving)
+      );
+    }
+    return undefined;
+  };
+
+  const reportNetwork = (node, capability) => {
+    const lineIndex = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line;
+    const line = lines[lineIndex] ?? "";
+    if (!networkLineIsExactContract(file, line) && !reportedNetworkNodes.has(node.getStart(sourceFile))) {
+      reportedNetworkNodes.add(node.getStart(sourceFile));
+      problems.push(`${file}:${lineIndex + 1}: unapproved network API (${capability})`);
+    }
+  };
+
+  const visit = (node) => {
+    const staticValue = evaluator.evaluateString(node);
+    if (
+      staticValue !== undefined &&
+      /^https?:\/\//i.test(staticValue) &&
+      !ts.isStringLiteral(node) &&
+      !ts.isNoSubstitutionTemplateLiteral(node) &&
+      !reportedRemoteNodes.has(node.getStart(sourceFile))
+    ) {
+      reportedRemoteNodes.add(node.getStart(sourceFile));
+      problems.push(`${file}: statically computed remote URL surface`);
+    }
+
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const capability = classifyNetworkCallee(node.expression);
+      if (capability) reportNetwork(node, capability);
+    }
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const capability = classifyNetworkMember(node);
+      const parent = node.parent;
+      const isDirectInvocation =
+        (ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+        unwrapExpression(parent.expression) === node;
+      if (capability && !isDirectInvocation) reportNetwork(node, capability);
     }
     ts.forEachChild(node, visit);
   };
@@ -174,9 +274,6 @@ export function validateReleasePolicy(files) {
       if ((FORBIDDEN_HEALTH.test(line) || FORBIDDEN_CLOUD.test(line)) && !lineIsExactContract(file, line)) {
         problems.push(`${file}:${index + 1}: unapproved health or cloud policy surface`);
       }
-      if (NETWORK_API.test(line) && !networkLineIsExactContract(file, line)) {
-        problems.push(`${file}:${index + 1}: unapproved network API`);
-      }
     }
     if (FORBIDDEN_SERVICE_IMPORT.test(text)) problems.push(`${file}: prohibited cloud service import`);
     if (text.includes("@careguardian/care-core")) problems.push(`${file}: retired care-core dependency`);
@@ -187,7 +284,7 @@ export function validateReleasePolicy(files) {
         problems.push(`${file}: unapproved remote URL`);
       }
     }
-    checkComputedRemoteUrls(file, text, problems);
+    checkTypeScriptSecuritySurface(file, text, problems);
   }
   checkExactContractCounts(files, POLICY_LINE_CONTRACTS, problems, "policy contract");
   checkExactContractCounts(files, NETWORK_LINE_CONTRACTS, problems, "network contract");

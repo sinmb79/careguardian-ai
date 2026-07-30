@@ -50,6 +50,10 @@ export type WorkspaceMutationResult =
   | { kind: "unavailable" }
   | { kind: "conflict" };
 
+export type WorkspaceDeletionExpectation =
+  | { kind: "revision"; revision: number }
+  | { kind: "invalid"; raw: string };
+
 export async function loadWorkspace(): Promise<WorkspaceLoadResult> {
   const database = await openWorkspaceDatabase();
   if (!database) return { kind: "unavailable" };
@@ -121,16 +125,24 @@ export async function initializeWorkspace(
   }
 }
 
-export async function clearWorkspace(expectedRevision: number): Promise<WorkspaceMutationResult> {
+export async function clearWorkspace(
+  expectation: WorkspaceDeletionExpectation
+): Promise<WorkspaceMutationResult> {
   const database = await openWorkspaceDatabase();
   if (!database) return { kind: "unavailable" };
 
   try {
     const result = await mutateRecord<WorkspaceMutationResult>(database, (record) => {
       const current = toLoadResult(record);
-      if (current.kind === "invalid") return { result: { kind: "invalid" } };
-      const revision = current.kind === "loaded" ? current.revision : 0;
-      if (revision !== expectedRevision) return { result: { kind: "conflict" } };
+      if (expectation.kind === "invalid") {
+        if (current.kind !== "invalid" || current.raw !== expectation.raw) {
+          return { result: { kind: "conflict" } };
+        }
+      } else {
+        if (current.kind === "invalid") return { result: { kind: "conflict" } };
+        const revision = current.kind === "loaded" ? current.revision : 0;
+        if (revision !== expectation.revision) return { result: { kind: "conflict" } };
+      }
       return { result: { kind: "cleared" }, record: { type: "cleared" } };
     });
     if (result.kind === "cleared") {
