@@ -78,6 +78,9 @@ test("native scheduling fails closed when Android notification permission is una
 });
 
 test("declares only non-exported reminder and restore receivers", () => {
+  const app = JSON.parse(
+    readFileSync(resolve(mobileRoot, "app.json"), "utf8")
+  ).expo;
   const manifest = readFileSync(
     resolve(moduleRoot, "android/src/main/AndroidManifest.xml"),
     "utf8"
@@ -88,6 +91,11 @@ test("declares only non-exported reminder and restore receivers", () => {
   assert.match(manifest, /LifeRestoreReceiver/);
   assert.equal((manifest.match(/android:exported="false"/g) ?? []).length, 2);
   assert.doesNotMatch(manifest, /VIBRATE|C2DM|badge|firebase|SCHEDULE_EXACT_ALARM/i);
+  assert.ok(
+    app.android.blockedPermissions.includes(
+      "android.permission.VIBRATE"
+    )
+  );
 });
 
 test("migrates every known Expo notification store and installation identifier fail-closed", () => {
