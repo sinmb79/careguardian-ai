@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import configPlugins from "@expo/config-plugins";
+import xml2js from "xml2js";
 
-const { XML } = configPlugins;
+const { Parser } = xml2js;
 const ANDROID_NAMESPACE_URI = "http://schemas.android.com/apk/res/android";
 const C2DM_PERMISSION = "com.google.android.c2dm.permission.RECEIVE";
 const BADGE_PERMISSIONS = [
@@ -67,47 +67,93 @@ const REQUIRED_FALSE_METADATA = [
 
 function childElements(element, tagName) {
   const children = element?.[tagName];
-  return Array.isArray(children) ? children : [];
+  if (!Array.isArray(children)) return [];
+  return children.filter(
+    (child) =>
+      child?.$ns?.local === tagName &&
+      child.$ns.uri === ""
+  );
 }
 
 function collectDescendants(element, tagName, matches = []) {
   if (!element || typeof element !== "object") return matches;
   for (const [childTagName, children] of Object.entries(element)) {
-    if (childTagName === "$" || childTagName === "_") continue;
+    if (
+      childTagName === "$" ||
+      childTagName === "$ns" ||
+      childTagName === "_"
+    ) {
+      continue;
+    }
     if (!Array.isArray(children)) continue;
     for (const child of children) {
-      if (childTagName === tagName) matches.push(child);
+      if (
+        childTagName === tagName &&
+        child?.$ns?.local === tagName &&
+        child.$ns.uri === ""
+      ) {
+        matches.push(child);
+      }
       collectDescendants(child, tagName, matches);
     }
   }
   return matches;
 }
 
-function androidNamespacePrefixes(manifestRoot) {
-  return Object.entries(manifestRoot?.$ ?? {})
-    .filter(
-      ([attributeName, value]) =>
-        attributeName.startsWith("xmlns:") &&
-        value === ANDROID_NAMESPACE_URI
-    )
-    .map(([attributeName]) => attributeName.slice("xmlns:".length));
+function createNamespaceAwareParser() {
+  const parser = new Parser({
+    explicitArray: true,
+    explicitRoot: true,
+    strict: true,
+    xmlns: true
+  });
+  let expandedAttributeNames = new Set();
+  let inheritedNamespaces = {};
+
+  parser.saxParser.onopentagstart = (element) => {
+    expandedAttributeNames = new Set();
+    inheritedNamespaces = { ...element.ns };
+  };
+  parser.saxParser.onattribute = (attribute) => {
+    const expandedName = `${attribute.uri}\u0000${attribute.local}`;
+    if (expandedAttributeNames.has(expandedName)) {
+      throw new Error(
+        `duplicate expanded XML attribute: {${attribute.uri}}${attribute.local}`
+      );
+    }
+    expandedAttributeNames.add(expandedName);
+
+    if (
+      attribute.prefix === "xmlns" &&
+      Object.hasOwn(inheritedNamespaces, attribute.local) &&
+      inheritedNamespaces[attribute.local] !== attribute.value
+    ) {
+      throw new Error(
+        `descendant XML namespace prefix rebind is forbidden: ${attribute.local}`
+      );
+    }
+  };
+
+  return parser;
 }
 
-function androidAttributeValues(element, localName, namespacePrefixes) {
+function androidAttributeValues(element, localName) {
   const attributes = element?.$ ?? {};
-  return namespacePrefixes
-    .map((prefix) => attributes[`${prefix}:${localName}`])
-    .filter((value) => typeof value === "string");
+  return Object.values(attributes)
+    .filter(
+      (attribute) =>
+        attribute?.uri === ANDROID_NAMESPACE_URI &&
+        attribute.local === localName
+    )
+    .map((attribute) => attribute.value);
 }
 
 function hasAndroidAttributeValue(
   element,
   localName,
-  expectedValue,
-  namespacePrefixes
+  expectedValue
 ) {
-  return androidAttributeValues(element, localName, namespacePrefixes)
-    .includes(expectedValue);
+  return androidAttributeValues(element, localName).includes(expectedValue);
 }
 
 function parseFailureReport(error) {
@@ -125,27 +171,25 @@ function parseFailureReport(error) {
 export async function validateReleaseManifest(manifest) {
   let parsed;
   try {
-    parsed = await XML.parseXMLAsync(manifest);
+    parsed = await createNamespaceAwareParser().parseStringPromise(manifest);
   } catch (error) {
     return parseFailureReport(error);
   }
 
   const problems = [];
   const manifestRoot = parsed?.manifest;
-  if (!manifestRoot || typeof manifestRoot !== "object") {
+  if (
+    !manifestRoot ||
+    typeof manifestRoot !== "object" ||
+    manifestRoot?.$ns?.local !== "manifest" ||
+    manifestRoot.$ns.uri !== ""
+  ) {
     return parseFailureReport(new Error("missing manifest root element"));
-  }
-
-  const namespacePrefixes = androidNamespacePrefixes(manifestRoot);
-  if (namespacePrefixes.length === 0) {
-    problems.push(
-      `Android namespace binding is missing: ${ANDROID_NAMESPACE_URI}`
-    );
   }
 
   const usesPermissions = childElements(manifestRoot, "uses-permission");
   const permissionNames = usesPermissions.flatMap((permission) =>
-    androidAttributeValues(permission, "name", namespacePrefixes)
+    androidAttributeValues(permission, "name")
   );
   if (permissionNames.includes(C2DM_PERMISSION)) {
     problems.push(`forbidden C2DM receive permission: ${C2DM_PERMISSION}`);
@@ -170,8 +214,7 @@ export async function validateReleaseManifest(manifest) {
         hasAndroidAttributeValue(
           element,
           "name",
-          component,
-          namespacePrefixes
+          component
         )
     );
     if (hasForbiddenComponent) {
@@ -184,7 +227,7 @@ export async function validateReleaseManifest(manifest) {
   );
   for (const registrar of FORBIDDEN_REGISTRARS) {
     const hasForbiddenRegistrar = metadataDescendants.some((metadata) =>
-      androidAttributeValues(metadata, "name", namespacePrefixes).some(
+      androidAttributeValues(metadata, "name").some(
         (name) => name.split(":").at(-1)?.split(".").at(-1) === registrar
       )
     );
@@ -204,8 +247,7 @@ export async function validateReleaseManifest(manifest) {
     hasAndroidAttributeValue(
       receiver,
       "name",
-      REQUIRED_LOCAL_RECEIVER,
-      namespacePrefixes
+      REQUIRED_LOCAL_RECEIVER
     )
   );
   if (localReceivers.length !== 1) {
@@ -216,7 +258,7 @@ export async function validateReleaseManifest(manifest) {
       "intent-filter"
     ).flatMap((intentFilter) =>
       childElements(intentFilter, "action").flatMap((action) =>
-        androidAttributeValues(action, "name", namespacePrefixes)
+        androidAttributeValues(action, "name")
       )
     );
     for (const action of REQUIRED_LOCAL_ACTIONS) {
@@ -229,8 +271,7 @@ export async function validateReleaseManifest(manifest) {
     hasAndroidAttributeValue(
       activity,
       "name",
-      REQUIRED_LOCAL_ACTIVITY,
-      namespacePrefixes
+      REQUIRED_LOCAL_ACTIVITY
     )
   );
   if (localActivities.length !== 1) {
@@ -245,12 +286,11 @@ export async function validateReleaseManifest(manifest) {
       hasAndroidAttributeValue(
         element,
         "name",
-        name,
-        namespacePrefixes
+        name
       )
     );
     const values = matchingMetadata.flatMap((element) =>
-      androidAttributeValues(element, "value", namespacePrefixes)
+      androidAttributeValues(element, "value")
     );
     if (values.length !== 1 || values[0] !== "false") {
       problems.push(`required disable metadata must occur once with value false: ${name}`);

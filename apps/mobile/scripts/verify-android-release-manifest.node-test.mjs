@@ -385,6 +385,108 @@ test("distinguishes forbidden component names from unrelated element kinds", asy
   );
 });
 
+test("detects a C2DM permission through an element-scoped Android namespace alias", async () => {
+  const scopedAlias = addManifestChild(
+    '<uses-permission xmlns:a="http://schemas.android.com/apk/res/android" a:name="com.google.android.c2dm.permission.RECEIVE" />'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(scopedAlias);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /C2DM/);
+});
+
+test("detects an FCM service through a service-scoped Android namespace alias", async () => {
+  const scopedAlias = addApplicationChild(
+    '<service xmlns:a="http://schemas.android.com/apk/res/android" a:name="com.google.firebase.messaging.FirebaseMessagingService" />'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(scopedAlias);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /FirebaseMessagingService/);
+});
+
+test("detects an FCM service through an application-scoped Android namespace alias", async () => {
+  const scopedAlias = addApplicationChild(
+    '<service a:name="com.google.firebase.messaging.FirebaseMessagingService" />'
+  ).replace(
+    "<application>",
+    '<application xmlns:a="http://schemas.android.com/apk/res/android">'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(scopedAlias);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /FirebaseMessagingService/);
+});
+
+test("rejects duplicate disable metadata through an application-scoped alias", async () => {
+  const duplicate = addApplicationChild(
+    '<meta-data a:name="firebase_messaging_auto_init_enabled" a:value="false" />'
+  ).replace(
+    "<application>",
+    '<application xmlns:a="http://schemas.android.com/apk/res/android">'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(duplicate);
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /firebase_messaging_auto_init_enabled/
+  );
+});
+
+test("rejects a descendant rebind that removes the receiver Android name", async () => {
+  const rebound = hardenedManifest.replace(
+    '    <receiver\n      android:name="expo.modules.notifications.service.NotificationsService"',
+    '    <receiver\n      xmlns:android="urn:not-android"\n      android:name="expo.modules.notifications.service.NotificationsService"'
+  );
+  assert.notEqual(rebound, hardenedManifest);
+
+  const report = await manifestVerifier.validateReleaseManifest(rebound);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /namespace|NotificationsService/i);
+});
+
+test("honors an action-scoped Android namespace alias", async () => {
+  const scopedAlias = hardenedManifest.replace(
+    '<action android:name="android.intent.action.BOOT_COMPLETED" />',
+    '<action xmlns:a="http://schemas.android.com/apk/res/android" a:name="android.intent.action.BOOT_COMPLETED" />'
+  );
+  assert.notEqual(scopedAlias, hardenedManifest);
+
+  assert.deepEqual(
+    await manifestVerifier.validateReleaseManifest(scopedAlias),
+    {
+      gate: "android-release-manifest",
+      status: "pass",
+      problems: []
+    }
+  );
+});
+
+test("fails closed on duplicate lexical Android attributes", async () => {
+  const duplicate = hardenedManifest.replace(
+    '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" android:name="com.google.android.c2dm.permission.RECEIVE" />'
+  );
+  assert.notEqual(duplicate, hardenedManifest);
+
+  const report = await manifestVerifier.validateReleaseManifest(duplicate);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /duplicate|XML|parse/i);
+});
+
+test("fails closed on duplicate expanded Android attributes through an encoded URI alias", async () => {
+  const duplicate = hardenedManifest.replace(
+    '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    '<uses-permission xmlns:a="http://schemas.android.com/apk/res/and&#114;oid" android:name="android.permission.POST_NOTIFICATIONS" a:name="com.google.android.c2dm.permission.RECEIVE" />'
+  );
+  assert.notEqual(duplicate, hardenedManifest);
+
+  const report = await manifestVerifier.validateReleaseManifest(duplicate);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /duplicate|XML|parse/i);
+});
+
 test("CLI accepts only a hardened manifest file", () => {
   const script = resolve(
     import.meta.dirname,
