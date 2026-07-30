@@ -282,8 +282,10 @@ test("requires each Firebase and analytics disable metadata value to be false", 
 
     await t.test(`${flag} true`, async () => {
       const mutated = hardenedManifest.replace(
-        `android:name="${flag}"\n      android:value="false"`,
-        `android:name="${flag}"\n      android:value="true"`
+        new RegExp(
+          `(android:name="${flag}")(\\r?\\n\\s+android:value=")false(")`
+        ),
+        "$1$2true$3"
       );
       assert.notEqual(mutated, hardenedManifest);
       const report = await manifestVerifier.validateReleaseManifest(mutated);
@@ -435,8 +437,8 @@ test("rejects duplicate disable metadata through an application-scoped alias", a
 
 test("rejects a descendant rebind that removes the receiver Android name", async () => {
   const rebound = hardenedManifest.replace(
-    '    <receiver\n      android:name="expo.modules.notifications.service.NotificationsService"',
-    '    <receiver\n      xmlns:android="urn:not-android"\n      android:name="expo.modules.notifications.service.NotificationsService"'
+    /    <receiver(\r?\n)      android:name="expo\.modules\.notifications\.service\.NotificationsService"/,
+    '    <receiver$1      xmlns:android="urn:not-android"$1      android:name="expo.modules.notifications.service.NotificationsService"'
   );
   assert.notEqual(rebound, hardenedManifest);
 
