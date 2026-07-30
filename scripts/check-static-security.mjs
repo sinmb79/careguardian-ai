@@ -1,75 +1,160 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 
 export const EXPECTED_CSP = "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; form-action 'none'";
 
-const ALLOWED_HTTP_URLS_BY_FILE = new Map([
-  ["privacy-policy.html", new Set(["https://huggingface.co/privacy"])]
-]);
-const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s"'<>`]+/gi;
-const PROTOCOL_RELATIVE_RESOURCE_PATTERN = /\b(?:href|src|srcset|action|formaction|poster|data|cite|background)\s*=\s*(?:"\s*\/\/[^\"]*"|'\s*\/\/[^']*'|\/\/[^\s>]+)/gi;
+const ALLOWED_POLICY_URL = "https://huggingface.co/privacy";
+const REMOTE_URL_PATTERN = /(?:https?:)?\/\/[^\s"'<>`]+/gi;
+const CSS_REFERENCE_PATTERNS = [
+  /@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)'|([^)]*?))\)?/gi,
+  /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi
+];
+const CHARACTER_REFERENCE_PATTERN = /&(?:#x[0-9a-f]+|#\d+|[a-z][a-z\d]+);/i;
 
-function findHttpUrls(html) {
-  return [...html.matchAll(HTTP_URL_PATTERN)].map((match) => ({ url: match[0], index: match.index }));
+function findRemoteUrls(value) {
+  return [...value.matchAll(REMOTE_URL_PATTERN)].flatMap(([candidate]) => {
+    try {
+      const url = new URL(candidate.startsWith("//") ? `https:${candidate}` : candidate);
+      return url.protocol === "http:" || url.protocol === "https:" ? [{ candidate, normalized: url.href }] : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
-function isAllowedHttpUrl(html, file, url, index) {
-  if (!ALLOWED_HTTP_URLS_BY_FILE.get(file)?.has(url)) return false;
+function sourceContainsCharacterReference(dom, html, node, attributeName) {
+  const location = dom.nodeLocation(node);
+  const attribute = attributeName ? location?.attrs?.[attributeName] : location;
+  return Boolean(attribute && CHARACTER_REFERENCE_PATTERN.test(html.slice(attribute.startOffset, attribute.endOffset)));
+}
 
-  const anchorStart = html.lastIndexOf("<a", index);
-  const anchorOpenEnd = html.indexOf(">", anchorStart);
-  const anchorCloseStart = html.indexOf("</a>", anchorOpenEnd);
-  if (anchorStart === -1 || anchorOpenEnd === -1 || anchorCloseStart === -1 || index > anchorCloseStart) return false;
+function isAllowedAnchorHref(dom, html, file, element, attributeName, value, remoteUrl) {
+  return file === "privacy-policy.html" &&
+    element.localName === "a" &&
+    attributeName === "href" &&
+    value === ALLOWED_POLICY_URL &&
+    remoteUrl.candidate === ALLOWED_POLICY_URL &&
+    remoteUrl.normalized === ALLOWED_POLICY_URL &&
+    !sourceContainsCharacterReference(dom, html, element, attributeName);
+}
 
-  if (index < anchorOpenEnd) {
-    const openingTag = html.slice(anchorStart, anchorOpenEnd + 1);
-    for (const href of openingTag.matchAll(/\bhref\s*=\s*(['"])([^'"]*)\1/gi)) {
-      if (href[2] !== url) continue;
-      const hrefValueIndex = anchorStart + href.index + href[0].indexOf(url);
-      if (index === hrefValueIndex) return true;
+function isAllowedAnchorText(dom, html, file, textNode, remoteUrl) {
+  return file === "privacy-policy.html" &&
+    textNode.parentElement?.localName === "a" &&
+    textNode.data === ALLOWED_POLICY_URL &&
+    remoteUrl.candidate === ALLOWED_POLICY_URL &&
+    remoteUrl.normalized === ALLOWED_POLICY_URL &&
+    !sourceContainsCharacterReference(dom, html, textNode);
+}
+
+function validateStrictCsp(document, file, problems) {
+  const cspMetas = [...document.querySelectorAll("meta[http-equiv]")].filter(
+    (meta) => meta.getAttribute("http-equiv")?.trim().toLowerCase() === "content-security-policy"
+  );
+  if (cspMetas.length !== 1 || cspMetas[0].getAttribute("content") !== EXPECTED_CSP) {
+    problems.push(`${file}: strict production CSP meta is absent or changed`);
+  }
+  if (cspMetas.some((meta) => /unsafe-inline|unsafe-eval/i.test(meta.getAttribute("content") ?? ""))) {
+    problems.push(`${file}: unsafe CSP execution is enabled`);
+  }
+}
+
+function validateHtmlExecution(document, file, problems) {
+  if (document.querySelector("style, [style]")) problems.push(`${file}: inline style is prohibited`);
+  if ([...document.querySelectorAll("script")].some((script) => !script.hasAttribute("src"))) {
+    problems.push(`${file}: inline script is prohibited`);
+  }
+  if ([...document.querySelectorAll("*")].some((element) => [...element.attributes].some((attribute) => /^on[a-z]+$/i.test(attribute.name)))) {
+    problems.push(`${file}: inline event handler is prohibited`);
+  }
+}
+
+function validateHtmlRemoteUrls(dom, html, file, problems) {
+  const { document, NodeFilter } = dom.window;
+  for (const element of document.querySelectorAll("*")) {
+    for (const attribute of element.attributes) {
+      for (const remoteUrl of findRemoteUrls(attribute.value)) {
+        if (!isAllowedAnchorHref(dom, html, file, element, attribute.name, attribute.value, remoteUrl)) {
+          problems.push(`${file}: unexpected remote URL is present: ${remoteUrl.candidate}`);
+        }
+      }
     }
-    return false;
   }
 
-  return !/[<>]/.test(html.slice(anchorOpenEnd + 1, index)) &&
-    !/[<>]/.test(html.slice(index + url.length, anchorCloseStart));
+  const textWalker = document.createTreeWalker(document, NodeFilter.SHOW_TEXT);
+  for (let textNode = textWalker.nextNode(); textNode; textNode = textWalker.nextNode()) {
+    for (const remoteUrl of findRemoteUrls(textNode.data)) {
+      if (!isAllowedAnchorText(dom, html, file, textNode, remoteUrl)) {
+        problems.push(`${file}: unexpected remote URL is present: ${remoteUrl.candidate}`);
+      }
+    }
+  }
+}
+
+function decodeCssReference(value) {
+  const decodedEscapes = value.replace(/\\([0-9a-f]{1,6})(?:\r\n|[ \t\r\n\f])?|\\(.)/gi, (_, hex, character) => {
+    if (hex) return String.fromCodePoint(Number.parseInt(hex, 16));
+    return character;
+  });
+  const decoder = new JSDOM("<textarea></textarea>").window.document.querySelector("textarea");
+  decoder.innerHTML = decodedEscapes;
+  return decoder.value;
+}
+
+function findCssReferences(css) {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const references = new Set();
+  for (const pattern of CSS_REFERENCE_PATTERNS) {
+    for (const match of withoutComments.matchAll(pattern)) {
+      const value = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6] ?? "";
+      references.add(decodeCssReference(value.trim()));
+    }
+  }
+  return references;
+}
+
+export function validateCssSecurity(css, file = "unknown.css") {
+  const problems = [];
+  for (const reference of findCssReferences(css)) {
+    for (const remoteUrl of findRemoteUrls(reference)) {
+      problems.push(`${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`);
+    }
+  }
+  return problems;
 }
 
 export function validateHtmlSecurity(html, file = "unknown.html") {
   const problems = [];
-  const expectedMeta = `http-equiv="Content-Security-Policy" content="${EXPECTED_CSP}"`;
-  if (!html.includes(expectedMeta)) problems.push(`${file}: strict production CSP meta is absent or changed`);
-  if (/unsafe-inline|unsafe-eval/i.test(html)) problems.push(`${file}: unsafe CSP execution is enabled`);
-  if (/<style\b/i.test(html) || /\sstyle\s*=/i.test(html)) problems.push(`${file}: inline style is prohibited`);
-  if (/<script\b(?![^>]*\bsrc\s*=)[^>]*>/i.test(html)) problems.push(`${file}: inline script is prohibited`);
-  if (/\son[a-z]+\s*=/i.test(html)) problems.push(`${file}: inline event handler is prohibited`);
-  for (const { url, index } of findHttpUrls(html)) {
-    if (!isAllowedHttpUrl(html, file, url, index)) problems.push(`${file}: unexpected remote URL is present: ${url}`);
-  }
-  if (PROTOCOL_RELATIVE_RESOURCE_PATTERN.test(html)) problems.push(`${file}: unexpected remote resource is present`);
-  PROTOCOL_RELATIVE_RESOURCE_PATTERN.lastIndex = 0;
+  const dom = new JSDOM(html, { includeNodeLocations: true });
+  validateStrictCsp(dom.window.document, file, problems);
+  validateHtmlExecution(dom.window.document, file, problems);
+  validateHtmlRemoteUrls(dom, html, file, problems);
   return problems;
 }
 
-function listHtmlFiles(directory) {
+function listFiles(directory, extension) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = resolve(directory, entry.name);
-    if (entry.isDirectory()) return listHtmlFiles(path);
-    return extname(entry.name).toLowerCase() === ".html" ? [path] : [];
+    if (entry.isDirectory()) return listFiles(path, extension);
+    return extname(entry.name).toLowerCase() === extension ? [path] : [];
   });
 }
 
 export function validateBuiltHtmlDirectory(directory) {
-  const files = listHtmlFiles(directory);
-  const problems = files.flatMap((file) =>
-    validateHtmlSecurity(readFileSync(file, "utf8"), relative(directory, file).replaceAll("\\", "/"))
-  );
-  if (files.length === 0) problems.push("no deployed HTML files were found");
+  const htmlFiles = listFiles(directory, ".html");
+  const cssFiles = listFiles(directory, ".css");
+  const problems = [
+    ...htmlFiles.flatMap((file) => validateHtmlSecurity(readFileSync(file, "utf8"), relative(directory, file).replaceAll("\\", "/"))),
+    ...cssFiles.flatMap((file) => validateCssSecurity(readFileSync(file, "utf8"), relative(directory, file).replaceAll("\\", "/")))
+  ];
+  if (htmlFiles.length === 0) problems.push("no deployed HTML files were found");
   return {
     gate: "static-security",
     status: problems.length ? "fail" : "pass",
-    checkedHtmlFiles: files.map((file) => relative(directory, file).replaceAll("\\", "/")).sort(),
+    checkedHtmlFiles: htmlFiles.map((file) => relative(directory, file).replaceAll("\\", "/")).sort(),
+    checkedCssFiles: cssFiles.map((file) => relative(directory, file).replaceAll("\\", "/")).sort(),
     problems
   };
 }

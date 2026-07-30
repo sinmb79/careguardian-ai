@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
-import { EXPECTED_CSP, validateHtmlSecurity } from "./check-static-security.mjs";
+import { EXPECTED_CSP, validateBuiltHtmlDirectory, validateHtmlSecurity } from "./check-static-security.mjs";
 
 const privacyHtml = readFileSync(resolve(import.meta.dirname, "../public/privacy-policy.html"), "utf8");
+const exactPolicyUrl = "https://huggingface.co/privacy";
+
+function htmlWithCsp(body) {
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${EXPECTED_CSP}">${body}`;
+}
 
 test("accepts the CSP-compatible public privacy page", () => {
   assert.deepEqual(validateHtmlSecurity(privacyHtml, "privacy-policy.html"), []);
@@ -12,7 +18,7 @@ test("accepts the CSP-compatible public privacy page", () => {
 
 test("allows only the exact Hugging Face privacy URL in the public privacy page", () => {
   const problems = validateHtmlSecurity(
-    `<!doctype html><meta http-equiv="Content-Security-Policy" content="${EXPECTED_CSP}"><a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>`,
+    htmlWithCsp(`<a href="${exactPolicyUrl}">${exactPolicyUrl}</a>`),
     "privacy-policy.html"
   );
   assert.deepEqual(problems, []);
@@ -20,7 +26,7 @@ test("allows only the exact Hugging Face privacy URL in the public privacy page"
 
 test("rejects the exact Hugging Face privacy URL outside the public privacy page", () => {
   const problems = validateHtmlSecurity(
-    `<!doctype html><meta http-equiv="Content-Security-Policy" content="${EXPECTED_CSP}"><a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>`,
+    htmlWithCsp(`<a href="${exactPolicyUrl}">${exactPolicyUrl}</a>`),
     "index.html"
   ).join("\n");
   assert.match(problems, /unexpected remote URL.*https:\/\/huggingface\.co\/privacy/);
@@ -68,7 +74,6 @@ test("rejects remote resources including protocol-relative references", () => {
 });
 
 test("rejects the allowed policy URL when used by a remote resource", () => {
-  const exactPolicyUrl = "https://huggingface.co/privacy";
   const resources = [
     `<script src="${exactPolicyUrl}"></script>`,
     `<link rel="stylesheet" href="${exactPolicyUrl}">`,
@@ -82,6 +87,85 @@ test("rejects the allowed policy URL when used by a remote resource", () => {
       "privacy-policy.html"
     ).join("\n");
     assert.match(problems, /unexpected remote (URL|resource)/);
+  }
+});
+
+test("requires a real strict CSP meta element instead of a comment", () => {
+  const commentedCsp = `<!-- <meta http-equiv="Content-Security-Policy" content="${EXPECTED_CSP}"> --><script src="/same-origin.js"></script>`;
+  assert.match(validateHtmlSecurity(commentedCsp, "privacy-policy.html").join("\n"), /strict production CSP meta/);
+});
+
+test("rejects the exact policy URL on an area instead of an anchor", () => {
+  const html = htmlWithCsp(`<map name="m"><area href="${exactPolicyUrl}"></map></a>`);
+  assert.match(validateHtmlSecurity(html, "privacy-policy.html").join("\n"), /unexpected remote URL/);
+});
+
+test("rejects decoded entity, hex, decimal, and protocol-relative remote HTML URLs", () => {
+  const vectors = [
+    '<a href="https&#x3A;//attacker.example/steal">click</a>',
+    '<script src="https&#58;//attacker.example/x.js"></script>',
+    '<link rel="stylesheet" href="https&#58;//attacker.example/payload.css">',
+    '<img src="https&#x3a;//attacker.example/pixel.png">',
+    '<img srcset="https&#x3A;//attacker.example/pixel.png 1x" src="/safe.png">',
+    '<object data="https&#x3A;//attacker.example/payload"></object>',
+    '<meta http-equiv="refresh" content="0;url=https&#x3A;//attacker.example/next">',
+    '<meta http-equiv="refresh" content="0;url=//attacker.example/next">',
+    '<img src="&#47;&#47;attacker.example/pixel.png">',
+    '<img srcset="&#47;&#47;attacker.example/pixel.png 1x" src="/safe.png">',
+    '<meta http-equiv="refresh" content="0;url=&#47;&#47;attacker.example/next">'
+  ];
+
+  for (const vector of vectors) {
+    assert.match(validateHtmlSecurity(htmlWithCsp(vector), "privacy-policy.html").join("\n"), /unexpected remote URL/);
+  }
+});
+
+test("rejects remote URLs across network-capable element attributes", () => {
+  const vectors = [
+    '<a href="https://attacker.example/a">a</a>',
+    '<iframe src="https://attacker.example/frame"></iframe>',
+    '<source src="https://attacker.example/media">',
+    '<audio src="https://attacker.example/audio"></audio>',
+    '<video poster="https://attacker.example/poster"></video>',
+    '<embed src="https://attacker.example/embed">',
+    '<base href="https://attacker.example/base/">',
+    '<form action="https://attacker.example/form"><button formaction="https://attacker.example/button"></button></form>',
+    '<blockquote cite="https://attacker.example/citation"></blockquote>',
+    '<table background="https://attacker.example/background.png"></table>'
+  ];
+
+  for (const vector of vectors) {
+    assert.match(validateHtmlSecurity(htmlWithCsp(vector), "privacy-policy.html").join("\n"), /unexpected remote URL/);
+  }
+});
+
+test("checks deployed CSS for remote import, URL, entity, escape, and protocol-relative references", () => {
+  const directory = mkdtempSync(join(tmpdir(), "careguardian-static-security-"));
+  try {
+    writeFileSync(join(directory, "index.html"), htmlWithCsp('<link rel="stylesheet" href="site.css">'), "utf8");
+    writeFileSync(join(directory, "site.css"), [
+      '@import url("https://attacker.example/import.css");',
+      '.one { background: url("https://attacker.example/asset.png"); }',
+      '.two { background: url("https&#x3A;//attacker.example/entity.png"); }',
+      '.three { background: url(https\\3a //attacker.example/escaped.png); }',
+      '.four { background: url("//attacker.example/protocol-relative.png"); }'
+    ].join("\n"), "utf8");
+    const report = validateBuiltHtmlDirectory(directory);
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /site\.css: unexpected remote CSS URL/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("accepts deployed local CSS references", () => {
+  const directory = mkdtempSync(join(tmpdir(), "careguardian-static-security-"));
+  try {
+    writeFileSync(join(directory, "index.html"), htmlWithCsp('<link rel="stylesheet" href="site.css">'), "utf8");
+    writeFileSync(join(directory, "site.css"), '@import url("theme.css"); .safe { background: url("/icons/check.svg"); }', "utf8");
+    assert.equal(validateBuiltHtmlDirectory(directory).status, "pass");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
