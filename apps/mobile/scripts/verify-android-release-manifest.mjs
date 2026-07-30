@@ -64,6 +64,10 @@ const REQUIRED_FALSE_METADATA = [
   "firebase_analytics_collection_enabled",
   "google_analytics_adid_collection_enabled"
 ];
+const RECOGNIZED_PERMISSION_ELEMENTS = new Set([
+  "uses-permission",
+  "uses-permission-sdk-23"
+]);
 
 function childElements(element, tagName) {
   const children = element?.[tagName];
@@ -95,6 +99,25 @@ function collectDescendants(element, tagName, matches = []) {
         matches.push(child);
       }
       collectDescendants(child, tagName, matches);
+    }
+  }
+  return matches;
+}
+
+function collectAllDescendantElements(element, matches = []) {
+  if (!element || typeof element !== "object") return matches;
+  for (const [childTagName, children] of Object.entries(element)) {
+    if (
+      childTagName === "$" ||
+      childTagName === "$ns" ||
+      childTagName === "_"
+    ) {
+      continue;
+    }
+    if (!Array.isArray(children)) continue;
+    for (const child of children) {
+      matches.push(child);
+      collectAllDescendantElements(child, matches);
     }
   }
   return matches;
@@ -133,6 +156,13 @@ function createNamespaceAwareParser() {
       );
     }
   };
+  const rejectDocumentTypeDeclaration = () => {
+    throw new Error(
+      "DOCTYPE, DTD, and entity declarations are forbidden"
+    );
+  };
+  parser.saxParser.ondoctype = rejectDocumentTypeDeclaration;
+  parser.saxParser.onsgmldeclaration = rejectDocumentTypeDeclaration;
 
   return parser;
 }
@@ -187,8 +217,38 @@ export async function validateReleaseManifest(manifest) {
     return parseFailureReport(new Error("missing manifest root element"));
   }
 
-  const usesPermissions = childElements(manifestRoot, "uses-permission");
-  const permissionNames = usesPermissions.flatMap((permission) =>
+  const rootPermissionElements = [
+    ...childElements(manifestRoot, "uses-permission"),
+    ...childElements(manifestRoot, "uses-permission-sdk-23")
+  ];
+  const rootPermissionElementSet = new Set(rootPermissionElements);
+  const allPermissionLikeElements = collectAllDescendantElements(
+    manifestRoot
+  ).filter((element) =>
+    element?.$ns?.local === "uses-permission" ||
+    element?.$ns?.local?.startsWith("uses-permission-")
+  );
+  const recognizedPermissionElements = [];
+  for (const element of allPermissionLikeElements) {
+    const localName = element.$ns.local;
+    if (
+      element.$ns.uri !== "" ||
+      !RECOGNIZED_PERMISSION_ELEMENTS.has(localName)
+    ) {
+      problems.push(
+        `unrecognized permission-declaring element: {${element.$ns.uri}}${localName}`
+      );
+      continue;
+    }
+    recognizedPermissionElements.push(element);
+    if (!rootPermissionElementSet.has(element)) {
+      problems.push(
+        `permission-declaring element must be a direct manifest child: ${localName}`
+      );
+    }
+  }
+
+  const permissionNames = recognizedPermissionElements.flatMap((permission) =>
     androidAttributeValues(permission, "name")
   );
   if (permissionNames.includes(C2DM_PERMISSION)) {
@@ -236,7 +296,11 @@ export async function validateReleaseManifest(manifest) {
     }
   }
 
-  const permissions = new Set(permissionNames);
+  const permissions = new Set(
+    rootPermissionElements.flatMap((permission) =>
+      androidAttributeValues(permission, "name")
+    )
+  );
   for (const permission of REQUIRED_PERMISSIONS) {
     if (!permissions.has(permission)) {
       problems.push(`required local notification permission is missing: ${permission}`);

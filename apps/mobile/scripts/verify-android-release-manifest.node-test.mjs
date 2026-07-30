@@ -30,6 +30,24 @@ const currentRemoteManifest = readFileSync(
   resolve(fixtureRoot, "current-remote.xml"),
   "utf8"
 );
+const badgePermissions = [
+  "com.sec.android.provider.badge.permission.READ",
+  "com.sec.android.provider.badge.permission.WRITE",
+  "com.htc.launcher.permission.READ_SETTINGS",
+  "com.htc.launcher.permission.UPDATE_SHORTCUT",
+  "com.sonyericsson.home.permission.BROADCAST_BADGE",
+  "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",
+  "com.anddoes.launcher.permission.UPDATE_COUNT",
+  "com.majeur.launcher.permission.UPDATE_BADGE",
+  "com.huawei.android.launcher.permission.CHANGE_BADGE",
+  "com.huawei.android.launcher.permission.READ_SETTINGS",
+  "com.huawei.android.launcher.permission.WRITE_SETTINGS",
+  "android.permission.READ_APP_BADGE",
+  "com.oppo.launcher.permission.READ_SETTINGS",
+  "com.oppo.launcher.permission.WRITE_SETTINGS",
+  "me.everything.badger.permission.BADGE_COUNT_READ",
+  "me.everything.badger.permission.BADGE_COUNT_WRITE"
+];
 
 test("rejects the current manifest fixture with remote-push and badge surfaces", async () => {
   const report = await manifestVerifier.validateReleaseManifest(
@@ -165,25 +183,6 @@ test("detects every forbidden remote-push component and registrar independently"
 });
 
 test("detects every ShortcutBadger launcher permission independently", async (t) => {
-  const badgePermissions = [
-    "com.sec.android.provider.badge.permission.READ",
-    "com.sec.android.provider.badge.permission.WRITE",
-    "com.htc.launcher.permission.READ_SETTINGS",
-    "com.htc.launcher.permission.UPDATE_SHORTCUT",
-    "com.sonyericsson.home.permission.BROADCAST_BADGE",
-    "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",
-    "com.anddoes.launcher.permission.UPDATE_COUNT",
-    "com.majeur.launcher.permission.UPDATE_BADGE",
-    "com.huawei.android.launcher.permission.CHANGE_BADGE",
-    "com.huawei.android.launcher.permission.READ_SETTINGS",
-    "com.huawei.android.launcher.permission.WRITE_SETTINGS",
-    "android.permission.READ_APP_BADGE",
-    "com.oppo.launcher.permission.READ_SETTINGS",
-    "com.oppo.launcher.permission.WRITE_SETTINGS",
-    "me.everything.badger.permission.BADGE_COUNT_READ",
-    "me.everything.badger.permission.BADGE_COUNT_WRITE"
-  ];
-
   for (const permission of badgePermissions) {
     await t.test(permission, async () => {
       const report = await manifestVerifier.validateReleaseManifest(
@@ -485,6 +484,125 @@ test("fails closed on duplicate expanded Android attributes through an encoded U
   const report = await manifestVerifier.validateReleaseManifest(duplicate);
   assert.equal(report.status, "fail");
   assert.match(report.problems.join("\n"), /duplicate|XML|parse/i);
+});
+
+test("detects every forbidden permission in uses-permission-sdk-23", async (t) => {
+  const forbiddenPermissions = [
+    "com.google.android.c2dm.permission.RECEIVE",
+    ...badgePermissions
+  ];
+
+  for (const permission of forbiddenPermissions) {
+    await t.test(permission, async () => {
+      const manifest = addManifestChild(
+        `<uses-permission-sdk-23 android:name="${permission}" />`
+      );
+      const report = await manifestVerifier.validateReleaseManifest(manifest);
+
+      assert.equal(report.status, "fail");
+      assert.match(
+        report.problems.join("\n"),
+        permission.includes("c2dm") ? /C2DM/ : /launcher badge permission/
+      );
+    });
+  }
+});
+
+test("detects an sdk-23 C2DM permission through a scoped namespace alias", async () => {
+  const scopedAlias = addManifestChild(
+    '<uses-permission-sdk-23 xmlns:a="http://schemas.android.com/apk/res/android" a:name="com.google.android.c2dm.permission.RECEIVE" />'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(scopedAlias);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /C2DM/);
+});
+
+test("accepts a required permission in the official sdk-23 element", async () => {
+  const sdk23Permission = hardenedManifest.replace(
+    '<uses-permission android:name="android.permission.VIBRATE" />',
+    '<uses-permission-sdk-23 android:name="android.permission.VIBRATE" />'
+  );
+  assert.notEqual(sdk23Permission, hardenedManifest);
+
+  assert.deepEqual(
+    await manifestVerifier.validateReleaseManifest(sdk23Permission),
+    {
+      gate: "android-release-manifest",
+      status: "pass",
+      problems: []
+    }
+  );
+});
+
+test("rejects a nested permission declaration instead of treating it as a decoy", async () => {
+  const nested = addApplicationChild(
+    '<uses-permission-sdk-23 android:name="com.google.android.c2dm.permission.RECEIVE" />'
+  );
+
+  const report = await manifestVerifier.validateReleaseManifest(nested);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /permission|C2DM/i);
+});
+
+test("fails closed on unrecognized uses-permission variants", async (t) => {
+  const cases = [
+    addManifestChild(
+      '<uses-permission-sdk-24 android:name="android.permission.VIBRATE" />'
+    ),
+    addApplicationChild(
+      '<uses-permission-future android:name="com.google.android.c2dm.permission.RECEIVE" />'
+    ),
+    addManifestChild(
+      '<fake:uses-permission-sdk-23 xmlns:fake="urn:not-android" android:name="com.google.android.c2dm.permission.RECEIVE" />'
+    )
+  ];
+
+  for (const manifest of cases) {
+    await t.test("unrecognized permission element", async () => {
+      const report = await manifestVerifier.validateReleaseManifest(manifest);
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), /permission-declaring|unrecognized/i);
+    });
+  }
+});
+
+test("rejects benign, external, and internal DOCTYPE declarations", async (t) => {
+  const declarations = [
+    "<!DOCTYPE manifest>",
+    '<!DOCTYPE manifest SYSTEM "file:///definitely-not-present.dtd">',
+    '<!DOCTYPE manifest [<!ENTITY local "harmless">]>'
+  ];
+
+  for (const declaration of declarations) {
+    await t.test(declaration, async () => {
+      const manifest = hardenedManifest.replace(
+        "<manifest ",
+        `${declaration}\n<manifest `
+      );
+      const report = await manifestVerifier.validateReleaseManifest(manifest);
+
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), /DOCTYPE|DTD|entity/i);
+    });
+  }
+});
+
+test("continues to accept a standard XML declaration", async () => {
+  const declared = hardenedManifest.replace(
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<?xml version="1.0" encoding="utf-8" standalone="yes"?>'
+  );
+  assert.notEqual(declared, hardenedManifest);
+
+  assert.deepEqual(
+    await manifestVerifier.validateReleaseManifest(declared),
+    {
+      gate: "android-release-manifest",
+      status: "pass",
+      problems: []
+    }
+  );
 });
 
 test("CLI accepts only a hardened manifest file", () => {
