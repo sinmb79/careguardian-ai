@@ -1,56 +1,63 @@
-# Google Play 스토어 등록 문안 — 비공개 테스트
+# Google Play 스토어 등록 문안 — 생활후견 AI 비공개 테스트
 
 ## 한국어 (기본 언어)
 
 ### 앱 이름
-CareGuardian AI
+
+생활후견 AI
 
 ### 짧은 설명 (80자 이내)
-보호자의 돌봄 일상과 등록한 복약 정보를 DAILY 화면에서 함께 정리하는 로컬 보조 도구
+
+기기 안에서 일정·메모·체크리스트를 정리하고 나만의 기능을 만드는 로컬 AI 도구
 
 ### 전체 설명
-CareGuardian AI는 보호자가 돌봄에 필요한 일상, 의사소통 방법, 안정화 메모와 등록한 복약 정보를 한곳에 정리하고, DAILY 화면에서 오늘의 흐름으로 함께 살펴보도록 돕는 로컬 우선 보조 도구입니다.
+
+생활후견 AI는 일정, 할 일, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 비의료·로컬 우선 도구입니다.
 
 주요 기능
 
-- 돌봄 매뉴얼 작성: 돌봄 대상의 일상, 의사소통 방식, 안정화 방법, 연락처와 복약 정보를 구조화해 기록합니다.
-- DAILY 통합 화면: 일상 일정과 등록한 복약 정보를 하나의 오늘 흐름으로 보여 줍니다.
-- 기기 내 알림 시도: 등록한 시간에 맞춰 로컬 알림을 예약합니다. 기기 권한과 상태에 따라 지연되거나 누락될 수 있습니다.
-- 돌봄 동반 화면: 오늘의 돌봄 흐름과 간단한 감정 확인을 돕습니다.
-- 기기 인증과 로컬 암호화: 저장된 프로필은 기기 인증 후에만 열리며, CareManual은 앱 전용 SQLCipher 데이터베이스에 암호화되어 저장됩니다.
-- 전체 삭제: 앱이 예약한 알림을 확인해 취소한 뒤 이 기기의 암호화 데이터와 키를 삭제할 수 있습니다.
+- 오늘과 목록: 일반 일정, 할 일, 개인 목록을 정리합니다.
+- 나만의 기능 만들기: 선언형 필드와 제한된 자동화로 생활 기능을 추가합니다. 임의 URL·코드·플러그인을 실행하지 않습니다.
+- 기기 내 일반 알림: 일정 제목이나 메모를 알림에 넣지 않고 일반 제목과 task ID만 사용합니다.
+- 선택 설치 로컬 AI: 사용자가 고정된 한국어 GGUF 파일의 출처·크기·SHA-256·라이선스를 확인하고 동의하면 기기 CPU에서 텍스트를 요약하거나 다듬고, 제목 또는 체크리스트 초안을 제안합니다. 결과는 사용자가 승인하기 전 저장되지 않습니다.
+- 로컬 저장과 삭제: 모바일은 SQLCipher와 SecureStore/Android Keystore 경계를 사용합니다. 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 적용하며, 전체 삭제는 일반 알림·모델·부분 다운로드·작업공간·키를 삭제합니다.
 
 중요한 안내
 
-- CareGuardian AI는 의료기기가 아닙니다. 진단, 치료, 처방, 약물 상호작용, 용량 또는 실제 복용 여부를 검증하지 않습니다.
-- 알림 표시는 실제 복용 확인이 아니며, 응급 호출·119 연결·보호자 자동 연락 기능을 제공하지 않습니다.
-- 비공개 테스트에서는 가상의 인물·약·연락처만 사용하세요. 실제 개인정보·건강정보는 입력하지 마세요.
-- 비공개 테스트 후보는 SQLCipher 암호화 데이터베이스, Android Keystore 기반 키 보호, 백그라운드 잠금과 화면 캡처 차단을 적용했습니다. 다양한 실제 기기의 포렌식·네트워크 검증은 계속 진행 중이므로 합성 데이터 제한은 유지됩니다.
-- 앱이 약 이름·용량·복용법을 임의로 정하거나 검증하지 않습니다. 사용자가 입력하지 않은 복약 정보를 자동으로 만들지 않습니다.
+- 계정, 광고, 분석 SDK, 원격 푸시를 사용하지 않습니다. 연락처·위치·마이크·카메라·외부 저장소 권한도 요청하지 않습니다.
+- 모델 설치를 선택하면 고정된 Hugging Face GGUF 파일 요청이 발생하며, IP 주소와 일반 네트워크 메타데이터는 호스트에 보일 수 있습니다. 프롬프트·출력은 모델 다운로드 요청으로 전송하지 않습니다.
+- 비공개 테스트에는 합성·비민감 생활 일정과 메모만 사용하세요. 실제 개인정보나 민감정보는 입력하지 마세요.
+- Data safety의 최종 답변은 production AAB와 실기기 네트워크 관찰을 완료한 뒤 다시 확인합니다.
 
-### 카테고리 및 Health 선언 검토
+### Play Console 적용값
 
-- 앱 카테고리: Medical (Play Console에서 최종 적합성 확인)
-- Health apps declaration: 최소 **Medication and Treatment Management** 선택
-- 현재 기능은 의료 서비스 제공·예약·청구가 아니므로 **Healthcare Services and Management**는 선택하지 않음
-- 광고 ID: 사용하지 않음(AAB에서 `com.google.android.gms.permission.AD_ID` 부재 확인)
-- Data safety: 앱 자체 계정·광고·분석·서버 업로드 없음. 다만 최종 production AAB의 SDK·실기기 네트워크 검증 결과와 반드시 대조한 뒤 제출
-
-### 콘텐츠 등급
-전체이용가
+| 항목 | 적용값 | 확인 시점 |
+|---|---|---|
+| 카테고리 | Productivity | 새 AAB와 문안 적용 시 |
+| 콘텐츠 등급 | 18+ | 설문과 최종 스토어 설정 시 |
+| 제품 위치 | 기능 제한형 로컬 문서 정리 도구 | 현재 구현 기준 |
+| Health apps declaration | 비건강 앱 상태 | 새 AAB 정적 검사 뒤 |
+| Ads / Advertising ID | 광고 없음 / 광고 ID 사용 안 함 | 새 AAB 정적 검사 뒤 |
+| Data safety | Task 10의 네트워크 관찰 후 확정 | 아직 최종값 아님 |
 
 ### 개인정보처리방침
+
 https://sinmb79.github.io/careguardian-ai/privacy-policy.html
 
 ### 문의 이메일
+
 sinmb79@naver.com
 
 ## English (reference translation)
 
 ### Short description
-A local care companion that organizes daily routines and entered medication information in one DAILY view.
+
+An on-device AI tool for organizing schedules, notes, checklists, and personal features.
 
 ### Full description
-CareGuardian AI helps caregivers organize care routines, communication and calming notes, contacts, and entered medication information. The DAILY view brings routines and entered medication information together for the day. It can attempt to schedule local device notifications, which may be delayed or missed depending on permissions and device state. Stored mobile profiles use an app-specific SQLCipher database and open only after device authentication.
 
-It is not a medical device. It does not diagnose, treat, prescribe, validate medicines or doses, or confirm that medicine was taken. It does not provide emergency calls, 119 calling, or automatic caregiver contact. Closed-test participants must use fictional data only. Exported relay files may be plaintext and should be shared only through a safe channel.
+Life Steward AI is a non-health, local-first tool for schedules, tasks, notes, checklists, and user-created personal features. It has no accounts, ads, analytics SDKs, or remote push. Mobile storage uses SQLCipher and a SecureStore/Android Keystore boundary. Generic local notifications contain only a task ID, never a title or note body.
+
+Optional local AI runs on device CPU after the user reviews a pinned Korean GGUF file’s source, size, SHA-256, and license. Installing that file requests it from Hugging Face; the host may see the device IP address and ordinary network metadata. Prompts and outputs are not sent with the download request. Results are not saved until the user approves them.
+
+Use only synthetic, non-sensitive schedules and notes during closed testing. Final Data safety values remain pending production-AAB and real-device network observation.
