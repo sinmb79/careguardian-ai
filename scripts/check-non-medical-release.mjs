@@ -10,6 +10,8 @@ import {
 } from "./typescript-static-analysis.mjs";
 
 const RELEASE_ROOTS = ["apps/mobile/", "src/", "packages/life-core/", "public/"];
+const ANDROID_XML_ANDROID_NAMESPACE =
+  "http://schemas.android.com/apk/res/android";
 const ANDROID_XML_TOOLS_NAMESPACE = "http://schemas.android.com/tools";
 const APP_PRIVACY_POLICY_URL =
   "https://sinmb79.github.io/careguardian-ai/privacy-policy.html";
@@ -371,6 +373,7 @@ const LOCAL_NOTIFICATION_HARDENING_LINE_CONTRACTS = new Map([
 
 const ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS = new Map([
   ["apps/mobile/scripts/verify-android-release-manifest.mjs", [
+    'const ANDROID_NAMESPACE_URI = "http://schemas.android.com/apk/res/android";',
     'const C2DM_PERMISSION = "com.google.android.c2dm.permission.RECEIVE";',
     '  "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
     '  "com.google.firebase.iid.FirebaseInstanceIdReceiver",',
@@ -495,6 +498,12 @@ function isApprovedReleaseLink(file, link) {
   if (
     file === "apps/mobile/plugins/with-local-only-notifications.js" &&
     link === ANDROID_XML_TOOLS_NAMESPACE
+  ) {
+    return true;
+  }
+  if (
+    file === "apps/mobile/scripts/verify-android-release-manifest.mjs" &&
+    link === ANDROID_XML_ANDROID_NAMESPACE
   ) {
     return true;
   }

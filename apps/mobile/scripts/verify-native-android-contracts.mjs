@@ -102,7 +102,7 @@ function verifyAndroidEntry() {
   return resolvedEntry;
 }
 
-function runNativeContracts() {
+async function runNativeContracts() {
   if (requestedContract === "entry") {
     process.stdout.write(`${verifyAndroidEntry()}\n`);
     return;
@@ -149,7 +149,9 @@ function runNativeContracts() {
       ...process.env,
       NODE_ENV: "production"
     });
-    const manifestReport = verifyReleaseManifestFile(releaseMergedManifest);
+    const manifestReport = await verifyReleaseManifestFile(
+      releaseMergedManifest
+    );
     process.stdout.write(`${JSON.stringify(manifestReport, null, 2)}\n`);
     if (manifestReport.status !== "pass") {
       throw new Error(
@@ -188,7 +190,7 @@ try {
   }
 
   try {
-    runNativeContracts();
+    await runNativeContracts();
   } finally {
     try {
       if (existsSync(androidRoot)) {

@@ -31,8 +31,10 @@ const currentRemoteManifest = readFileSync(
   "utf8"
 );
 
-test("rejects the current manifest fixture with remote-push and badge surfaces", () => {
-  const report = manifestVerifier.validateReleaseManifest(currentRemoteManifest);
+test("rejects the current manifest fixture with remote-push and badge surfaces", async () => {
+  const report = await manifestVerifier.validateReleaseManifest(
+    currentRemoteManifest
+  );
 
   assert.equal(report.status, "fail");
   assert.match(report.problems.join("\n"), /c2dm/i);
@@ -47,9 +49,9 @@ test("rejects the current manifest fixture with remote-push and badge surfaces",
   assert.match(report.problems.join("\n"), /TransportRegistrar/);
 });
 
-test("accepts the hardened local-notification-only manifest fixture", () => {
+test("accepts the hardened local-notification-only manifest fixture", async () => {
   assert.deepEqual(
-    manifestVerifier.validateReleaseManifest(hardenedManifest),
+    await manifestVerifier.validateReleaseManifest(hardenedManifest),
     {
       gate: "android-release-manifest",
       status: "pass",
@@ -154,8 +156,8 @@ test("detects every forbidden remote-push component and registrar independently"
   ];
 
   for (const [name, manifest, expectedProblem] of cases) {
-    await t.test(name, () => {
-      const report = manifestVerifier.validateReleaseManifest(manifest);
+    await t.test(name, async () => {
+      const report = await manifestVerifier.validateReleaseManifest(manifest);
       assert.equal(report.status, "fail");
       assert.match(report.problems.join("\n"), expectedProblem);
     });
@@ -183,8 +185,8 @@ test("detects every ShortcutBadger launcher permission independently", async (t)
   ];
 
   for (const permission of badgePermissions) {
-    await t.test(permission, () => {
-      const report = manifestVerifier.validateReleaseManifest(
+    await t.test(permission, async () => {
+      const report = await manifestVerifier.validateReleaseManifest(
         addManifestChild(
           `<uses-permission android:name="${permission}" />`
         )
@@ -225,10 +227,10 @@ test("requires every local notification permission and component", async (t) => 
   ];
 
   for (const [name, removal, expectedProblem] of cases) {
-    await t.test(name, () => {
+    await t.test(name, async () => {
       const mutated = hardenedManifest.replace(removal, "");
       assert.notEqual(mutated, hardenedManifest);
-      const report = manifestVerifier.validateReleaseManifest(mutated);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
       assert.match(report.problems.join("\n"), expectedProblem);
     });
@@ -243,7 +245,7 @@ test("requires local scheduling, reboot, and package-replacement receiver action
   ];
 
   for (const action of actions) {
-    await t.test(action, () => {
+    await t.test(action, async () => {
       const mutated = hardenedManifest.replace(
         new RegExp(
           `\\s*<action android:name="${action.replaceAll(".", "\\.")}" \\/>`
@@ -251,7 +253,7 @@ test("requires local scheduling, reboot, and package-replacement receiver action
         ""
       );
       assert.notEqual(mutated, hardenedManifest);
-      const report = manifestVerifier.validateReleaseManifest(mutated);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
       assert.match(report.problems.join("\n"), new RegExp(action.split(".").at(-1)));
     });
@@ -266,7 +268,7 @@ test("requires each Firebase and analytics disable metadata value to be false", 
   ];
 
   for (const flag of flags) {
-    await t.test(`${flag} absent`, () => {
+    await t.test(`${flag} absent`, async () => {
       const mutated = hardenedManifest.replace(
         new RegExp(
           `\\s*<meta-data\\s+android:name="${flag}"\\s+android:value="false"\\s*\\/>`
@@ -274,22 +276,113 @@ test("requires each Firebase and analytics disable metadata value to be false", 
         ""
       );
       assert.notEqual(mutated, hardenedManifest);
-      const report = manifestVerifier.validateReleaseManifest(mutated);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
       assert.match(report.problems.join("\n"), new RegExp(flag));
     });
 
-    await t.test(`${flag} true`, () => {
+    await t.test(`${flag} true`, async () => {
       const mutated = hardenedManifest.replace(
         `android:name="${flag}"\n      android:value="false"`,
         `android:name="${flag}"\n      android:value="true"`
       );
       assert.notEqual(mutated, hardenedManifest);
-      const report = manifestVerifier.validateReleaseManifest(mutated);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
       assert.match(report.problems.join("\n"), new RegExp(flag));
     });
   }
+});
+
+test("decodes XML character references before checking forbidden permissions", async () => {
+  const report = await manifestVerifier.validateReleaseManifest(
+    addManifestChild(
+      '<uses-permission android:name="com.google.android.c2dm.permission.RECEIV&#69;" />'
+    )
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /C2DM/);
+});
+
+test("honors an Android namespace alias on forbidden components", async () => {
+  const aliased = addApplicationChild(
+    '<service a:name="com.google.firebase.messaging.FirebaseMessagingService" />'
+  ).replace(
+    'xmlns:android="http://schemas.android.com/apk/res/android"',
+    'xmlns:android="http://schemas.android.com/apk/res/android" xmlns:a="http://schemas.android.com/apk/res/android"'
+  );
+  const report = await manifestVerifier.validateReleaseManifest(aliased);
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /FirebaseMessagingService/);
+});
+
+test("requires receiver actions at receiver > intent-filter > action hierarchy", async () => {
+  const mutated = hardenedManifest.replace(
+    '        <action android:name="android.intent.action.BOOT_COMPLETED" />',
+    '        <meta-data android:name="android.intent.action.BOOT_COMPLETED" />'
+  );
+  assert.notEqual(mutated, hardenedManifest);
+
+  const report = await manifestVerifier.validateReleaseManifest(mutated);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /BOOT_COMPLETED/);
+});
+
+test("fails closed on malformed XML", async () => {
+  const malformed = hardenedManifest.replace("</manifest>", "");
+  assert.notEqual(malformed, hardenedManifest);
+
+  const report = await manifestVerifier.validateReleaseManifest(malformed);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /XML|parse|malformed/i);
+});
+
+test("honors an Android namespace alias throughout a valid manifest", async () => {
+  const aliased = hardenedManifest
+    .replace("xmlns:android=", "xmlns:a=")
+    .replaceAll("android:", "a:");
+
+  assert.deepEqual(
+    await manifestVerifier.validateReleaseManifest(aliased),
+    {
+      gate: "android-release-manifest",
+      status: "pass",
+      problems: []
+    }
+  );
+});
+
+test("rejects duplicate disable metadata expressed through a namespace alias", async () => {
+  const duplicate = addApplicationChild(
+    '<meta-data a:name="firebase_messaging_auto_init_enabled" a:value="false" />'
+  ).replace(
+    'xmlns:android="http://schemas.android.com/apk/res/android"',
+    'xmlns:android="http://schemas.android.com/apk/res/android" xmlns:a="http://schemas.android.com/apk/res/android"'
+  );
+  const report = await manifestVerifier.validateReleaseManifest(duplicate);
+
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /firebase_messaging_auto_init_enabled/
+  );
+});
+
+test("distinguishes forbidden component names from unrelated element kinds", async () => {
+  const decoy = addApplicationChild(
+    '<meta-data android:name="com.google.firebase.messaging.FirebaseMessagingService" />'
+  );
+
+  assert.deepEqual(
+    await manifestVerifier.validateReleaseManifest(decoy),
+    {
+      gate: "android-release-manifest",
+      status: "pass",
+      problems: []
+    }
+  );
 });
 
 test("CLI accepts only a hardened manifest file", () => {
