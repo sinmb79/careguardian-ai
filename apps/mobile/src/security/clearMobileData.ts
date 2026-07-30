@@ -1,15 +1,25 @@
 export interface MobileDataDeletionDependencies {
+  /** Task 7 supplies this when the inference runtime is introduced. */
+  stopActiveInference?: () => Promise<void>;
   deleteWorkspace: () => Promise<void>;
   cancelLifeNotifications: () => Promise<void>;
-  resetMemory: () => void;
+  removeAllModels: () => Promise<void>;
+  deleteSecureStoreKey: () => Promise<void>;
+  resetMemory: () => void | Promise<void>;
 }
 
 export async function clearMobileData({
+  stopActiveInference,
   deleteWorkspace,
   cancelLifeNotifications,
+  removeAllModels,
+  deleteSecureStoreKey,
   resetMemory
 }: MobileDataDeletionDependencies): Promise<void> {
+  await stopActiveInference?.();
   await cancelLifeNotifications();
+  await removeAllModels();
   await deleteWorkspace();
-  resetMemory();
+  await deleteSecureStoreKey();
+  await resetMemory();
 }
