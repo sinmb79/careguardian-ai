@@ -5,7 +5,13 @@ import {
   MODEL_REGISTRY,
   validateModelRegistry
 } from "./modelRegistry";
-import { getThirdPartyModelNotice } from "../legal/thirdPartyModels";
+import {
+  getOfflineLicenseAssetUri,
+  getThirdPartyModelNotice
+} from "../legal/thirdPartyModels";
+import { createRequire } from "node:module";
+
+const nodeRequire = createRequire(import.meta.url);
 
 describe("MODEL_REGISTRY", () => {
   test("pins the approved 0.5B GGUF artifact to its immutable supply-chain identity", () => {
@@ -40,22 +46,70 @@ describe("MODEL_REGISTRY", () => {
     ]);
   });
 
-  test("enforces immutable download, integrity, license, attribution, RAM, and context requirements", () => {
+  test("rejects a mutable or non-commit revision", () => {
     expect(() => validateModelRegistry(MODEL_REGISTRY)).not.toThrow();
     expect(() =>
       validateModelRegistry([
         {
           ...MODEL_REGISTRY[0],
-          downloadUrl:
-            "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF/resolve/main/model.gguf?download=true"
+          revision: "main"
         }
       ])
-    ).toThrow(/immutable/i);
+    ).toThrow(/revision/i);
+  });
+
+  test("binds an installable URL exactly to its repository, revision, and file name", () => {
+    const model = MODEL_REGISTRY[0];
+
+    expect(() =>
+      validateModelRegistry([
+        {
+          ...model,
+          downloadUrl: model.downloadUrl?.replace(
+            "naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF",
+            "different-owner/different-repo"
+          )
+        }
+      ])
+    ).toThrow(/download URL/i);
+    expect(() =>
+      validateModelRegistry([
+        {
+          ...model,
+          artifactFileName: "different-file.gguf"
+        }
+      ])
+    ).toThrow(/download URL/i);
+  });
+
+  test("requires a safe integer byte count and an app default context no larger than official context", () => {
+    const model = MODEL_REGISTRY[0];
+
+    expect(() => validateModelRegistry([{ ...model, bytes: 0.5 }])).toThrow(/byte/i);
+    expect(() =>
+      validateModelRegistry([
+        {
+          ...model,
+          appDefaultContextTokens: model.officialModelContextTokens + 1
+        }
+      ])
+    ).toThrow(/context/i);
+  });
+
+  test("rejects duplicate IDs and all blocked artifact fields even when empty or zero", () => {
+    const model = MODEL_REGISTRY[0];
+    const blocked = MODEL_REGISTRY.find(
+      (candidate) => candidate.availability !== "installable"
+    )!;
+
+    expect(() => validateModelRegistry([model, { ...model }])).toThrow(/duplicate/i);
+    expect(() => validateModelRegistry([{ ...blocked, downloadUrl: "" }])).toThrow(/blocked/i);
+    expect(() => validateModelRegistry([{ ...blocked, bytes: 0 }])).toThrow(/blocked/i);
   });
 });
 
 describe("getThirdPartyModelNotice", () => {
-  test("makes the required HyperCLOVA X attribution and offline license assets available", () => {
+  test("maps every required notice asset to a deferred static Metro loader", () => {
     const notice = getThirdPartyModelNotice("hyperclovax-seed-text-instruct-1.5b-q4km");
 
     expect(notice).toMatchObject({
@@ -64,10 +118,53 @@ describe("getThirdPartyModelNotice", () => {
       requiresLicenseAcceptance: true,
       additionalCommercialLicenseGate: "10M_MAU_OR_DIRECT_COMPETITOR"
     });
-    expect(notice?.licenseAssets.map((asset) => asset.path)).toEqual([
-      "assets/model-licenses/hyperclovax-seed/LICENSE.txt",
-      "assets/model-licenses/hyperclovax-seed/NOTICE.txt",
-      "assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt"
+    const kananaNotice = getThirdPartyModelNotice("kanana-1.5-2.1b-instruct");
+
+    expect([
+      ...(notice?.licenseAssets ?? []),
+      ...(kananaNotice?.licenseAssets ?? [])
+    ].map((asset) => [asset.path, asset.moduleKey])).toEqual([
+      ["assets/model-licenses/hyperclovax-seed/LICENSE.txt", "hyperclovax-license"],
+      ["assets/model-licenses/hyperclovax-seed/NOTICE.txt", "hyperclovax-notice"],
+      [
+        "assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt",
+        "hyperclovax-prohibited-use-policy"
+      ],
+      ["assets/model-licenses/apache-2.0/LICENSE.txt", "apache-2.0-license"]
     ]);
+    expect(
+      [...(notice?.licenseAssets ?? []), ...(kananaNotice?.licenseAssets ?? [])].every(
+        (asset) => typeof asset.moduleLoader === "function"
+      )
+    ).toBe(true);
+  });
+
+  test("resolves a Metro asset module through an injected Expo-Asset compatible loader without executing txt requires in Vitest", async () => {
+    const notice = getThirdPartyModelNotice("hyperclovax-seed-text-instruct-0.5b-q4km");
+    const asset = notice?.licenseAssets[0];
+    const moduleLoader = () => 73;
+
+    await expect(
+      getOfflineLicenseAssetUri({ ...asset!, moduleLoader }, {
+        fromModule(moduleId) {
+          expect(moduleId).toBe(73);
+          return {
+            uri: "asset://license",
+            localUri: "file://cached-license.txt",
+            downloadAsync: async () => ({
+              uri: "asset://license",
+              localUri: "file://cached-license.txt"
+            })
+          };
+        }
+      })
+    ).resolves.toBe("file://cached-license.txt");
+  });
+
+  test("registers txt exactly once in the live Metro resolver configuration", () => {
+    const metroConfig = nodeRequire("../../metro.config.js");
+    const textExtensions = metroConfig.resolver.assetExts.filter((extension: string) => extension === "txt");
+
+    expect(textExtensions).toEqual(["txt"]);
   });
 });

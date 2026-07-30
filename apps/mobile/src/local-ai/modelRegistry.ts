@@ -118,15 +118,25 @@ export const MODEL_REGISTRY: readonly ModelArtifact[] = [
   }
 ] as const;
 
-function isImmutableHuggingFaceUrl(url: string, revision: string): boolean {
-  return new RegExp(
-    `^https://huggingface\\.co/[^/]+/[^/]+/resolve/${revision}/[^?#]+\\?download=true$`
-  ).test(url);
+function getExpectedDownloadUrl(repository: string, revision: string, artifactFileName: string): string {
+  return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
 }
 
 /** Throws when an artifact is unsafe to present as an installable download. */
 export function validateModelRegistry(registry: readonly ModelArtifact[]): void {
+  const seenIds = new Set<string>();
+
   for (const model of registry) {
+    if (seenIds.has(model.id)) {
+      throw new Error(`${model.id}: duplicate model ID is not allowed`);
+    }
+    seenIds.add(model.id);
+    if (!/^[^/\\\s]+\/[^/\\\s]+$/.test(model.repository)) {
+      throw new Error(`${model.id}: repository must use owner/repository format`);
+    }
+    if (!/^[a-f0-9]{40}$/.test(model.revision)) {
+      throw new Error(`${model.id}: revision must be a 40-character lowercase commit SHA`);
+    }
     if (!Number.isInteger(model.minimumRamGb) || model.minimumRamGb <= 0) {
       throw new Error(`${model.id}: a positive minimum RAM value is required`);
     }
@@ -138,14 +148,24 @@ export function validateModelRegistry(registry: readonly ModelArtifact[]): void 
     ) {
       throw new Error(`${model.id}: app and official context values are required`);
     }
+    if (model.appDefaultContextTokens > model.officialModelContextTokens) {
+      throw new Error(`${model.id}: app default context cannot exceed official context`);
+    }
     if (!model.attribution || model.licenseAssets.length === 0) {
       throw new Error(`${model.id}: attribution and license assets are required`);
     }
     if (model.availability === "installable") {
-      if (!model.downloadUrl || !isImmutableHuggingFaceUrl(model.downloadUrl, model.revision)) {
-        throw new Error(`${model.id}: installable download URL must be immutable HTTPS`);
+      if (!model.artifactFileName || !/^[^/\\]+\.gguf$/.test(model.artifactFileName)) {
+        throw new Error(`${model.id}: installable artifact must be a single GGUF file name`);
       }
-      if (!model.artifactFileName || !model.bytes || model.bytes <= 0) {
+      if (
+        model.downloadUrl !==
+        getExpectedDownloadUrl(model.repository, model.revision, model.artifactFileName)
+      ) {
+        throw new Error(`${model.id}: installable download URL must exactly match repository, revision, and file`);
+      }
+      const bytes = model.bytes;
+      if (typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes <= 0) {
         throw new Error(`${model.id}: installable artifact file name and byte size are required`);
       }
       if (!model.sha256 || !/^[a-f0-9]{64}$/.test(model.sha256)) {
@@ -153,7 +173,12 @@ export function validateModelRegistry(registry: readonly ModelArtifact[]): void 
       }
       continue;
     }
-    if (model.downloadUrl || model.artifactFileName || model.bytes || model.sha256) {
+    if (
+      model.downloadUrl !== undefined ||
+      model.artifactFileName !== undefined ||
+      model.bytes !== undefined ||
+      model.sha256 !== undefined
+    ) {
       throw new Error(`${model.id}: blocked model cannot expose an unapproved download artifact`);
     }
   }

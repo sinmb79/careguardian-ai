@@ -33,7 +33,11 @@ NAVER의 GGUF 배포 저장소 모델 카드가 가리키는 원본(base model)�
 | Section 3.1(iv) NOTICE 문구 | 위 LICENSE §3.1(iv) | 위 LICENSE §3.1(iv) | `apps/mobile/assets/model-licenses/hyperclovax-seed/NOTICE.txt` |
 | Section 2.3 Prohibited Use Policy | 위 LICENSE §2.3 | 위 LICENSE §2.3 | `apps/mobile/assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt` |
 
-두 고정 원본 모델 저장소의 sibling 목록에는 `LICENSE`만 존재합니다. 별도 `NOTICE`나 `PROHIBITED_USE_POLICY` 파일이 있다고 추정하지 않았습니다. 앱의 NOTICE는 LICENSE §3.1(iv)가 요구하는 문구를 그대로 옮긴 것이며, 금지 사용 정책 파일은 LICENSE §2.3 원문을 그대로 추출한 것입니다. 둘 다 요약이나 재작성으로 대체하지 않았습니다.
+두 고정 원본 모델 저장소의 **라이선스 관련** sibling은 `LICENSE`만입니다. `.gitattributes`, `README.md`, config/tokenizer 파일, `model.safetensors` 등 다른 sibling은 존재하지만 별도 `NOTICE`나 `PROHIBITED_USE_POLICY` 파일은 없습니다. 앱의 NOTICE는 LICENSE §3.1(iv)가 요구하는 문구를 그대로 옮긴 것이며, 금지 사용 정책 파일은 LICENSE §2.3 원문을 그대로 추출한 것입니다. 둘 다 요약이나 재작성으로 대체하지 않았습니다.
+
+Apache-2.0 사본은 원본 바이트를 유지합니다. 이 저장소의 patch 도구가 마지막 줄의 LF를 표준화할 수 있으므로 NAVER LICENSE는 본문이 원문과 같고 끝의 LF 한 바이트만 추가되어 있습니다. PUP도 §2.3의 내부 탭·공백은 원문 그대로이나, 원문 끝의 ASCII SPACE 한 바이트와 마지막 LF가 앱 사본의 단일 LF로 정규화됩니다. 이는 Git의 후행 공백 검사를 통과시키기 위한 의도적인 파일 끝 정규화이며, 단어·문장·내부 공백을 변경하지 않습니다. 정확한 원문 바이트와 SHA-256은 위 고정 URL에서 언제든지 재검증할 수 있습니다.
+
+2026-07-30 재검증 SHA-256: NAVER upstream LICENSE `38ecac78adef21eceff609f917f3cf904b3381ee9a6c83f824b89f4f9d28bbb4` (12,560 bytes), 앱 LICENSE `bd6ae45d8a8d4d465a869100982d0d1a4c5a8a77ead38ce094ea2d1bf4b07507` (12,561 bytes); upstream §2.3 추출 `d772dd2fd648d4a30b900bac98bbb136738fc42c331b50c247d257e2994cca30` (973 bytes), 앱 PUP `febe5b50f8d3d6338ca19516012796702a509acab92efd6f9ceafca96cfde815` (973 bytes); Apache upstream·앱 사본 모두 `d1ee81266b96305cdec883e60fad804aa1d04b4698dccb5942ca51816b10df57` (10,494 bytes)입니다.
 
 Kanana Apache-2.0 원문은 [LICENSE@7df4bc35ccd610e451809d7106e1c3cf82bfd44c](https://huggingface.co/kakaocorp/kanana-1.5-2.1b-instruct-2505/resolve/7df4bc35ccd610e451809d7106e1c3cf82bfd44c/LICENSE)에서 확보해 `apps/mobile/assets/model-licenses/apache-2.0/LICENSE.txt`에 보관했습니다.
 
@@ -41,11 +45,11 @@ Kanana Apache-2.0 원문은 [LICENSE@7df4bc35ccd610e451809d7106e1c3cf82bfd44c](h
 
 ```powershell
 hf --version
-hf models info naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF
-hf models info naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF
+hf models info naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF --revision 27831169fdebe6fe30bb1b9d76b12a2d06693f26
+hf models info naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF --revision b9bbb68d6635a8b80263bf7165c8b908d64f28de
 hf download --dry-run naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf --revision 27831169fdebe6fe30bb1b9d76b12a2d06693f26
 hf download --dry-run naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M.gguf --revision b9bbb68d6635a8b80263bf7165c8b908d64f28de
-hf models info kakaocorp/kanana-1.5-2.1b-instruct-2505
+hf models info kakaocorp/kanana-1.5-2.1b-instruct-2505 --revision 7df4bc35ccd610e451809d7106e1c3cf82bfd44c
 ```
 
 `--dry-run`은 파일을 내려받지 않고 크기만 확인합니다. Hub API와 `hf models info`의 현재 SHA는 공개 저장소가 변경될 수 있으므로, 설치 허용 판단은 반드시 위 표의 고정 GGUF 리비전과 무결성 값으로 합니다.
