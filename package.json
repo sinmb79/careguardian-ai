@@ -29,7 +29,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "release:policy-check": "node scripts/check-non-medical-release.mjs",
-    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs",
+    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/plugins/with-local-only-notifications.node-test.cjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs",
     "release:model-check": "node scripts/check-model-registry.mjs",
     "release:model-check:test": "node --test scripts/check-model-registry.node-test.mjs",
     "release:static-security-check": "node scripts/check-static-security.mjs",

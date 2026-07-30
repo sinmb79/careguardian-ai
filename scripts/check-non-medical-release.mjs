@@ -10,6 +10,23 @@ import {
 } from "./typescript-static-analysis.mjs";
 
 const RELEASE_ROOTS = ["apps/mobile/", "src/", "packages/life-core/", "public/"];
+const ANDROID_XML_TOOLS_NAMESPACE = "http://schemas.android.com/tools";
+const APP_PRIVACY_POLICY_URL =
+  "https://sinmb79.github.io/careguardian-ai/privacy-policy.html";
+const HUGGING_FACE_PRIVACY_POLICY_URL = "https://huggingface.co/privacy";
+const HUGGING_FACE_PRIVACY_CONTACT = "mailto:privacy@huggingface.co";
+const APP_PRIVACY_CONTACT = "mailto:sinmb79@naver.com";
+const APPROVED_POLICY_LINKS_BY_FILE = new Map([
+  ["apps/mobile/src/legal/externalLinks.ts", new Set([
+    APP_PRIVACY_POLICY_URL,
+    HUGGING_FACE_PRIVACY_POLICY_URL
+  ])],
+  ["public/privacy-policy.html", new Set([
+    HUGGING_FACE_PRIVACY_POLICY_URL,
+    HUGGING_FACE_PRIVACY_CONTACT,
+    APP_PRIVACY_CONTACT
+  ])]
+]);
 const EXACT_FILES = new Set([
   "index.html",
   "package.json",
@@ -272,7 +289,7 @@ const FORBIDDEN_CAPABILITY_PROPERTIES = new Set([
 const POLICY_LINE_CONTRACTS = new Map([
   ["package.json", [
     '    "release:policy-check": "node scripts/check-non-medical-release.mjs",',
-    '    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs",'
+    '    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/plugins/with-local-only-notifications.node-test.cjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs",'
   ]],
   ["packages/life-core/src/policy.ts", [
     '  reasonCode?: "restricted_health_intent";',
@@ -311,12 +328,64 @@ const POLICY_LINE_CONTRACTS = new Map([
     'const PREVIOUS_TEST_IDENTIFIER_PREFIX = "careguardian-medication-";'
   ]],
   ["apps/mobile/plugins/with-local-only-notifications.js", [
-    '    setBooleanMetadata(application, "firebase_messaging_auto_init_enabled", false);',
-    '    setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
-    '    setBooleanMetadata(application, "google_analytics_adid_collection_enabled", false);'
+    '  setBooleanMetadata(application, "firebase_messaging_auto_init_enabled", false);',
+    '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
+    '  setBooleanMetadata(application, "google_analytics_adid_collection_enabled", false);'
   ]],
   ["public/privacy-policy.html", [
+    "  <p>The operator is Google Play developer <strong>22B</strong>, and the project/EAS owner is <strong>sinmb79</strong>. Contact: <a href=\"mailto:sinmb79@naver.com\">sinmb79@naver.com</a>. Life Steward AI has no accounts, ads, analytics SDKs, or off-device AI service. General tasks, lists, notes, user-created features, prompts, and outputs are processed on the user’s device.</p>",
     "  <p>There are no accounts, ads, analytics SDKs, or remote push. The displayed notification title is generic and its data payload contains only a task ID. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>"
+  ]]
+]);
+
+const LOCAL_NOTIFICATION_HARDENING_LINE_CONTRACTS = new Map([
+  ["apps/mobile/app.json", [
+    '      "./plugins/with-local-only-notifications",'
+  ]],
+  ["apps/mobile/plugins/with-local-only-notifications.js", [
+    '  "com.google.android.c2dm.permission.RECEIVE",',
+    '  "com.sec.android.provider.badge.permission.READ",',
+    '  "com.sec.android.provider.badge.permission.WRITE",',
+    '  "com.htc.launcher.permission.READ_SETTINGS",',
+    '  "com.htc.launcher.permission.UPDATE_SHORTCUT",',
+    '  "com.sonyericsson.home.permission.BROADCAST_BADGE",',
+    '  "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",',
+    '  "com.anddoes.launcher.permission.UPDATE_COUNT",',
+    '  "com.majeur.launcher.permission.UPDATE_BADGE",',
+    '  "com.huawei.android.launcher.permission.CHANGE_BADGE",',
+    '  "com.huawei.android.launcher.permission.READ_SETTINGS",',
+    '  "com.huawei.android.launcher.permission.WRITE_SETTINGS",',
+    '  "android.permission.READ_APP_BADGE",',
+    '  "com.oppo.launcher.permission.READ_SETTINGS",',
+    '  "com.oppo.launcher.permission.WRITE_SETTINGS",',
+    '  "me.everything.badger.permission.BADGE_COUNT_READ",',
+    '  "me.everything.badger.permission.BADGE_COUNT_WRITE"',
+    '    "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
+    '    "com.google.firebase.messaging.FirebaseMessagingService",',
+    '    "com.google.firebase.components.ComponentDiscoveryService"',
+    '  receiver: ["com.google.firebase.iid.FirebaseInstanceIdReceiver"],',
+    '  provider: ["com.google.firebase.provider.FirebaseInitProvider"]',
+    '    androidConfig.modResults.manifest = applyLocalOnlyNotificationManifest('
+  ]]
+]);
+
+const ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS = new Map([
+  ["apps/mobile/scripts/verify-android-release-manifest.mjs", [
+    'const C2DM_PERMISSION = "com.google.android.c2dm.permission.RECEIVE";',
+    '  "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
+    '  "com.google.firebase.iid.FirebaseInstanceIdReceiver",',
+    '  "com.google.firebase.messaging.FirebaseMessagingService",',
+    '  "com.google.firebase.components.ComponentDiscoveryService",',
+    '  "com.google.firebase.provider.FirebaseInitProvider"',
+    '  "FirebaseMessagingKtxRegistrar",',
+    '  "FirebaseMessagingRegistrar",',
+    '  "FirebaseInstallationsKtxRegistrar",',
+    '  "FirebaseInstallationsRegistrar",',
+    '  "TransportRegistrar"',
+    '  "firebase_messaging_auto_init_enabled",',
+    '  "firebase_analytics_collection_enabled",',
+    '  "google_analytics_adid_collection_enabled"',
+    '      problems.push(`forbidden Firebase registrar: ${registrar}`);'
   ]]
 ]);
 
@@ -359,7 +428,8 @@ const MODULE_EXPORT_LINE_CONTRACTS = new Map([
     "module.exports = config;"
   ]],
   ["apps/mobile/plugins/with-local-only-notifications.js", [
-    "module.exports = function withLocalOnlyNotifications(config) {"
+    "module.exports = function withLocalOnlyNotifications(config) {",
+    "module.exports.applyLocalOnlyNotificationManifest = applyLocalOnlyNotificationManifest;"
   ]],
   ["apps/mobile/plugins/with-cpu-only-llama.js", [
     "module.exports = withCpuOnlyLlama;",
@@ -388,13 +458,19 @@ function isSkippedAssetOrTest(file) {
   return (
     file === "apps/mobile/.gitignore" ||
     /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(file) ||
+    /\.node-test\.[cm]?[jt]s$/i.test(file) ||
+    file.startsWith("apps/mobile/scripts/fixtures/") ||
     file.includes("/assets/model-licenses/") ||
     /\.(?:png|jpg|jpeg|webp|ico|svg|ttf|woff2?|gguf)$/i.test(file)
   );
 }
 
 function lineIsExactContract(file, line) {
-  return (POLICY_LINE_CONTRACTS.get(file) ?? []).includes(line);
+  return (
+    (POLICY_LINE_CONTRACTS.get(file) ?? []).includes(line) ||
+    (LOCAL_NOTIFICATION_HARDENING_LINE_CONTRACTS.get(file) ?? []).includes(line) ||
+    (ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS.get(file) ?? []).includes(line)
+  );
 }
 
 function networkLineIsExactContract(file, line) {
@@ -407,6 +483,22 @@ function requireLineIsExactContract(file, line) {
 
 function moduleExportLineIsExactContract(file, line) {
   return (MODULE_EXPORT_LINE_CONTRACTS.get(file) ?? []).includes(line);
+}
+
+function isApprovedReleaseLink(file, link) {
+  if (
+    file === "apps/mobile/src/local-ai/model-registry.json" &&
+    APPROVED_MODEL_REMOTE_URLS.has(link)
+  ) {
+    return true;
+  }
+  if (
+    file === "apps/mobile/plugins/with-local-only-notifications.js" &&
+    link === ANDROID_XML_TOOLS_NAMESPACE
+  ) {
+    return true;
+  }
+  return APPROVED_POLICY_LINKS_BY_FILE.get(file)?.has(link) ?? false;
 }
 
 function checkExactContractCounts(files, contracts, problems, label) {
@@ -1334,17 +1426,14 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
 
     const isExactDatabaseFileArgument = (node) => {
       const argument = unwrapExpression(node);
-      if (
-        !ts.isTemplateExpression(argument) ||
-        argument.head.text !== "" ||
-        argument.templateSpans.length !== 3
-      ) {
-        return false;
-      }
-      const expected = ["directory", "separator", "name"];
-      return argument.templateSpans.every((span, index) =>
-        isIdentifierNamed(span.expression, expected[index]) &&
-        span.literal.text === ""
+      return (
+        ts.isCallExpression(argument) &&
+        !argument.questionDotToken &&
+        (argument.typeArguments?.length ?? 0) === 0 &&
+        isIdentifierNamed(argument.expression, "databaseFileUri") &&
+        argument.arguments.length === 2 &&
+        isIdentifierNamed(argument.arguments[0], "directory") &&
+        isIdentifierNamed(argument.arguments[1], "name")
       );
     };
 
@@ -1620,9 +1709,10 @@ function checkTypeScriptSecuritySurface(file, text, problems) {
     const staticValue = evaluator.evaluateString(node);
     if (
       staticValue !== undefined &&
-      /^https?:\/\//i.test(staticValue) &&
+      /^(?:https?:\/\/|mailto:)/i.test(staticValue) &&
       !ts.isStringLiteral(node) &&
       !ts.isNoSubstitutionTemplateLiteral(node) &&
+      !isApprovedReleaseLink(file, staticValue) &&
       !reportedRemoteNodes.has(node.getStart(sourceFile))
     ) {
       reportedRemoteNodes.add(node.getStart(sourceFile));
@@ -1754,6 +1844,12 @@ function validateIdentity(files, problems) {
   if (permissions.length !== 1 || permissions[0] !== "android.permission.POST_NOTIFICATIONS") {
     problems.push("Android permissions are not minimal");
   }
+  if (
+    !Array.isArray(app?.plugins) ||
+    !app.plugins.includes("./plugins/with-local-only-notifications")
+  ) {
+    problems.push("local-only notification manifest hardening plugin is missing");
+  }
   const allowedDependencies = new Set([
     "expo", "expo-asset", "expo-crypto", "expo-device", "expo-file-system", "expo-font",
     "expo-local-authentication", "expo-notifications", "expo-screen-capture", "expo-secure-store",
@@ -1836,15 +1932,31 @@ export function validateReleasePolicy(files, options = {}) {
     if (FORBIDDEN_SERVICE_IMPORT.test(text)) problems.push(`${file}: prohibited cloud service import`);
     if (text.includes("@careguardian/care-core")) problems.push(`${file}: retired care-core dependency`);
 
-    for (const match of text.matchAll(/https?:\/\/[^\s"'`<>)\\]+/giu)) {
-      const url = match[0];
-      if (file !== "apps/mobile/src/local-ai/model-registry.json" || !APPROVED_MODEL_REMOTE_URLS.has(url)) {
-        problems.push(`${file}: unapproved remote URL`);
+    for (
+      const match of text.matchAll(
+        /(?:https?:\/\/[^\s"'`<>)\\]+|mailto:[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/giu
+      )
+    ) {
+      const link = match[0];
+      if (!isApprovedReleaseLink(file, link)) {
+        problems.push(`${file}: unapproved external link`);
       }
     }
     checkTypeScriptSecuritySurface(file, text, problems);
   }
   checkExactContractCounts(files, POLICY_LINE_CONTRACTS, problems, "policy contract");
+  checkExactContractCounts(
+    files,
+    LOCAL_NOTIFICATION_HARDENING_LINE_CONTRACTS,
+    problems,
+    "local-only notification manifest hardening"
+  );
+  checkExactContractCounts(
+    files,
+    ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS,
+    problems,
+    "Android release manifest verifier contract"
+  );
   checkExactContractCounts(files, NETWORK_LINE_CONTRACTS, problems, "network contract");
   checkExactContractCounts(files, REQUIRE_LINE_CONTRACTS, problems, "require contract");
   checkExactContractCounts(

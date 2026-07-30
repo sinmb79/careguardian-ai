@@ -16,21 +16,46 @@ if (!npmCli) {
   );
 }
 
-function runNpmScript(script, environment) {
-  const result = spawnSync(process.execPath, [npmCli, "run", script], {
-    cwd: repositoryRoot,
-    env: environment,
-    stdio: "inherit"
-  });
+function runNpmScript(script, environment, argumentsAfterSeparator = []) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      npmCli,
+      "run",
+      script,
+      ...(argumentsAfterSeparator.length
+        ? ["--", ...argumentsAfterSeparator]
+        : [])
+    ],
+    {
+      cwd: repositoryRoot,
+      env: environment,
+      stdio: "inherit"
+    }
+  );
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+const requestedContract = process.argv[2] ?? "all";
+if (!["all", "manifest"].includes(requestedContract)) {
+  throw new Error(
+    `Unsupported Android release verification contract "${requestedContract}". ` +
+    `Use all or manifest.`
+  );
+}
+
 const verificationEnvironment = { ...process.env };
 delete verificationEnvironment.NODE_ENV;
-runNpmScript("verify", verificationEnvironment);
+if (requestedContract === "all") {
+  runNpmScript("verify", verificationEnvironment);
+}
 
-runNpmScript("mobile:verify:native-contracts", {
-  ...process.env,
-  NODE_ENV: "production"
-});
+runNpmScript(
+  "mobile:verify:native-contracts",
+  {
+    ...process.env,
+    NODE_ENV: "production"
+  },
+  requestedContract === "all" ? [] : [requestedContract]
+);

@@ -277,8 +277,8 @@ void ReviewFileSystem.getInfoAsync("file:///private");
   const computed = mutate(
     "apps/mobile/src/storage/mobileWorkspaceRepository.ts",
     (source) => source.replace(
-      "FileSystem.getInfoAsync(`${directory}${separator}${name}`)",
-      'FileSystem["getInfoAsync"](`${directory}${separator}${name}`)'
+      "FileSystem.getInfoAsync(databaseFileUri(directory, name))",
+      'FileSystem["getInfoAsync"](databaseFileUri(directory, name))'
     )
   );
 
@@ -456,6 +456,42 @@ module.exports = withMobileReactRoot;
   }
 });
 
+test("requires the canonical SQLite file URI adapter for existence checks", () => {
+  const bypassedAdapter = mutate(
+    "apps/mobile/src/storage/mobileWorkspaceRepository.ts",
+    (source) => source.replace(
+      "FileSystem.getInfoAsync(databaseFileUri(directory, name))",
+      "FileSystem.getInfoAsync(name)"
+    )
+  );
+  const swappedArguments = mutate(
+    "apps/mobile/src/storage/mobileWorkspaceRepository.ts",
+    (source) => source.replace(
+      "FileSystem.getInfoAsync(databaseFileUri(directory, name))",
+      "FileSystem.getInfoAsync(databaseFileUri(name, directory))"
+    )
+  );
+  const substitutedAdapter = mutate(
+    "apps/mobile/src/storage/mobileWorkspaceRepository.ts",
+    (source) => source.replace(
+      "FileSystem.getInfoAsync(databaseFileUri(directory, name))",
+      "FileSystem.getInfoAsync(resolveDatabaseFile(directory, name))"
+    )
+  );
+
+  for (const report of [
+    bypassedAdapter,
+    swappedArguments,
+    substitutedAdapter
+  ]) {
+    assert.equal(report.status, "fail");
+    assert.match(
+      report.problems.join("\n"),
+      /forbidden expo-file-system surface|member inventory mismatch/
+    );
+  }
+});
+
 test("rejects an array-joined remote URL used in a conditional registry mutation", () => {
   const report = mutate(
     "apps/mobile/src/local-ai/modelRegistry.ts",
@@ -475,11 +511,116 @@ test("rejects changes or duplicates in intentional denial and cloud-disable line
   const report = mutate(
     "apps/mobile/plugins/with-local-only-notifications.js",
     (source) => source.replace(
-      'setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
-      'setBooleanMetadata(application, "firebase_analytics_collection_enabled", true);'
+      '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
+      '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", true);'
     )
   );
   const problems = report.problems.join("\n");
   assert.match(problems, /unapproved health or cloud/);
   assert.match(problems, /must occur exactly once/);
+});
+
+test("rejects removal of any exact local-only notification manifest hardening entry", () => {
+  const removalLines = [
+    '  "com.google.android.c2dm.permission.RECEIVE",',
+    '  "com.sec.android.provider.badge.permission.READ",',
+    '  "com.sec.android.provider.badge.permission.WRITE",',
+    '  "com.htc.launcher.permission.READ_SETTINGS",',
+    '  "com.htc.launcher.permission.UPDATE_SHORTCUT",',
+    '  "com.sonyericsson.home.permission.BROADCAST_BADGE",',
+    '  "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",',
+    '  "com.anddoes.launcher.permission.UPDATE_COUNT",',
+    '  "com.majeur.launcher.permission.UPDATE_BADGE",',
+    '  "com.huawei.android.launcher.permission.CHANGE_BADGE",',
+    '  "com.huawei.android.launcher.permission.READ_SETTINGS",',
+    '  "com.huawei.android.launcher.permission.WRITE_SETTINGS",',
+    '  "android.permission.READ_APP_BADGE",',
+    '  "com.oppo.launcher.permission.READ_SETTINGS",',
+    '  "com.oppo.launcher.permission.WRITE_SETTINGS",',
+    '  "me.everything.badger.permission.BADGE_COUNT_READ",',
+    '  "me.everything.badger.permission.BADGE_COUNT_WRITE"',
+    '    "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
+    '    "com.google.firebase.messaging.FirebaseMessagingService",',
+    '    "com.google.firebase.components.ComponentDiscoveryService"',
+    '  receiver: ["com.google.firebase.iid.FirebaseInstanceIdReceiver"],',
+    '  provider: ["com.google.firebase.provider.FirebaseInitProvider"]'
+  ];
+
+  for (const line of removalLines) {
+    const report = mutate(
+      "apps/mobile/plugins/with-local-only-notifications.js",
+      (source) => source.replace(line, "")
+    );
+    assert.match(
+      report.problems.join("\n"),
+      /local-only notification manifest hardening/
+    );
+  }
+});
+
+test("requires the local-only notification plugin and pure hardening application", () => {
+  const withoutPlugin = mutate(
+    "apps/mobile/app.json",
+    (source) => source.replace(
+      '      "./plugins/with-local-only-notifications",',
+      ""
+    )
+  );
+  const withoutApplication = mutate(
+    "apps/mobile/plugins/with-local-only-notifications.js",
+    (source) => source.replace(
+      "    androidConfig.modResults.manifest = applyLocalOnlyNotificationManifest(",
+      "    void applyLocalOnlyNotificationManifest("
+    )
+  );
+
+  assert.match(
+    withoutPlugin.problems.join("\n"),
+    /local-only notification manifest hardening/
+  );
+  assert.match(
+    withoutApplication.problems.join("\n"),
+    /local-only notification manifest hardening/
+  );
+});
+
+test("allows only exact public policy and privacy contact links", () => {
+  const alteredPolicyHost = mutate(
+    "apps/mobile/src/legal/externalLinks.ts",
+    (source) => source.replace(
+      "https://huggingface.co/privacy",
+      "https://huggingface.co.evil.example/privacy"
+    )
+  );
+  const alteredPolicyPath = mutate(
+    "apps/mobile/src/legal/externalLinks.ts",
+    (source) => source.replace(
+      "https://huggingface.co/privacy",
+      "https://huggingface.co/privacy/"
+    )
+  );
+  const alteredAppPolicy = mutate(
+    "apps/mobile/src/legal/externalLinks.ts",
+    (source) => source.replace(
+      "https://sinmb79.github.io/careguardian-ai/privacy-policy.html",
+      "https://sinmb79.github.io.evil.example/careguardian-ai/privacy-policy.html"
+    )
+  );
+  const alteredPrivacyContact = mutate(
+    "public/privacy-policy.html",
+    (source) => source.replaceAll(
+      "mailto:privacy@huggingface.co",
+      "mailto:privacy@huggingface.co.evil.example"
+    )
+  );
+
+  for (const report of [
+    alteredPolicyHost,
+    alteredPolicyPath,
+    alteredAppPolicy,
+    alteredPrivacyContact
+  ]) {
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /unapproved external link/);
+  }
 });

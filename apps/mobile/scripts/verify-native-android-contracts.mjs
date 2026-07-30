@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyReleaseManifestFile } from "./verify-android-release-manifest.mjs";
 
 const expoCli = fileURLToPath(import.meta.resolve("expo/bin/cli"));
 const mobileRoot = path.resolve(
@@ -16,16 +17,32 @@ const mobileRoot = path.resolve(
 );
 const androidRoot = path.join(mobileRoot, "android");
 const appBuildGradle = path.join(androidRoot, "app", "build.gradle");
+const releaseMergedManifest = path.join(
+  androidRoot,
+  "app",
+  "build",
+  "intermediates",
+  "merged_manifests",
+  "release",
+  "processReleaseManifest",
+  "AndroidManifest.xml"
+);
 const gradleWrapper = path.join(
   androidRoot,
   process.platform === "win32" ? "gradlew.bat" : "gradlew"
 );
 const requestedContract = process.argv[2] ?? "all";
-const supportedContracts = new Set(["all", "entry", "kotlin", "metro"]);
+const supportedContracts = new Set([
+  "all",
+  "entry",
+  "kotlin",
+  "manifest",
+  "metro"
+]);
 
 if (!supportedContracts.has(requestedContract)) {
   throw new Error(
-    `Unsupported native contract "${requestedContract}". Use all, entry, kotlin, or metro.`
+    `Unsupported native contract "${requestedContract}". Use all, entry, kotlin, manifest, or metro.`
   );
 }
 
@@ -126,6 +143,21 @@ function runNativeContracts() {
   }
 
   verifyAndroidEntry();
+
+  if (requestedContract === "all" || requestedContract === "manifest") {
+    runGradleContract(":app:processReleaseManifest", {
+      ...process.env,
+      NODE_ENV: "production"
+    });
+    const manifestReport = verifyReleaseManifestFile(releaseMergedManifest);
+    process.stdout.write(`${JSON.stringify(manifestReport, null, 2)}\n`);
+    if (manifestReport.status !== "pass") {
+      throw new Error(
+        `Android release merged-manifest verification failed:\n` +
+        manifestReport.problems.join("\n")
+      );
+    }
+  }
 
   if (requestedContract === "all" || requestedContract === "kotlin") {
     runGradleContract(":model-integrity:compileDebugKotlin", {
