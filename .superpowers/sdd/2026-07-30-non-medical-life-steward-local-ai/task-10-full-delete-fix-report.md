@@ -80,12 +80,68 @@ Result: passed with no whitespace errors.
 - Used file-state postconditions only; no platform-specific exception matching
   was introduced.
 
+## Fix round 1: Android FileSystem adapter boundary
+
+Independent review found that Expo SQLite exposes Android's default database
+directory as a raw `/data/...` path, while legacy Expo FileSystem requires a
+`file:///...` URI for filesystem postcondition checks. The original loop fix
+therefore still failed closed on a fresh Android install.
+
+### Red evidence
+
+Before changing production code, I added
+`apps/mobile/src/storage/mobileWorkspaceRepository.androidAdapter.test.ts` and
+ran:
+
+```powershell
+npx vitest run apps/mobile/src/storage/mobileWorkspaceRepository.androidAdapter.test.ts
+```
+
+Observed result: **3 tests total; 1 passed, 2 failed**.
+
+- The raw Android SQLite directory case passed a scheme-null path to legacy
+  FileSystem and rejected with the typed SQLite aggregate failure.
+- The unsupported `content://` directory case delegated to FileSystem instead
+  of rejecting at the adapter boundary.
+
+### Implementation and green evidence
+
+`databaseFileUri()` now converts an absolute raw platform path to a
+`file:///...` URI, preserves an already-valid `file:///...` directory without
+double-prefixing, and rejects unsupported directory schemes before invoking
+FileSystem. It does not change SQLite delete semantics or match native errors.
+
+```powershell
+npx vitest run apps/mobile/src/storage/mobileWorkspaceRepository.test.ts apps/mobile/src/security/clearMobileData.test.ts apps/mobile/src/storage/mobileWorkspaceRepository.androidAdapter.test.ts
+```
+
+Result: **3 files passed; 29 tests passed.**
+
+```powershell
+npm run mobile:typecheck
+git diff --check
+```
+
+Result: both passed.
+
+### Fix-round self-review
+
+- Raw Android and raw iOS-style absolute paths become valid file URIs.
+- Existing `file:///` URIs are used as-is apart from trailing-slash removal.
+- `content:`, relative, and other unsupported forms fail closed before the
+  legacy FileSystem boundary.
+- The exhaustive deletion loop, typed namespace failures, secure-store/KV
+  verification, inference-release barrier, and `clearMobileData` reporting
+  remain unchanged.
+
 ## Concerns
 
-No source-level concern remains. The signed-APK full-deletion retry is a
-separate integration verification step and should be rerun after this commit.
+The signed-APK full-deletion retry remains a separate integration verification
+step and must be rerun after this fix round.
 
 ## Commits
 
 - Implementation and regression tests: `5ad2eb148278b4548647b54a78bd2af36c7c4ccb`
 - This verification report: recorded in the subsequent documentation commit.
+- Fix round 1 implementation and adapter regression test:
+  `b4e246f12a1669dba3512ab961cdd00a466c5c85`
