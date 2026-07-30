@@ -2,6 +2,7 @@ import {
   detectRestrictedHealthIntent,
   type AiAction
 } from "@life-steward/life-core";
+import type { AssistantSource } from "./assistantSources";
 
 export type AssistantPolicyReasonCode =
   | "invalid_input"
@@ -29,6 +30,7 @@ export const ASSISTANT_RESTRICTED_MESSAGE =
 
 const MAX_ASSISTANT_INPUT_LENGTH = 6_000;
 const MAX_ASSISTANT_OUTPUT_LENGTH = 12_000;
+const ASSISTANT_SOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const SUPPORTED_ACTIONS = new Set<AiAction>([
   "summarize",
   "rewriteText",
@@ -71,20 +73,26 @@ const RESTRICTED_PATTERNS: ReadonlyArray<{
 ];
 
 const RESTRICTED_MEDICAL_PATTERN =
-  /(?:타이레놀|아세트아미노펜|인슐린|아스피린|이부프로펜|진통제|항생제|감기약|혈압약|수면제|당뇨|고혈압|저혈압|암|감기|독감|우울증|불안장애|주사|접종|복용|투여|처방|용량|복용량|투여량|acetaminophen|paracetamol|insulin|aspirin|ibuprofen|antibiotic|antidepressant|diabetes|hypertension|hypotension|cancer|influenza|depression|anxietydisorder|injection|vaccination)/;
+  /(?:게보린|타이레놀|아세트아미노펜|인슐린|아스피린|이부프로펜|진통제|항생제|감기약|혈압약|수면제|당뇨|고혈압|저혈압|암|감기|독감|우울증|불안장애|주사|접종|복용|투여|처방|용량|복용량|투여량|acetaminophen|paracetamol|metformin|tylenol|insulin|aspirin|ibuprofen|antibiotic|antidepressant|diabetes|hypertension|hypotension|cancer|influenza|depression|anxietydisorder|injection|vaccination)/;
+
+const GENERIC_MEDICAL_REQUEST_PATTERN =
+  /(?:(?:몇|얼마나|하루에|한번에)[\p{L}\p{N}]{0,24}(?:알|정|캡슐|mg|ml|cc|밀리그램|단위)|(?:언제|몇시|복용시간|투여시간)[\p{L}\p{N}]{0,24}(?:먹|복용|투여|맞|주사)|(?:먹|복용|투여|맞|주사)[\p{L}\p{N}]{0,24}(?:언제|몇시|시간|용량|몇알|몇정|몇mg)|(?:\d+(?:\.\d+)?|한|두|세|몇)(?:알|정|캡슐|mg|ml|cc|밀리그램|단위)[\p{L}\p{N}]{0,24}(?:먹|복용|투여|맞|주사)|(?:먹|복용|투여|맞|주사)[\p{L}\p{N}]{0,24}(?:\d+(?:\.\d+)?|한|두|세|몇)(?:알|정|캡슐|mg|ml|cc|밀리그램|단위)|(?:\d+(?:\.\d+)?|한|두|세|몇)(?:알|정|캡슐|mg|ml|cc|밀리그램|단위)[\p{L}\p{N}]{0,24}(?:아침|저녁|밤|매일|하루|시간|취침|두번|한번)|(?:아침|저녁|밤|매일|하루|시간|취침)[\p{L}\p{N}]{0,24}(?:\d+(?:\.\d+)?|한|두|세|몇)(?:알|정|캡슐|mg|ml|cc|밀리그램|단위)|(?:when|timing|schedule|howmany|howmuch|whatdose)[a-z0-9]{0,48}(?:take|inject|administer|dose|pills?|tablets?|capsules?|mg|ml|cc|units?)|(?:take|inject|administer)[a-z0-9]{0,32}(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)(?:mg|ml|cc|units?|pills?|tablets?|capsules?)|(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)(?:mg|ml|cc|units?|pills?|tablets?|capsules?)[a-z0-9]{0,32}(?:take|inject|administer|daily|twicedaily|oncedaily|morning|night|bedtime|hourly|every\d+hours?))/u;
 
 const PROMPT_INJECTION_PATTERN =
-  /(?:\[(?:system|assistant|developer|action|output|input)\]|<\|(?:system|assistant|user|end|eot)[^>]*\|>|(?:이전|앞선|기존)(?:의)?(?:지시|명령|규칙)(?:를)?무시|시스템프롬프트|개발자메시지|ignore(?:all)?(?:previous|prior|system|developer)(?:instructions?|rules?)|reveal(?:the)?systemprompt|override(?:the)?(?:system|developer)(?:prompt|message))/i;
+  /(?:\[(?:system|assistant|developer|action|output|input)\]|<\|(?:system|assistant|user|end|eot)[^>]*\|>|<\/?(?:system|assistant|developer)\s*>|(?:이전|앞선|기존)(?:의)?(?:지시|명령|규칙)(?:를)?무시|시스템프롬프트|개발자메시지|(?:system|assistant|developer)(?:prompt|message|role)|ignore(?:all)?(?:previous|prior|system|developer)(?:instructions?|rules?)|forgeteverything(?:youweretold|above|before)|reveal(?:the)?systemprompt|override(?:the)?(?:system|developer)(?:prompt|message))/i;
+
+const ROLE_MARKER_PATTERN =
+  /(?:(?:^|\n)\s*(?:#{1,6}\s*)?(?:system|assistant|developer)\s*(?::|=|>|-|–|—|$)|["']?role["']?\s*[:=]\s*["']?(?:system|assistant|developer))/imu;
 
 const ACTION_INSTRUCTIONS: Readonly<Record<AiAction, string>> = {
   summarize:
-    "핵심 사실만 3~5개의 짧은 문장으로 요약하세요. 새로운 사실이나 판단을 추가하지 마세요.",
+    "원문에서 연속된 문장 또는 구절 하나를 글자 그대로 발췌하세요. 새 글자나 판단을 추가하지 마세요.",
   rewriteText:
-    "뜻을 바꾸지 말고 읽기 쉬운 한국어 문장으로 다듬으세요. 설명이나 머리말을 덧붙이지 마세요.",
+    "원문의 모든 문자와 숫자 순서를 그대로 보존하고 공백과 문장부호만 정리하세요.",
   suggestTitle:
-    "내용을 대표하는 중립적인 한국어 제목 하나만 40자 이내로 제안하세요.",
+    "원문 안의 연속된 구절 하나를 글자 그대로 골라 40자 이내 제목으로 출력하세요.",
   draftChecklist:
-    "입력에 이미 있는 항목만 사용해 한 줄에 하나씩 '- '로 시작하는 체크리스트 초안을 만드세요."
+    "원문 순서대로 서로 겹치지 않는 연속 구절을 글자 그대로 골라 한 줄에 하나씩 '- '로 시작하세요."
 };
 
 export class AssistantPolicyError extends Error {
@@ -105,6 +113,14 @@ export function normalizeAssistantText(text: string): string {
       character === "\n" || character === "\t" ? character : ""
     )
     .normalize("NFC");
+}
+
+function normalizeExtractiveText(text: string): string {
+  return text
+    .replace(/\p{Cf}/gu, "")
+    .replace(/\p{Cc}/gu, (character) =>
+      character === "\n" || character === "\t" ? character : ""
+    );
 }
 
 function compactForPolicy(text: string): string {
@@ -129,7 +145,11 @@ function guardText(text: string, maximumLength: number): AssistantPolicyDecision
   const normalized = normalizeAssistantText(text);
   const compact = compactForPolicy(normalized);
   const healthDecision = detectRestrictedHealthIntent(normalized);
-  if (!healthDecision.allowed || RESTRICTED_MEDICAL_PATTERN.test(compact)) {
+  if (
+    !healthDecision.allowed ||
+    RESTRICTED_MEDICAL_PATTERN.test(compact) ||
+    GENERIC_MEDICAL_REQUEST_PATTERN.test(compact)
+  ) {
     return {
       allowed: false,
       reasonCode: "restricted_health_intent",
@@ -139,7 +159,8 @@ function guardText(text: string, maximumLength: number): AssistantPolicyDecision
 
   if (
     PROMPT_INJECTION_PATTERN.test(normalized) ||
-    PROMPT_INJECTION_PATTERN.test(compact)
+    PROMPT_INJECTION_PATTERN.test(compact) ||
+    ROLE_MARKER_PATTERN.test(normalized)
   ) {
     return {
       allowed: false,
@@ -165,6 +186,20 @@ export function guardAssistantInput(text: string): AssistantPolicyDecision {
 }
 
 export function guardAssistantOutput(text: string): AssistantPolicyDecision {
+  if (
+    typeof text === "string" &&
+    Array.from(text).some(
+      (character) =>
+        /\p{Cf}/u.test(character) ||
+        (/\p{Cc}/u.test(character) && character !== "\n" && character !== "\t")
+    )
+  ) {
+    return {
+      allowed: false,
+      reasonCode: "invalid_output_shape",
+      message: "허용되지 않은 제어 문자가 있어 결과를 폐기했습니다."
+    };
+  }
   return guardText(text, MAX_ASSISTANT_OUTPUT_LENGTH);
 }
 
@@ -173,11 +208,34 @@ export interface AssistantChatMessage {
   content: string;
 }
 
-function serializeUntrustedDocument(action: AiAction, input: string): string {
+function isTypedAssistantSource(source: unknown): source is AssistantSource {
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    return false;
+  }
+  const candidate = source as Partial<AssistantSource>;
+  return (
+    Object.keys(source).sort().join(",") === "id,kind,text" &&
+    (candidate.kind === "task" ||
+      candidate.kind === "list" ||
+      candidate.kind === "record") &&
+    typeof candidate.id === "string" &&
+    ASSISTANT_SOURCE_ID_PATTERN.test(candidate.id) &&
+    typeof candidate.text === "string"
+  );
+}
+
+function serializeUntrustedDocument(
+  action: AiAction,
+  source: AssistantSource
+): string {
   return JSON.stringify({
     schema: "life-steward.untrusted-document.v1",
     action,
-    untrusted_document: normalizeAssistantText(input)
+    source: {
+      kind: source.kind,
+      id: source.id,
+      text: normalizeExtractiveText(source.text)
+    }
   }).replace(/[<>&\[\]\u2028\u2029]/g, (character) => {
     const code = character.codePointAt(0)?.toString(16).padStart(4, "0");
     return `\\u${code}`;
@@ -186,7 +244,7 @@ function serializeUntrustedDocument(action: AiAction, input: string): string {
 
 export function buildAssistantMessages(
   action: AiAction,
-  input: string
+  source: AssistantSource
 ): readonly AssistantChatMessage[] {
   if (!SUPPORTED_ACTIONS.has(action)) {
     throw new AssistantPolicyError(
@@ -194,7 +252,13 @@ export function buildAssistantMessages(
       "지원하는 문서 정리 동작을 선택해 주세요."
     );
   }
-  const decision = guardAssistantInput(input);
+  if (!isTypedAssistantSource(source)) {
+    throw new AssistantPolicyError(
+      "invalid_input",
+      "현재 작업공간에서 정리할 항목을 다시 선택해 주세요."
+    );
+  }
+  const decision = guardAssistantInput(source.text);
   if (!decision.allowed) {
     throw new AssistantPolicyError(decision.reasonCode, decision.message);
   }
@@ -214,27 +278,21 @@ export function buildAssistantMessages(
     }),
     Object.freeze({
       role: "user" as const,
-      content: serializeUntrustedDocument(action, input)
+      content: serializeUntrustedDocument(action, source)
     })
   ]);
 }
 
-function contentTokens(text: string): string[] {
-  return (
-    normalizeAssistantText(text)
-      .toLocaleLowerCase("en-US")
-      .match(/[\p{L}\p{N}]{2,}/gu) ?? []
-  ).map((token) => token.replace(/(?:은|는|이|가|을|를|와|과|에서|에게|으로|로|도|만)$/u, ""));
+function coreCharacters(text: string): string {
+  return normalizeExtractiveText(text).replace(/[\s\p{P}]+/gu, "");
 }
 
-function groundingRatio(input: string, output: string): number {
-  const source = compactForPolicy(input);
-  const tokens = contentTokens(output).filter((token) => token.length >= 2);
-  if (tokens.length === 0) return 0;
-  const grounded = tokens.filter((token) =>
-    source.includes(compactForPolicy(token))
-  ).length;
-  return grounded / tokens.length;
+function coreCharacterCount(text: string): number {
+  return Array.from(coreCharacters(text)).length;
+}
+
+function isMeaningfulExactSpan(source: string, candidate: string): boolean {
+  return coreCharacterCount(candidate) >= 2 && source.includes(candidate);
 }
 
 function deniedResult(
@@ -258,15 +316,15 @@ export function validateAssistantResult(
   if (!SUPPORTED_ACTIONS.has(action)) return deniedResult("invalid_output_shape");
   const policy = guardAssistantOutput(output);
   if (!policy.allowed) return policy;
-  const normalizedInput = normalizeAssistantText(input).trim();
-  const normalizedOutput = normalizeAssistantText(output).trim();
+  const normalizedInput = normalizeExtractiveText(input).trim();
+  const normalizedOutput = normalizeExtractiveText(output).trim();
   if (!normalizedOutput) return deniedResult("invalid_output_shape");
 
   if (action === "suggestTitle") {
     if (normalizedOutput.length > 40 || /[\r\n]/u.test(normalizedOutput)) {
       return deniedResult("invalid_output_shape");
     }
-    return groundingRatio(normalizedInput, normalizedOutput) === 1
+    return isMeaningfulExactSpan(normalizedInput, normalizedOutput)
       ? { allowed: true }
       : deniedResult("ungrounded_output");
   }
@@ -280,30 +338,39 @@ export function validateAssistantResult(
     ) {
       return deniedResult("invalid_output_shape");
     }
-    return lines.every(
-      (line) => groundingRatio(normalizedInput, line.slice(2)) === 1
-    )
-      ? { allowed: true }
-      : deniedResult("ungrounded_output");
+    const seen = new Set<string>();
+    let nextSearchOffset = 0;
+    for (const line of lines) {
+      const item = line.slice(2);
+      const key = normalizeExtractiveText(item);
+      if (coreCharacterCount(item) < 2 || seen.has(key)) {
+        return deniedResult("ungrounded_output");
+      }
+      const offset = normalizedInput.indexOf(item, nextSearchOffset);
+      if (offset < 0) return deniedResult("ungrounded_output");
+      seen.add(key);
+      nextSearchOffset = offset + item.length;
+    }
+    return { allowed: true };
   }
 
   if (action === "summarize") {
-    const lines = normalizedOutput.split("\n").filter(Boolean);
-    if (lines.length > 5 || normalizedOutput.length > normalizedInput.length) {
+    if (normalizedOutput.length > normalizedInput.length) {
       return deniedResult("invalid_output_shape");
     }
-    return groundingRatio(normalizedInput, normalizedOutput) >= 0.8
+    return isMeaningfulExactSpan(normalizedInput, normalizedOutput)
       ? { allowed: true }
       : deniedResult("ungrounded_output");
   }
 
   if (
     normalizedOutput.length >
-    Math.max(normalizedInput.length + 40, Math.ceil(normalizedInput.length * 1.25))
+    Math.max(normalizedInput.length + 40, Math.ceil(normalizedInput.length * 2))
   ) {
     return deniedResult("invalid_output_shape");
   }
-  return groundingRatio(normalizedInput, normalizedOutput) >= 0.8
+  return coreCharacters(normalizedInput) === coreCharacters(normalizedOutput) &&
+    coreCharacterCount(normalizedOutput) >= 2
     ? { allowed: true }
     : deniedResult("ungrounded_output");
 }

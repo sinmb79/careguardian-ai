@@ -1,4 +1,5 @@
 import type { AiAction } from "@life-steward/life-core";
+import type { AssistantSource } from "./assistantSources";
 import type { ModelArtifact } from "./modelRegistry";
 import type { InstalledModel } from "./modelStore";
 import {
@@ -77,7 +78,7 @@ export interface LocalModelSession {
 
 export interface LocalGenerationRequest {
   action: AiAction;
-  input: string;
+  source: AssistantSource;
 }
 
 export interface GenerationResult {
@@ -109,6 +110,7 @@ const PREDICTION_LIMITS: Readonly<Record<AiAction, number>> = {
   draftChecklist: 256
 };
 const BYTES_PER_GIBIBYTE = 1024 ** 3;
+const ASSISTANT_SOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 function runtimeError(
   error: unknown,
@@ -161,6 +163,19 @@ function requestNativeStop(context: LlamaContextAdapter): Promise<void> {
   } catch (error) {
     return Promise.reject(error);
   }
+}
+
+function hasValidAssistantSource(source: unknown): source is AssistantSource {
+  if (typeof source !== "object" || source === null) return false;
+  const candidate = source as Partial<AssistantSource>;
+  return (
+    (candidate.kind === "task" ||
+      candidate.kind === "list" ||
+      candidate.kind === "record") &&
+    typeof candidate.id === "string" &&
+    ASSISTANT_SOURCE_ID_PATTERN.test(candidate.id) &&
+    typeof candidate.text === "string"
+  );
 }
 
 function assertVerifiedIdentity(
@@ -361,7 +376,13 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
 
     let messages: readonly AssistantChatMessage[];
     try {
-      messages = buildAssistantMessages(request.action, request.input);
+      if (!hasValidAssistantSource(request.source)) {
+        throw new AssistantPolicyError(
+          "invalid_input",
+          "현재 작업공간에서 정리할 항목을 다시 선택해 주세요."
+        );
+      }
+      messages = buildAssistantMessages(request.action, request.source);
     } catch (error) {
       if (error instanceof AssistantPolicyError) {
         throw new LocalAiRuntimeError("input_blocked", error.message);
@@ -469,7 +490,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
 
       const outputDecision = validateAssistantResult(
         request.action,
-        request.input,
+        request.source.text,
         result.text
       );
       if (!outputDecision.allowed) {
@@ -521,7 +542,20 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
     state = "stopping";
 
     const operation = (async () => {
-      if (pendingLoad) await pendingLoad.catch(() => undefined);
+      let pendingTerminalError: LocalAiRuntimeError | null = null;
+      if (pendingLoad) {
+        try {
+          await pendingLoad;
+        } catch (error) {
+          if (
+            error instanceof LocalAiRuntimeError &&
+            (error.code === "release_failed" ||
+              error.code === "runtime_faulted")
+          ) {
+            pendingTerminalError = error;
+          }
+        }
+      }
 
       let stopError: unknown;
       if (releaseContext && completion) {
@@ -550,6 +584,9 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
           { cause: releaseError ?? stopError }
         );
         throw terminalFault;
+      }
+      if (terminalFault || pendingTerminalError) {
+        throw terminalFault ?? pendingTerminalError;
       }
     })().finally(() => {
       context = null;

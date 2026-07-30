@@ -194,6 +194,19 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
             statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
           })
         });
+      } catch (error) {
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? String(error.code)
+            : "";
+        if (code === "release_failed" || code === "runtime_faulted") {
+          patch({
+            privacyGate: "locked",
+            statusMessage:
+              "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요."
+          });
+        }
+        throw error;
       } finally {
         finish("delete", id, { isDeleting: false });
       }

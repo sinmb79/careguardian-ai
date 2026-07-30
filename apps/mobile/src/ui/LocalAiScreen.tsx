@@ -1,12 +1,12 @@
 import type { AiAction, PersonalWorkspace } from "@life-steward/life-core";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View
 } from "react-native";
+import { listAssistantSources } from "../local-ai/assistantSources";
 import type { ModelArtifact } from "../local-ai/modelRegistry";
 import { hasRequiredMemory } from "../local-ai/llamaRuntime";
 import type {
@@ -25,21 +25,25 @@ const ACTIONS: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { id: "summarize", label: "요약", description: "기존 텍스트의 핵심만 정리" },
+  {
+    id: "summarize",
+    label: "원문 발췌",
+    description: "원문 안의 연속 문장·구절을 그대로 선택"
+  },
   {
     id: "rewriteText",
-    label: "문장 다듬기",
-    description: "뜻을 바꾸지 않고 읽기 쉽게 정리"
+    label: "공백·문장부호 정리",
+    description: "문자와 숫자 순서를 유지한 채 표기만 정리"
   },
   {
     id: "suggestTitle",
-    label: "제목 제안",
-    description: "중립적인 제목 하나 제안"
+    label: "원문 제목 발췌",
+    description: "원문 안의 40자 이하 구절을 그대로 선택"
   },
   {
     id: "draftChecklist",
-    label: "체크리스트 초안",
-    description: "입력에 있는 항목만 목록으로 정리"
+    label: "원문 체크리스트",
+    description: "원문 순서의 겹치지 않는 구절만 목록화"
   }
 ];
 
@@ -50,7 +54,8 @@ export function LocalAiScreen({
   workspace: PersonalWorkspace;
   onChange(workspace: PersonalWorkspace): void;
 }) {
-  const assistant = useLocalAssistant(onChange);
+  const assistant = useLocalAssistant(workspace, onChange);
+  const sources = useMemo(() => listAssistantSources(workspace), [workspace]);
   const [detailModel, setDetailModel] = useState<ModelArtifact | null>(null);
   const [screenMessage, setScreenMessage] = useState("");
 
@@ -89,8 +94,8 @@ export function LocalAiScreen({
         <Text style={styles.kicker}>ON-DEVICE DOCUMENT TOOLS</Text>
         <Text style={styles.heading}>로컬 AI</Text>
         <Text style={styles.heroBody}>
-          자유 대화형 챗봇이 아닙니다. 선택한 텍스트에 요약, 문장 다듬기, 제목
-          제안, 체크리스트 초안 네 가지 작업만 제공합니다.
+          자유 대화형 챗봇이 아닙니다. 현재 작업공간의 할 일·목록·사용자 기능
+          레코드 중 하나를 선택해 원문 기반의 네 가지 추출형 작업만 제공합니다.
         </Text>
         <Text style={styles.privacy}>
           입력과 결과는 외부 AI 서버로 보내지 않습니다. 모델 설치를 선택하면 고정된
@@ -137,7 +142,11 @@ export function LocalAiScreen({
                 model,
                 assistant.environmentTotalMemoryBytes
               )}
-              interactionDisabled={assistant.isGenerating}
+              interactionDisabled={
+                assistant.isGenerating ||
+                assistant.runtimeFaulted ||
+                assistant.errorKind === "runtime-terminal"
+              }
               activeDownloadModelId={assistant.activeDownloadModelId}
               activeSessionModelId={assistant.session?.modelId ?? null}
               onToggleAcceptance={() =>
@@ -195,20 +204,59 @@ export function LocalAiScreen({
           ))}
         </View>
 
-        <TextInput
-          value={assistant.input}
-          onChangeText={assistant.actions.setInput}
-          editable={!assistant.isGenerating}
-          multiline
-          maxLength={6000}
-          textAlignVertical="top"
-          accessibilityLabel="정리할 일반 생활 텍스트"
-          placeholder="정리할 일반 일정, 메모, 준비물 내용을 직접 입력하세요."
-          style={styles.input}
-        />
+        <Text style={styles.sourceTitle}>정리할 작업공간 항목</Text>
+        {sources.length === 0 ? (
+          <Text style={styles.sourceEmpty}>
+            먼저 할 일, 목록 또는 사용자 기능 레코드를 추가해 주세요.
+          </Text>
+        ) : (
+          <View style={styles.sourceGrid} accessibilityRole="radiogroup">
+            {sources.map((source) => {
+              const selected =
+                assistant.source?.kind === source.kind &&
+                assistant.source.id === source.id &&
+                assistant.source.text === source.text;
+              return (
+                <Pressable
+                  key={`${source.kind}:${source.id}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  disabled={assistant.isGenerating}
+                  style={[
+                    styles.sourceCard,
+                    selected && styles.sourceCardSelected
+                  ]}
+                  onPress={() => assistant.actions.setSource(source)}
+                >
+                  <Text
+                    style={[
+                      styles.sourceKind,
+                      selected && styles.sourceTextSelected
+                    ]}
+                  >
+                    {source.kind === "task"
+                      ? "할 일"
+                      : source.kind === "list"
+                        ? "목록"
+                        : "사용자 기능 레코드"}
+                  </Text>
+                  <Text
+                    numberOfLines={4}
+                    style={[
+                      styles.sourceText,
+                      selected && styles.sourceTextSelected
+                    ]}
+                  >
+                    {source.text}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         <Text style={styles.policyText}>
           건강·약물·증상·진단·치료·응급, 위해·착취·사기·괴롭힘·악성 코드·불법행위
-          요청과 결과는 처리하지 않습니다.
+          내용과 저장된 프롬프트 제어 문구는 AI 실행 경계에서 다시 차단합니다.
         </Text>
 
         {assistant.isGenerating ? (
@@ -222,14 +270,13 @@ export function LocalAiScreen({
         ) : (
           <Pressable
             accessibilityRole="button"
-            disabled={!assistant.session || assistant.input.trim().length === 0}
+            disabled={!assistant.session || !assistant.source}
             accessibilityState={{
-              disabled: !assistant.session || assistant.input.trim().length === 0
+              disabled: !assistant.session || !assistant.source
             }}
             style={[
               styles.primaryButton,
-              (!assistant.session || assistant.input.trim().length === 0) &&
-                styles.disabled
+              (!assistant.session || !assistant.source) && styles.disabled
             ]}
             onPress={() => void run(assistant.actions.generate)}
           >
@@ -554,6 +601,8 @@ function errorMessage(kind: LocalAiErrorKind): string {
       return "확인 가능한 기기 RAM이 선택 모델의 최소 요구량보다 부족해 설치와 실행을 차단했습니다.";
     case "runtime":
       return "기기 내 모델 컨텍스트를 시작하거나 해제하지 못했습니다. 더 작은 모델을 사용하거나 앱을 다시 열어 주세요.";
+    case "runtime-terminal":
+      return "네이티브 모델 컨텍스트 해제를 확인하지 못해 로컬 AI를 잠갔습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요.";
     default:
       return "로컬 AI 상태를 확인하지 못했습니다. 모델을 삭제한 뒤 다시 설치할 수 있습니다.";
   }
@@ -678,16 +727,29 @@ const styles = StyleSheet.create({
   actionLabelSelected: { color: "#fff" },
   actionDescription: { color: "#647276", fontSize: 13, lineHeight: 19 },
   actionDescriptionSelected: { color: "#eef5f1" },
-  input: {
-    minHeight: 150,
+  sourceTitle: { color: "#25383c", fontSize: 16, fontWeight: "800" },
+  sourceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  sourceCard: {
+    flexGrow: 1,
+    flexBasis: 190,
+    minHeight: 88,
     borderRadius: 15,
     borderWidth: 1,
     borderColor: "#cbd5d4",
     padding: 14,
     backgroundColor: "#fff",
-    color: "#1a2626",
-    fontSize: 17,
-    lineHeight: 24
+    gap: 5
+  },
+  sourceCardSelected: { borderColor: "#315f55", backgroundColor: "#315f55" },
+  sourceKind: { color: "#61736f", fontSize: 12, fontWeight: "900" },
+  sourceText: { color: "#1a2626", fontSize: 15, lineHeight: 21 },
+  sourceTextSelected: { color: "#fff" },
+  sourceEmpty: {
+    padding: 14,
+    borderRadius: 13,
+    backgroundColor: "#f1eee7",
+    color: "#655f55",
+    lineHeight: 21
   },
   policyText: { color: "#775b32", fontSize: 13, lineHeight: 20 },
   primaryButton: {

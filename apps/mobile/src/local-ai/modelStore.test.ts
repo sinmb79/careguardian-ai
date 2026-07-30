@@ -368,6 +368,9 @@ describe("model store", () => {
     });
     expect(states).toEqual(["downloading", "paused"]);
     expect(fileSystem.files.has(paused.partialUri)).toBe(true);
+
+    await store.cleanupPartialDownloads();
+    expect(fileSystem.files.has(paused.partialUri)).toBe(false);
   });
 
   test("waits for the native writer to terminate and rejects a pause token/size race", async () => {

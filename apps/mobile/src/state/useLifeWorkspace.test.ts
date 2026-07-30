@@ -272,4 +272,37 @@ describe("life workspace state", () => {
       isDeleting: false
     });
   });
+
+  test("stops full deletion before any mutation and requires an app restart when inference release fails", async () => {
+    const events: string[] = [];
+    const controller = createLifeWorkspaceController({
+      load: async () => fixtureWorkspace,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      stopActiveInference: async () => {
+        throw Object.assign(new Error("native context still alive"), {
+          code: "release_failed"
+        });
+      },
+      deleteWorkspace: async () => void events.push("workspace"),
+      removeAllModels: async () => void events.push("models"),
+      syncNotifications: async () => 0,
+      cancelNotifications: async () => void events.push("notifications")
+    });
+    await controller.load();
+
+    await expect(controller.deleteAll()).rejects.toMatchObject({
+      code: "release_failed"
+    });
+
+    expect(events).toEqual([]);
+    expect(controller.snapshot()).toMatchObject({
+      workspace: fixtureWorkspace,
+      hasStoredWorkspace: true,
+      privacyGate: "locked",
+      isDeleting: false,
+      statusMessage:
+        "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요."
+    });
+  });
 });

@@ -5,9 +5,14 @@ import {
 } from "@life-steward/life-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
+import {
+  resolveAssistantSource,
+  type AssistantSource
+} from "./assistantSources";
 import { MODEL_REGISTRY, type ModelArtifact } from "./modelRegistry";
 import {
   cancelActiveDownload,
+  cleanupPartialDownloads,
   downloadModel,
   inspectInstalledModels,
   pauseActiveDownload,
@@ -39,6 +44,7 @@ export type LocalAiErrorKind =
   | "unsupported"
   | "memory"
   | "runtime"
+  | "runtime-terminal"
   | "unknown";
 
 export function classifyLocalAiError(error: unknown): LocalAiErrorKind {
@@ -57,10 +63,12 @@ export function classifyLocalAiError(error: unknown): LocalAiErrorKind {
   }
   if (code === "unsupported_environment") return "unsupported";
   if (code === "insufficient_memory") return "memory";
+  if (code === "runtime_faulted" || code === "release_failed") {
+    return "runtime-terminal";
+  }
   if (
     code === "context_initialization_failed" ||
-    code === "generation_failed" ||
-    code === "release_failed"
+    code === "generation_failed"
   ) {
     return "runtime";
   }
@@ -87,24 +95,48 @@ export function createDownloadUnmountGuard(
   cancelDownload: () => Promise<void>
 ) {
   let mounted = true;
+  let lifecycleEpoch = 0;
   let cleanup: Promise<void> | null = null;
+  const scheduleCleanup = (): Promise<void> => {
+    const previousCleanup = cleanup;
+    const operation = (async () => {
+      if (previousCleanup) await previousCleanup.catch(() => undefined);
+      await cancelDownload();
+    })().finally(() => {
+      if (cleanup === operation) cleanup = null;
+    });
+    cleanup = operation;
+    return operation;
+  };
   return {
     isMounted: () => mounted,
+    isCurrent: (expectedEpoch: number) =>
+      mounted && expectedEpoch === lifecycleEpoch,
+    epoch: () => lifecycleEpoch,
+    ready: () => cleanup ?? Promise.resolve(),
+    cleanup: scheduleCleanup,
     mount() {
+      if (!mounted) lifecycleEpoch += 1;
       mounted = true;
     },
-    commit(callback: () => void) {
-      if (mounted) callback();
+    commit(callback: () => void, expectedEpoch = lifecycleEpoch) {
+      if (mounted && expectedEpoch === lifecycleEpoch) callback();
     },
     unmount(): Promise<void> {
       if (!mounted) return cleanup ?? Promise.resolve();
       mounted = false;
-      cleanup = cancelDownload().finally(() => {
-        cleanup = null;
-      });
-      return cleanup;
+      lifecycleEpoch += 1;
+      return scheduleCleanup();
     }
   };
+}
+
+export async function clearLocalAiDownloadArtifacts(dependencies: {
+  cancelActive(): Promise<void>;
+  cleanupPartials(): Promise<void>;
+}): Promise<void> {
+  await dependencies.cancelActive();
+  await dependencies.cleanupPartials();
 }
 
 const ACTION_TITLES: Readonly<Record<AiAction, string>> = {
@@ -166,11 +198,12 @@ export function applyApprovedAssistantResult(
 
 export interface LocalAssistantSnapshot {
   action: AiAction;
-  input: string;
+  source: AssistantSource | null;
   preview: string;
   result: GenerationResult | null;
   session: LocalModelSession | null;
   isGenerating: boolean;
+  runtimeFaulted: boolean;
   statusMessage: string;
 }
 
@@ -181,6 +214,7 @@ export interface LocalAssistantControllerDependencies {
     onToken: (token: string, accumulated: string) => void
   ): Promise<GenerationResult>;
   stopAndRelease(reason: string): Promise<void>;
+  resolveSource(source: AssistantSource): AssistantSource | null;
   onWorkspaceChange(workspace: PersonalWorkspace): void;
   now(): string;
   createId(): string;
@@ -189,11 +223,12 @@ export interface LocalAssistantControllerDependencies {
 function initialAssistantSnapshot(): LocalAssistantSnapshot {
   return {
     action: "summarize",
-    input: "",
+    source: null,
     preview: "",
     result: null,
     session: null,
     isGenerating: false,
+    runtimeFaulted: false,
     statusMessage: "모델을 선택하고 네 가지 문서 정리 동작 중 하나를 사용하세요."
   };
 }
@@ -220,17 +255,21 @@ export function createLocalAssistantController(
         if (listener === nextListener) listener = undefined;
       };
     },
+    beginLifecycle() {
+      generationEpoch += 1;
+    },
     attachSession(nextSession: LocalModelSession) {
       patch({
         session: nextSession,
+        runtimeFaulted: false,
         statusMessage: "검증된 모델을 불러왔습니다. 결과는 승인 전까지 메모리에만 둡니다."
       });
     },
     setAction(action: AiAction) {
       patch({ action, preview: "", result: null });
     },
-    setInput(input: string) {
-      patch({ input, preview: "", result: null });
+    setSource(source: AssistantSource | null) {
+      patch({ source, preview: "", result: null });
     },
     async generate(): Promise<GenerationResult> {
       if (!current.session) {
@@ -239,9 +278,23 @@ export function createLocalAssistantController(
       if (current.isGenerating) {
         throw new Error("generation already in progress");
       }
+      const source = current.source
+        ? dependencies.resolveSource(current.source)
+        : null;
+      if (!source) {
+        patch({
+          source: null,
+          preview: "",
+          result: null,
+          statusMessage: "현재 작업공간에서 정리할 항목을 다시 선택해 주세요."
+        });
+        throw Object.assign(new Error("workspace source is invalid or stale"), {
+          code: "source_invalid"
+        });
+      }
       const operationEpoch = ++generationEpoch;
       const requestedSession = current.session;
-      const request = { action: current.action, input: current.input };
+      const request = { action: current.action, source };
       patch({
         preview: "",
         result: null,
@@ -279,15 +332,26 @@ export function createLocalAssistantController(
           code === "generation_interrupted"
         ) {
           patch({
-            input: "",
+            source: null,
             preview: "",
             result: null,
+            ...(code === "output_blocked" ? { session: null } : {}),
             statusMessage:
               code === "input_blocked"
                 ? "이 요청은 로컬 AI의 문서 정리 범위를 벗어나 처리하지 않았습니다."
                 : code === "output_blocked"
                   ? "문제가 있는 결과를 표시하지 않고 기기 메모리에서 폐기했습니다."
                   : "문서 정리를 중단하고 임시 내용을 기기 메모리에서 비웠습니다."
+          });
+        } else if (code === "release_failed" || code === "runtime_faulted") {
+          patch({
+            source: null,
+            preview: "",
+            result: null,
+            session: null,
+            runtimeFaulted: true,
+            statusMessage:
+              "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요."
           });
         } else {
           patch({
@@ -311,7 +375,7 @@ export function createLocalAssistantController(
       });
       dependencies.onWorkspaceChange(next);
       patch({
-        input: "",
+        source: null,
         preview: "",
         result: null,
         statusMessage:
@@ -322,7 +386,7 @@ export function createLocalAssistantController(
     discard() {
       ++generationEpoch;
       patch({
-        input: "",
+        source: null,
         preview: "",
         result: null,
         isGenerating: false,
@@ -332,7 +396,7 @@ export function createLocalAssistantController(
     flagProblem() {
       ++generationEpoch;
       patch({
-        input: "",
+        source: null,
         preview: "",
         result: null,
         isGenerating: false,
@@ -341,16 +405,33 @@ export function createLocalAssistantController(
       });
     },
     async stopAndClear(reason: string): Promise<void> {
-      ++generationEpoch;
+      const operationEpoch = ++generationEpoch;
       patch({
-        input: "",
+        source: null,
         preview: "",
         result: null,
         session: null,
         isGenerating: false,
-        statusMessage: "로컬 AI 메모리와 모델 컨텍스트를 비웠습니다."
+        statusMessage: "로컬 AI 모델 컨텍스트 해제를 확인하고 있습니다."
       });
-      await dependencies.stopAndRelease(reason);
+      try {
+        await dependencies.stopAndRelease(reason);
+        if (operationEpoch === generationEpoch) {
+          patch({
+            runtimeFaulted: false,
+            statusMessage: "로컬 AI 메모리와 모델 컨텍스트를 비웠습니다."
+          });
+        }
+      } catch (error) {
+        if (operationEpoch === generationEpoch) {
+          patch({
+            runtimeFaulted: true,
+            statusMessage:
+              "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요."
+          });
+        }
+        throw error;
+      }
     }
   };
 }
@@ -370,7 +451,7 @@ export interface LocalAssistantHookState extends LocalAssistantSnapshot {
   actions: {
     refreshModels(): Promise<void>;
     setAction(action: AiAction): void;
-    setInput(input: string): void;
+    setSource(source: AssistantSource | null): void;
     toggleLicenseAcceptance(modelId: string): void;
     installModel(model: ModelArtifact): Promise<void>;
     pauseDownload(): Promise<void>;
@@ -397,8 +478,11 @@ function initialInstallationStatuses(): readonly ModelInstallationStatus[] {
 }
 
 export function useLocalAssistant(
+  workspace: PersonalWorkspace,
   onWorkspaceChange: (workspace: PersonalWorkspace) => void
 ): LocalAssistantHookState {
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
   const workspaceChangeRef = useRef(onWorkspaceChange);
   workspaceChangeRef.current = onWorkspaceChange;
   const controllerRef = useRef<ReturnType<typeof createLocalAssistantController> | null>(
@@ -408,6 +492,8 @@ export function useLocalAssistant(
     controllerRef.current = createLocalAssistantController({
       generate: generateLocalText,
       stopAndRelease: stopAndReleaseLocalModel,
+      resolveSource: (source) =>
+        resolveAssistantSource(workspaceRef.current, source),
       onWorkspaceChange: (workspace) => workspaceChangeRef.current(workspace),
       now: () => new Date().toISOString(),
       createId: assistantRecordId
@@ -418,7 +504,12 @@ export function useLocalAssistant(
     null
   );
   if (!lifecycleRef.current) {
-    lifecycleRef.current = createDownloadUnmountGuard(cancelActiveDownload);
+    lifecycleRef.current = createDownloadUnmountGuard(() =>
+      clearLocalAiDownloadArtifacts({
+        cancelActive: cancelActiveDownload,
+        cleanupPartials: cleanupPartialDownloads
+      })
+    );
   }
   const lifecycle = lifecycleRef.current;
   const [assistant, setAssistant] = useState<LocalAssistantSnapshot>(() =>
@@ -448,42 +539,60 @@ export function useLocalAssistant(
     null
   );
   const [errorKind, setErrorKind] = useState<LocalAiErrorKind | null>(null);
+  const waitForLifecycleReady = async (operationEpoch: number) => {
+    await lifecycle.ready();
+    if (!lifecycle.isCurrent(operationEpoch)) {
+      throw Object.assign(new Error("local AI lifecycle changed"), {
+        code: "lifecycle_changed"
+      });
+    }
+  };
 
   const refreshModels = async () => {
+    const operationEpoch = lifecycle.epoch();
     try {
-      await cancelActiveDownload();
+      await lifecycle.cleanup();
+      if (!lifecycle.isCurrent(operationEpoch)) return;
       const statuses = await inspectInstalledModels();
       lifecycle.commit(() => {
         setInstallationStatuses(statuses);
+        setPausedDownloads({});
         const firstInvalid = statuses.find((status) => status.kind === "invalid");
         setErrorKind(firstInvalid ? "integrity" : null);
-      });
+      }, operationEpoch);
     } catch (error) {
-      lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
+      lifecycle.commit(
+        () => setErrorKind(classifyLocalAiError(error)),
+        operationEpoch
+      );
       throw error;
     }
   };
 
-  useEffect(
-    () =>
-      controller.subscribe((snapshot) =>
-        lifecycle.commit(() => setAssistant(snapshot))
-      ),
-    [controller, lifecycle]
-  );
-
   useEffect(() => {
     lifecycle.mount();
+    controller.beginLifecycle();
+    const operationEpoch = lifecycle.epoch();
+    return controller.subscribe((snapshot) =>
+      lifecycle.commit(() => setAssistant(snapshot), operationEpoch)
+    );
+  }, [controller, lifecycle]);
+
+  useEffect(() => {
+    const operationEpoch = lifecycle.epoch();
     void getLocalAiEnvironmentSupport()
       .then((support) => {
         lifecycle.commit(() => {
           setEnvironmentSupport(support.supported ? "supported" : "unsupported");
           setEnvironmentArchitectures(support.architectures);
           setEnvironmentTotalMemoryBytes(support.totalMemoryBytes);
-        });
+        }, operationEpoch);
       })
       .catch(() => {
-        lifecycle.commit(() => setEnvironmentSupport("unsupported"));
+        lifecycle.commit(
+          () => setEnvironmentSupport("unsupported"),
+          operationEpoch
+        );
       });
     void refreshModels().catch(() => undefined);
 
@@ -509,7 +618,7 @@ export function useLocalAssistant(
     () => ({
       refreshModels,
       setAction: (action) => controller.setAction(action),
-      setInput: (input) => controller.setInput(input),
+      setSource: (source) => controller.setSource(source),
       toggleLicenseAcceptance(modelId) {
         setAcceptedLicenseModelIds((current) => {
           const next = new Set(current);
@@ -533,80 +642,116 @@ export function useLocalAssistant(
                 : "license_acceptance_required";
           throw Object.assign(new Error(code), { code });
         }
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
         setErrorKind(null);
         setActiveDownloadModelId(model.id);
         try {
           await downloadModel(model, {
             onStateChange: (next) =>
-              lifecycle.commit(() =>
-                setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              lifecycle.commit(
+                () =>
+                  setDownloadStates((current) => ({
+                    ...current,
+                    [model.id]: next
+                  })),
+                operationEpoch
               )
           });
-          lifecycle.commit(() =>
-            setPausedDownloads((current) => {
-              const next = { ...current };
-              delete next[model.id];
-              return next;
-            })
+          lifecycle.commit(
+            () =>
+              setPausedDownloads((current) => {
+                const next = { ...current };
+                delete next[model.id];
+                return next;
+              }),
+            operationEpoch
           );
-          await refreshModels();
+          if (lifecycle.isCurrent(operationEpoch)) await refreshModels();
         } catch (error) {
           const code =
             typeof error === "object" && error !== null && "code" in error
               ? String(error.code)
               : "";
           if (code !== "download_paused" && code !== "download_cancelled") {
-            lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
+            lifecycle.commit(
+              () => setErrorKind(classifyLocalAiError(error)),
+              operationEpoch
+            );
             throw error;
           }
         } finally {
-          lifecycle.commit(() => setActiveDownloadModelId(null));
+          lifecycle.commit(
+            () => setActiveDownloadModelId(null),
+            operationEpoch
+          );
         }
       },
       async pauseDownload() {
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
         const paused = await pauseActiveDownload();
-        lifecycle.commit(() =>
-          setPausedDownloads((current) => ({
-            ...current,
-            [paused.modelId]: paused
-          }))
+        lifecycle.commit(
+          () =>
+            setPausedDownloads((current) => ({
+              ...current,
+              [paused.modelId]: paused
+            })),
+          operationEpoch
         );
       },
       async resumeDownload(model) {
         const resume = pausedDownloads[model.id];
         if (!resume) throw new Error("resume_state_invalid");
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
         setErrorKind(null);
         setActiveDownloadModelId(model.id);
         try {
           await downloadModel(model, {
             resume,
             onStateChange: (next) =>
-              lifecycle.commit(() =>
-                setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              lifecycle.commit(
+                () =>
+                  setDownloadStates((current) => ({
+                    ...current,
+                    [model.id]: next
+                  })),
+                operationEpoch
               )
           });
-          lifecycle.commit(() =>
-            setPausedDownloads((current) => {
-              const next = { ...current };
-              delete next[model.id];
-              return next;
-            })
+          lifecycle.commit(
+            () =>
+              setPausedDownloads((current) => {
+                const next = { ...current };
+                delete next[model.id];
+                return next;
+              }),
+            operationEpoch
           );
-          await refreshModels();
+          if (lifecycle.isCurrent(operationEpoch)) await refreshModels();
         } catch (error) {
           const code =
             typeof error === "object" && error !== null && "code" in error
               ? String(error.code)
               : "";
           if (code !== "download_paused" && code !== "download_cancelled") {
-            lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
+            lifecycle.commit(
+              () => setErrorKind(classifyLocalAiError(error)),
+              operationEpoch
+            );
             throw error;
           }
         } finally {
-          lifecycle.commit(() => setActiveDownloadModelId(null));
+          lifecycle.commit(
+            () => setActiveDownloadModelId(null),
+            operationEpoch
+          );
         }
       },
       async cancelDownload(modelId) {
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
         if (pausedDownloads[modelId]) await removeModel(modelId);
         else await cancelActiveDownload();
         lifecycle.commit(() => {
@@ -619,37 +764,83 @@ export function useLocalAssistant(
             ...current,
             [modelId]: { kind: "notInstalled" }
           }));
-        });
-        await refreshModels();
+        }, operationEpoch);
+        if (lifecycle.isCurrent(operationEpoch)) await refreshModels();
       },
       async loadModel(installed) {
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
         setErrorKind(null);
         try {
           const loadedSession = await loadLocalModel(installed);
-          controller.attachSession(loadedSession);
+          if (lifecycle.isCurrent(operationEpoch)) {
+            controller.attachSession(loadedSession);
+          }
         } catch (error) {
-          lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
+          lifecycle.commit(
+            () => setErrorKind(classifyLocalAiError(error)),
+            operationEpoch
+          );
           throw error;
         }
       },
-      generate: () => controller.generate(),
-      cancelGeneration: () => controller.stopAndClear("user-cancel"),
+      async generate() {
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
+        try {
+          const result = await controller.generate();
+          lifecycle.commit(() => setErrorKind(null), operationEpoch);
+          return result;
+        } catch (error) {
+          lifecycle.commit(
+            () => setErrorKind(classifyLocalAiError(error)),
+            operationEpoch
+          );
+          throw error;
+        }
+      },
+      async cancelGeneration() {
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
+        try {
+          await controller.stopAndClear("user-cancel");
+          lifecycle.commit(() => setErrorKind(null), operationEpoch);
+        } catch (error) {
+          lifecycle.commit(
+            () => setErrorKind(classifyLocalAiError(error)),
+            operationEpoch
+          );
+          throw error;
+        }
+      },
       approve: (workspace) => controller.approve(workspace),
       discard: () => controller.discard(),
       flagProblem: () => controller.flagProblem(),
       async deleteModel(modelId) {
-        await deleteLocalModelSafely(
-          () => controller.stopAndClear("model-delete"),
-          removeModel,
-          modelId
+        const operationEpoch = lifecycle.epoch();
+        await waitForLifecycleReady(operationEpoch);
+        try {
+          await deleteLocalModelSafely(
+            () => controller.stopAndClear("model-delete"),
+            removeModel,
+            modelId
+          );
+        } catch (error) {
+          lifecycle.commit(
+            () => setErrorKind(classifyLocalAiError(error)),
+            operationEpoch
+          );
+          throw error;
+        }
+        lifecycle.commit(
+          () =>
+            setDownloadStates((current) => ({
+              ...current,
+              [modelId]: { kind: "notInstalled" }
+            })),
+          operationEpoch
         );
-        lifecycle.commit(() =>
-          setDownloadStates((current) => ({
-            ...current,
-            [modelId]: { kind: "notInstalled" }
-          }))
-        );
-        await refreshModels();
+        if (lifecycle.isCurrent(operationEpoch)) await refreshModels();
       }
     }),
     [
