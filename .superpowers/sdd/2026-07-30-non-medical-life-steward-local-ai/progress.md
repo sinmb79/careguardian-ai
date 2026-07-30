@@ -27,5 +27,7 @@ Task 5: complete (commits e98f031b..d0399fe, review clean)
 Task 6: fix round 1/5 (0 addressed, 6 Important open; install lifecycle cleanup/callback isolation, resume identity and writer synchronization, operation serialization, models-root confinement, crash-safe replacement, accurate full-data deletion; commit 51be6b7)
 Task 6: minor (fix requested): normalize unknown progress totals and expose typed primary/cleanup failure causes.
 Task 6: fix round 1 result (5 Important plus 1 Minor addressed, 2 Important open; cleanup queue can block later cancellation, backup unlink followed by directory fsync failure can lose old and new completed artifacts; commits 4405063..b3ace5a)
+Task 6: fix round 2/5 (2 Important addressed, 0 open; active cleanup rejects before queueing and native replacement preserves a verified old or new artifact across commit failures; commits 6bf7bed..62e00fc)
+Task 6: complete (commits d0399fe..62e00fc, review clean)
 Task 6: fix round 1 result (6 Important and 1 Minor addressed, 0 known open; typed lifecycle and callback isolation, identity-bound terminal resume, serialized control queue, native models-root confinement, backup/fsync/post-verify replacement, production full-delete integration; commit 4405063)
 Task 6: fix round 2 result (2 remaining Important addressed, 0 known open; active cleanup rejects immediately without blocking cancel/remove-all, native backup unlink is an explicit commit point that preserves verified new on final fsync failure; commit 6bf7bed)
