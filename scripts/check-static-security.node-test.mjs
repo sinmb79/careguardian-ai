@@ -120,6 +120,17 @@ test("rejects decoded entity, hex, decimal, and protocol-relative remote HTML UR
   }
 });
 
+test("rejects semicolonless numeric references in the exact policy anchor contract", () => {
+  const vectors = [
+    '<a href="https&#58//huggingface.co/privacy">https&#58//huggingface.co/privacy</a>',
+    '<a href="https&#x3A//huggingface.co/privacy">https&#x3A//huggingface.co/privacy</a>'
+  ];
+
+  for (const vector of vectors) {
+    assert.match(validateHtmlSecurity(htmlWithCsp(vector), "privacy-policy.html").join("\n"), /unexpected remote URL/);
+  }
+});
+
 test("rejects browser-normalized backslash and control-character HTML URLs", () => {
   const vectors = [
     '<img src="https:\\\\attacker.example/two.png">',
@@ -196,6 +207,45 @@ test("rejects CSS escaped URL and import identifiers plus quoted backslash URLs"
 
   for (const css of vectors) {
     assert.match(validateCssSecurity(css, "site.css").join("\n"), /unexpected remote CSS URL/);
+  }
+});
+
+test("rejects remote schemes across image-set strings and normalized CSS tokens", () => {
+  const vectors = [
+    'body { background: image-set("https://attacker.example/standard.png" 1x); }',
+    'body { background: -webkit-image-set("https://attacker.example/webkit.png" 1x); }',
+    'body { background: image-set("https://attacker.example/quoted.png" 1x, "https://attacker.example/second.png" 2x); }',
+    "body { background: image-set('https://attacker.example/single-quoted.png' 1x); }",
+    'body { background: image-set(url(https://attacker.example/unquoted.png) 1x); }',
+    'body { background: image-set(url("https://attacker.example/nested.png") 1x); }',
+    'body { background: ImAgE-SeT( "https://attacker.example/case.png" 1x ); }',
+    'body { background: image/**/-set(/**/"https://attacker.example/comment.png"/**/ 1x); }',
+    'body { background: image-set(\n\t"https:/\t/attacker.example/whitespace.png" 1x); }',
+    'body { background: im\\61ge-set("h\\74tps://attacker.example/escaped.png" 1x); }',
+    ':root { --remote-source: "https://attacker.example/token.png"; }'
+  ];
+
+  for (const css of vectors) {
+    assert.match(validateCssSecurity(css, "site.css").join("\n"), /unexpected remote CSS URL/);
+  }
+
+  const multiple = validateCssSecurity(
+    'body { background: image-set("https://attacker.example/one.png" 1x, url(https://attacker.example/two.png) 2x); }',
+    "site.css"
+  );
+  assert.ok(multiple.length >= 2);
+});
+
+test("rejects image-set remote strings in the deployed CSS gate", () => {
+  const directory = mkdtempSync(join(tmpdir(), "careguardian-static-security-"));
+  try {
+    writeFileSync(join(directory, "index.html"), htmlWithCsp('<link rel="stylesheet" href="site.css">'), "utf8");
+    writeFileSync(join(directory, "site.css"), 'body { background: -webkit-image-set("https://attacker.example/webkit.png" 1x); }', "utf8");
+    const report = validateBuiltHtmlDirectory(directory);
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /site\.css: unexpected remote CSS URL/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

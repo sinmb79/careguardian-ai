@@ -7,11 +7,6 @@ export const EXPECTED_CSP = "default-src 'self'; base-uri 'none'; object-src 'no
 
 const ALLOWED_POLICY_URL = "https://huggingface.co/privacy";
 const URL_CANDIDATE_PATTERN = /(?:https?\s*:[\s/\\]*|[\\/][\s/\\]*)[^\s"'<>`]*/gi;
-const CSS_REFERENCE_PATTERNS = [
-  /@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)'|([^)]*?))\)?/gi,
-  /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi
-];
-const CHARACTER_REFERENCE_PATTERN = /&(?:#x[0-9a-f]+|#\d+|[a-z][a-z\d]+);/i;
 
 function findRemoteUrls(value) {
   return [...value.matchAll(URL_CANDIDATE_PATTERN)].flatMap(([candidate]) => {
@@ -31,10 +26,10 @@ function findRemoteUrls(value) {
   });
 }
 
-function sourceContainsCharacterReference(dom, html, node, attributeName) {
+function getRawSource(dom, html, node, attributeName) {
   const location = dom.nodeLocation(node);
   const attribute = attributeName ? location?.attrs?.[attributeName] : location;
-  return Boolean(attribute && CHARACTER_REFERENCE_PATTERN.test(html.slice(attribute.startOffset, attribute.endOffset)));
+  return attribute ? html.slice(attribute.startOffset, attribute.endOffset) : "";
 }
 
 function isAllowedAnchorHref(dom, html, file, element, attributeName, value, remoteUrl) {
@@ -44,7 +39,7 @@ function isAllowedAnchorHref(dom, html, file, element, attributeName, value, rem
     value === ALLOWED_POLICY_URL &&
     remoteUrl.candidate === ALLOWED_POLICY_URL &&
     remoteUrl.normalized === ALLOWED_POLICY_URL &&
-    !sourceContainsCharacterReference(dom, html, element, attributeName);
+    getRawSource(dom, html, element, attributeName) === `href="${ALLOWED_POLICY_URL}"`;
 }
 
 function isAllowedAnchorText(dom, html, file, textNode, remoteUrl) {
@@ -53,7 +48,7 @@ function isAllowedAnchorText(dom, html, file, textNode, remoteUrl) {
     textNode.data === ALLOWED_POLICY_URL &&
     remoteUrl.candidate === ALLOWED_POLICY_URL &&
     remoteUrl.normalized === ALLOWED_POLICY_URL &&
-    !sourceContainsCharacterReference(dom, html, textNode);
+    getRawSource(dom, html, textNode) === ALLOWED_POLICY_URL;
 }
 
 function validateStrictCsp(document, file, problems) {
@@ -113,24 +108,17 @@ function decodeCssReference(value) {
   return decoder.value;
 }
 
-function findCssReferences(css) {
-  const withoutComments = decodeCssEscapes(css).replace(/\/\*[\s\S]*?\*\//g, "");
-  const references = new Set();
-  for (const pattern of CSS_REFERENCE_PATTERNS) {
-    for (const match of withoutComments.matchAll(pattern)) {
-      const value = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6] ?? "";
-      references.add(decodeCssReference(value.trim()));
-    }
-  }
-  return references;
+function normalizeCssForRemoteScan(css) {
+  const withoutSourceComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const decodedEscapes = decodeCssEscapes(withoutSourceComments);
+  const withoutDecodedComments = decodedEscapes.replace(/\/\*[\s\S]*?\*\//g, "");
+  return decodeCssReference(withoutDecodedComments);
 }
 
 export function validateCssSecurity(css, file = "unknown.css") {
   const problems = [];
-  for (const reference of findCssReferences(css)) {
-    for (const remoteUrl of findRemoteUrls(reference)) {
-      problems.push(`${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`);
-    }
+  for (const remoteUrl of findRemoteUrls(normalizeCssForRemoteScan(css))) {
+    problems.push(`${file}: unexpected remote CSS URL is present: ${remoteUrl.candidate}`);
   }
   return problems;
 }
