@@ -1,5 +1,6 @@
 package expo.modules.lifelocalnotifications
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,6 +9,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -95,9 +97,17 @@ internal class NotificationScheduler(
     }
   }
 
-  fun areEnabled(): Boolean = notificationManager.areNotificationsEnabled()
+  fun areEnabled(): Boolean =
+    notificationManager.areNotificationsEnabled() &&
+      (
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+          context.checkSelfPermission(
+            Manifest.permission.POST_NOTIFICATIONS
+          ) == PackageManager.PERMISSION_GRANTED
+      )
 
   fun schedule(identifier: String, epochMs: Long): String = synchronized(LOCK) {
+    requireNotificationsEnabled()
     val entry = validateFutureEntry(identifier, epochMs)
     val key = entryKey(identifier)
     if (!preferences.edit().putString(key, encode(entry)).commit()) {
@@ -479,6 +489,12 @@ internal class NotificationScheduler(
     notificationManager.cancelAll()
     if (notificationManager.activeNotifications.isNotEmpty()) {
       error("Delivered notifications remain after deletion")
+    }
+  }
+
+  private fun requireNotificationsEnabled() {
+    check(areEnabled()) {
+      "Android notification permission is unavailable"
     }
   }
 

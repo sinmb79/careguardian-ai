@@ -55,6 +55,28 @@ test("uses only app-local alarms and private generic notifications", () => {
   assert.doesNotMatch(kotlinSources, /https?:|Firebase|C2DM|ShortcutBadger|RemoteInput/);
 });
 
+test("native scheduling fails closed when Android notification permission is unavailable", () => {
+  const scheduler = readFileSync(
+    resolve(
+      moduleRoot,
+      "android/src/main/java/expo/modules/lifelocalnotifications/NotificationScheduler.kt"
+    ),
+    "utf8"
+  );
+  const scheduleBody = scheduler.match(
+    /fun schedule\([\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  )?.[1] ?? "";
+
+  assert.match(scheduler, /Manifest\.permission\.POST_NOTIFICATIONS/);
+  assert.match(scheduler, /PackageManager\.PERMISSION_GRANTED/);
+  assert.match(scheduler, /notificationManager\.areNotificationsEnabled\(\)/);
+  assert.match(scheduleBody, /requireNotificationsEnabled\(\)/);
+  assert.ok(
+    scheduleBody.indexOf("requireNotificationsEnabled()") <
+      scheduleBody.indexOf("putString")
+  );
+});
+
 test("declares only non-exported reminder and restore receivers", () => {
   const manifest = readFileSync(
     resolve(moduleRoot, "android/src/main/AndroidManifest.xml"),
