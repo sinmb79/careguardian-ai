@@ -1,14 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <application>
     <receiver
-      android:name="expo.modules.lifelocalnotifications.LifeReminderReceiver"
+      android:name=".LifeReminderReceiver"
       android:enabled="true"
       android:exported="false" />
     <receiver
-      android:name="expo.modules.lifelocalnotifications.LifeRestoreReceiver"
+      android:name=".LifeRestoreReceiver"
       android:enabled="true"
       android:exported="false">
       <intent-filter>

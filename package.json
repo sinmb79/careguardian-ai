@@ -29,7 +29,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "release:policy-check": "node scripts/check-non-medical-release.mjs",
-    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/plugins/with-local-only-notifications.node-test.cjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs",
+    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/modules/life-local-notifications/life-local-notifications.node-test.mjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs apps/mobile/scripts/verify-no-remote-push.node-test.mjs",
+    "verify:no-remote-push": "node apps/mobile/scripts/verify-no-remote-push.mjs --package-lock package-lock.json",
+    "verify:no-remote-push:artifacts": "node apps/mobile/scripts/verify-no-remote-push.mjs --package-lock package-lock.json",
+    "verify:no-remote-push:test": "node --test apps/mobile/scripts/verify-no-remote-push.node-test.mjs",
     "release:model-check": "node scripts/check-model-registry.mjs",
     "release:model-check:test": "node --test scripts/check-model-registry.node-test.mjs",
     "release:static-security-check": "node scripts/check-static-security.mjs",
@@ -38,8 +41,8 @@
     "release:audit-policy:test": "node --test scripts/check-production-audit.node-test.mjs",
     "release:workflow-check": "node scripts/check-release-workflow.mjs",
     "release:workflow-check:test": "node --test scripts/check-release-workflow.node-test.mjs",
-    "release:gate-tests": "npm run release:static-security-check:test && npm run release:policy-check:test && npm run release:model-check:test && npm run release:audit-policy:test && npm run release:workflow-check:test",
-    "verify": "npm test -- --run && npm run build && npm run release:static-security-check && npm run mobile:typecheck && npm run mobile:doctor && npm run release:policy-check && npm run release:model-check && npm run release:gate-tests && npm run release:audit-policy && npm run release:workflow-check",
+    "release:gate-tests": "npm run release:static-security-check:test && npm run release:policy-check:test && npm run verify:no-remote-push:test && npm run release:model-check:test && npm run release:audit-policy:test && npm run release:workflow-check:test",
+    "verify": "npm test -- --run && npm run build && npm run release:static-security-check && npm run mobile:typecheck && npm run mobile:doctor && npm run verify:no-remote-push && npm run release:policy-check && npm run release:model-check && npm run release:gate-tests && npm run release:audit-policy && npm run release:workflow-check",
     "verify:android-release": "node apps/mobile/scripts/verify-android-release.mjs"
   },
   "dependencies": {
@@ -66,6 +69,7 @@
     "vite": "^7.3.6",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.3",
+    "yauzl": "3.4.0",
     "yaml": "^2.9.0"
   }
 }

@@ -1,22 +1,42 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { fixtureWorkspace } from "../test/fixtureWorkspace";
 
-const notificationApi = vi.hoisted(() => ({
-  AndroidImportance: { HIGH: 4 },
-  AndroidNotificationVisibility: { SECRET: 3 },
-  SchedulableTriggerInputTypes: { DAILY: "daily" },
-  setNotificationHandler: vi.fn(),
-  setNotificationChannelAsync: vi.fn(),
-  getPermissionsAsync: vi.fn(),
-  requestPermissionsAsync: vi.fn(),
-  getAllScheduledNotificationsAsync: vi.fn(),
-  cancelAllScheduledNotificationsAsync: vi.fn(),
-  cancelScheduledNotificationAsync: vi.fn(),
-  scheduleNotificationAsync: vi.fn()
+const nativeApi = vi.hoisted(() => ({
+  createChannel: vi.fn(),
+  areEnabled: vi.fn(),
+  cleanupLegacy: vi.fn(),
+  schedule: vi.fn(),
+  listIdentifiers: vi.fn(),
+  cancel: vi.fn(),
+  cancelAll: vi.fn(),
+  available: true
 }));
 
-vi.mock("expo-notifications", () => notificationApi);
-vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
+const permissionsApi = vi.hoisted(() => ({
+  check: vi.fn(),
+  request: vi.fn()
+}));
+
+vi.mock("../../modules/life-local-notifications", () => ({
+  createLocalNotificationChannel: nativeApi.createChannel,
+  areLocalNotificationsEnabled: nativeApi.areEnabled,
+  cleanupLegacyNotifications: nativeApi.cleanupLegacy,
+  scheduleLocalNotification: nativeApi.schedule,
+  listLocalNotificationIdentifiers: nativeApi.listIdentifiers,
+  cancelLocalNotification: nativeApi.cancel,
+  cancelAllLocalNotifications: nativeApi.cancelAll,
+  isLifeLocalNotificationsAvailable: () => nativeApi.available
+}));
+
+vi.mock("react-native", () => ({
+  Platform: { OS: "android", Version: 36 },
+  PermissionsAndroid: {
+    PERMISSIONS: { POST_NOTIFICATIONS: "android.permission.POST_NOTIFICATIONS" },
+    RESULTS: { GRANTED: "granted" },
+    check: permissionsApi.check,
+    request: permissionsApi.request
+  }
+}));
 
 import {
   buildLifeNotification,
@@ -29,134 +49,164 @@ import {
 describe("life notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    notificationApi.getAllScheduledNotificationsAsync.mockReset();
-    notificationApi.scheduleNotificationAsync.mockReset();
-    notificationApi.getPermissionsAsync.mockResolvedValue({ granted: true });
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ identifier: "life-steward-task-buy-fruit" }]);
-    notificationApi.scheduleNotificationAsync.mockResolvedValue("life-steward-task-buy-fruit");
+    nativeApi.available = true;
+    nativeApi.createChannel.mockResolvedValue(undefined);
+    nativeApi.areEnabled.mockResolvedValue(true);
+    nativeApi.cleanupLegacy.mockResolvedValue(undefined);
+    nativeApi.listIdentifiers.mockResolvedValue([]);
+    nativeApi.schedule.mockImplementation(async (identifier: string) => identifier);
+    nativeApi.cancel.mockResolvedValue(undefined);
+    nativeApi.cancelAll.mockResolvedValue(undefined);
+    permissionsApi.check.mockResolvedValue(true);
+    permissionsApi.request.mockResolvedValue("granted");
   });
 
-  test("uses a generic private notification payload", () => {
+  test("uses a generic private notification request", () => {
     const request = buildLifeNotification(fixtureWorkspace.tasks[0]);
 
-    expect(request.content.title).toBe("생활 일정 알림");
-    expect(request.content.data).toEqual({ taskId: "buy-fruit" });
-    expect(JSON.stringify(request)).not.toMatch(/약|복약|질환|치료|과일 사기/);
+    expect(request).toEqual({
+      identifier: "life-steward-task-buy-fruit",
+      epochMs: new Date(2026, 6, 31, 9, 0, 0).getTime()
+    });
+    expect(JSON.stringify(request)).not.toMatch(/약|복약|질환|치료|과일 사기|https?:/);
   });
 
-  test("synchronizes only open tasks with due dates and verifies reservation", async () => {
-    await expect(syncLifeNotifications(fixtureWorkspace.tasks, () => new Date(2026, 6, 30, 10, 0, 0))).resolves.toBe(1);
+  test("configures the private channel, requests Android permission, and verifies reservation", async () => {
+    nativeApi.listIdentifiers
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(["life-steward-task-buy-fruit"]);
 
-    expect(notificationApi.setNotificationChannelAsync).toHaveBeenCalledWith(
-      "life-steward-tasks-v1",
-      expect.objectContaining({ lockscreenVisibility: notificationApi.AndroidNotificationVisibility.SECRET })
-    );
-    expect(notificationApi.scheduleNotificationAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        identifier: "life-steward-task-buy-fruit",
-        trigger: expect.objectContaining({ type: "date" })
-      })
+    await expect(
+      syncLifeNotifications(fixtureWorkspace.tasks, () => new Date(2026, 6, 30, 10, 0, 0))
+    ).resolves.toBe(1);
+
+    expect(nativeApi.cleanupLegacy).toHaveBeenCalledOnce();
+    expect(nativeApi.createChannel).toHaveBeenCalledOnce();
+    expect(permissionsApi.check).toHaveBeenCalledWith("android.permission.POST_NOTIFICATIONS");
+    expect(nativeApi.schedule).toHaveBeenCalledWith(
+      "life-steward-task-buy-fruit",
+      new Date(2026, 6, 31, 9, 0, 0).getTime()
     );
   });
 
-  test("does not attempt a native reservation for a past local 9 AM trigger", async () => {
+  test("requests permission only when Android 13 permission is not already granted", async () => {
+    permissionsApi.check.mockResolvedValue(false);
+    nativeApi.listIdentifiers
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(["life-steward-task-buy-fruit"]);
+
+    await expect(
+      syncLifeNotifications(fixtureWorkspace.tasks, () => new Date(2026, 6, 30, 10, 0, 0))
+    ).resolves.toBe(1);
+
+    expect(permissionsApi.request).toHaveBeenCalledOnce();
+  });
+
+  test("does not attempt permission or native scheduling for a past local trigger", async () => {
     const pastTask = { ...fixtureWorkspace.tasks[0], dueDate: "2026-07-30" };
+    nativeApi.listIdentifiers.mockResolvedValue([]);
 
-    await expect(syncLifeNotifications([pastTask], () => new Date(2026, 6, 31, 10, 0, 0))).resolves.toBe(0);
+    await expect(
+      syncLifeNotifications([pastTask], () => new Date(2026, 6, 31, 10, 0, 0))
+    ).resolves.toBe(0);
 
-    expect(notificationApi.scheduleNotificationAsync).not.toHaveBeenCalled();
-    expect(notificationApi.getPermissionsAsync).not.toHaveBeenCalled();
+    expect(permissionsApi.check).not.toHaveBeenCalled();
+    expect(nativeApi.schedule).not.toHaveBeenCalled();
   });
 
-  test("schedules a future local 9 AM trigger with an injected clock", async () => {
-    const futureTask = { ...fixtureWorkspace.tasks[0], dueDate: "2026-08-01" };
+  test("returns a non-blocking zero on an unsupported platform", async () => {
+    nativeApi.available = false;
 
-    await expect(syncLifeNotifications([futureTask], () => new Date(2026, 6, 31, 10, 0, 0))).resolves.toBe(1);
+    await expect(
+      syncLifeNotifications(fixtureWorkspace.tasks, () => new Date(2026, 6, 30, 10, 0, 0))
+    ).resolves.toBe(0);
 
-    expect(notificationApi.scheduleNotificationAsync).toHaveBeenCalledWith(expect.objectContaining({
-      trigger: expect.objectContaining({ date: new Date(2026, 7, 1, 9, 0, 0) })
-    }));
+    expect(nativeApi.cleanupLegacy).not.toHaveBeenCalled();
+    expect(nativeApi.createChannel).not.toHaveBeenCalled();
+    expect(nativeApi.schedule).not.toHaveBeenCalled();
   });
 
-  test("cancels and verifies all private life notifications", async () => {
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockResolvedValueOnce([{ identifier: "life-steward-task-buy-fruit" }])
-      .mockResolvedValueOnce([]);
+  test("cancels and verifies every life-prefixed reservation", async () => {
+    nativeApi.listIdentifiers
+      .mockResolvedValueOnce(["life-steward-task-buy-fruit", "other-app-entry"])
+      .mockResolvedValueOnce(["other-app-entry"]);
 
     await expect(cancelAllLifeNotifications()).resolves.toBeUndefined();
-    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("life-steward-task-buy-fruit");
+    expect(nativeApi.cancel).toHaveBeenCalledWith("life-steward-task-buy-fruit");
   });
 
-  test("clears prior test notifications only when the user chooses to remove prior test data", async () => {
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockResolvedValueOnce([{ identifier: "careguardian-medication-0" }])
+  test("fails closed when native cancellation rejects even if the ledger is empty", async () => {
+    nativeApi.listIdentifiers
+      .mockResolvedValueOnce(["life-steward-task-buy-fruit"])
       .mockResolvedValueOnce([]);
+    nativeApi.cancel.mockRejectedValueOnce(
+      new Error("alarm post-cancellation verification failed")
+    );
 
+    await expect(cancelAllLifeNotifications()).rejects.toThrow(
+      "생활 알림 취소 검증에 실패했습니다."
+    );
+  });
+
+  test("legacy Expo health alarm cancellation is a safe no-op after its receiver is removed", async () => {
     await expect(cancelPreviousTestNotifications()).resolves.toBeUndefined();
-    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("careguardian-medication-0");
+    expect(nativeApi.cancel).not.toHaveBeenCalled();
   });
 
-  test("full deletion cancels and verifies every scheduled notification, including legacy identifiers", async () => {
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockResolvedValueOnce([]);
+  test("full deletion removes native alarms, delivered notifications, and ledger then verifies empty", async () => {
+    nativeApi.listIdentifiers.mockResolvedValueOnce([]);
 
     await expect(cancelAllScheduledNotificationsForFullDeletion()).resolves.toBeUndefined();
-    expect(notificationApi.cancelAllScheduledNotificationsAsync).toHaveBeenCalledOnce();
+    expect(nativeApi.cancelAll).toHaveBeenCalledOnce();
   });
 
-  test("full deletion fails closed when any scheduled notification remains", async () => {
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockResolvedValueOnce([{ identifier: "legacy-unrelated-notification" }]);
+  test("full deletion fails closed when the native ledger is not empty", async () => {
+    nativeApi.listIdentifiers.mockResolvedValueOnce(["life-steward-task-buy-fruit"]);
 
     await expect(cancelAllScheduledNotificationsForFullDeletion()).rejects.toThrow("verification failed");
   });
 
-  test("cancels every newly scheduled notification when scheduling stops midway", async () => {
+  test("rolls back every newly scheduled identifier if a later schedule fails", async () => {
     const secondTask = { ...fixtureWorkspace.tasks[0], id: "plan-trip", dueDate: "2026-08-01" };
     const scheduled = new Set<string>();
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockImplementation(async () => [...scheduled].map((identifier) => ({ identifier })));
-    notificationApi.cancelScheduledNotificationAsync
-      .mockReset()
-      .mockImplementation(async (identifier: string) => void scheduled.delete(identifier));
-    notificationApi.scheduleNotificationAsync
-      .mockReset()
-      .mockImplementationOnce(async () => {
-        scheduled.add("native-reservation-42");
-        return "native-reservation-42";
+    nativeApi.listIdentifiers.mockImplementation(async () => [...scheduled]);
+    nativeApi.schedule
+      .mockImplementationOnce(async (identifier: string) => {
+        scheduled.add(identifier);
+        return identifier;
       })
       .mockRejectedValueOnce(new Error("native schedule failure"));
+    nativeApi.cancel.mockImplementation(async (identifier: string) => void scheduled.delete(identifier));
 
-    await expect(syncLifeNotifications([fixtureWorkspace.tasks[0], secondTask])).rejects.toThrow("native schedule failure");
-    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("native-reservation-42");
+    await expect(
+      syncLifeNotifications(
+        [fixtureWorkspace.tasks[0], secondTask],
+        () => new Date(2026, 6, 30, 10, 0, 0)
+      )
+    ).rejects.toThrow("native schedule failure");
     expect(scheduled).toEqual(new Set());
   });
 
-  test("reports rollback failure when a returned native reservation remains scheduled", async () => {
+  test("reports rollback failure when a native identifier remains", async () => {
     const secondTask = { ...fixtureWorkspace.tasks[0], id: "plan-trip", dueDate: "2026-08-01" };
     const scheduled = new Set<string>();
-    notificationApi.getAllScheduledNotificationsAsync
-      .mockReset()
-      .mockImplementation(async () => [...scheduled].map((identifier) => ({ identifier })));
-    notificationApi.scheduleNotificationAsync
-      .mockReset()
-      .mockImplementationOnce(async () => {
-        scheduled.add("native-reservation-42");
-        return "native-reservation-42";
+    nativeApi.listIdentifiers.mockImplementation(async () => [...scheduled]);
+    nativeApi.schedule
+      .mockImplementationOnce(async (identifier: string) => {
+        scheduled.add(identifier);
+        return identifier;
       })
       .mockRejectedValueOnce(new Error("native schedule failure"));
-    notificationApi.cancelScheduledNotificationAsync.mockReset().mockRejectedValue(new Error("native cancel failure"));
+    nativeApi.cancel.mockRejectedValue(new Error("native cancel failure"));
 
-    await expect(syncLifeNotifications([fixtureWorkspace.tasks[0], secondTask])).rejects.toThrow("rollback");
-    expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("native-reservation-42");
-    expect(scheduled).toEqual(new Set(["native-reservation-42"]));
+    await expect(
+      syncLifeNotifications(
+        [fixtureWorkspace.tasks[0], secondTask],
+        () => new Date(2026, 6, 30, 10, 0, 0)
+      )
+    ).rejects.toThrow("rollback");
+    expect(scheduled).toEqual(new Set(["life-steward-task-buy-fruit"]));
   });
 });

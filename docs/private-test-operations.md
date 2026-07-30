@@ -86,4 +86,4 @@ Android 버전:
 
 Play Console의 실제 opt-in 참여자 수는 목록 인원과 별도로 매일 확인합니다. 테스트 중 Samsung/Pixel 관찰이 Console 입력과 다르면 즉시 운영을 중단하고 값을 보수적으로 수정합니다. 물리 기기 증거 완료 전 실제 개인정보·민감정보 사용과 정식 출시는 `NO-GO`입니다.
 
-출시 전에는 이전 저장 자료·알림이 전체 삭제에 포함되는지, `index.html` CSP, production 의존성 위험 승인을 현재 증거로 확인해야 합니다. `npm audit --omit=dev`의 2026-07-30 관찰값은 Critical 0 / High 19 / Moderate 10이며, AAB 도달 가능성·owner·검토일·만료일이 있는 risk acceptance gate 전에는 안전 판정으로 해석하지 않습니다.
+출시 전에는 이전 저장 자료·알림이 전체 삭제에 포함되는지, `index.html` CSP, production 의존성 위험 승인을 현재 증거로 확인해야 합니다. `expo-notifications` 제거 후 `npm audit --omit=dev`의 2026-07-31 관찰값은 Critical 0 / High 19 / Moderate 9이며, AAB 도달 가능성·owner·검토일·만료일이 있는 risk acceptance gate 전에는 안전 판정으로 해석하지 않습니다.

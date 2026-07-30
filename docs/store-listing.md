@@ -24,11 +24,11 @@
 
 - 오늘과 목록: 일반 일정, 할 일, 개인 목록을 정리합니다.
 - 나만의 기능 만들기: 선언형 필드와 제한된 자동화로 생활 기능을 추가합니다. 임의 URL·코드·플러그인을 실행하지 않습니다.
-- 기기 내 일반 알림: 표시 제목은 일반 문구이며 data payload에는 `taskId`만 사용합니다. 일정 제목과 메모 본문은 payload에 넣지 않습니다.
+- Android 기기 내 일반 알림: 표시 제목은 일반 문구이며 data payload에는 `taskId`만 사용합니다. 일정 제목과 메모 본문은 저장하거나 payload에 넣지 않습니다. 원격 푸시 없이 기기에서 미래 날짜 오전 9시 이후 전달을 요청하며, 절전·DND·기기 정책에 따라 늦거나 표시되지 않을 수 있습니다.
 - 선택 설치 로컬 AI: 사용자가 고정된 한국어 GGUF 파일의 출처·크기·SHA-256·라이선스를 확인하고 동의하면 기기 CPU에서 기존 텍스트의 요약, 문장 다듬기, 제목 제안, 체크리스트 초안만 제공합니다. 자유 대화형 기능이 아니며 결과는 승인 전 저장되지 않습니다.
 - 로컬 저장과 삭제: 모바일은 SQLCipher와 SecureStore/Android Keystore 경계를 사용합니다. 기기 인증, 백그라운드 잠금, 화면 캡처 차단, Android 백업 차단을 적용하며, 전체 삭제는 추론·일반 알림·모델·부분 다운로드·작업공간·키·메모리 상태를 삭제합니다.
 
-중요한 안내: 계정, 광고, 분석 SDK, 클라우드 AI, 원격 푸시를 사용하지 않습니다. 연락처·위치·마이크·카메라·외부 저장소 권한도 요청하지 않습니다. 모델 설치를 사용자가 명시적으로 선택하면 고정된 Hugging Face GGUF 파일 요청이 발생할 수 있습니다. 이 요청에서 IP 주소와 일반 네트워크 메타데이터는 Hugging Face에 기록될 수 있지만, 프롬프트·출력·작업 내용은 전송하지 않습니다. 비공개 테스트에는 합성·비민감 생활 일정과 메모만 사용하세요.
+중요한 안내: 계정, 광고, 분석 SDK, 클라우드 AI, 원격 푸시를 사용하지 않습니다. 현재 일반 알림은 Android 전용이며 iOS 알림은 제공하지 않습니다. 연락처·위치·마이크·카메라·외부 저장소 권한도 요청하지 않습니다. 모델 설치를 사용자가 명시적으로 선택하면 고정된 Hugging Face GGUF 파일 요청이 발생할 수 있습니다. 이 요청에서 IP 주소와 일반 네트워크 메타데이터는 Hugging Face에 기록될 수 있지만, 프롬프트·출력·작업 내용은 전송하지 않습니다. 비공개 테스트에는 합성·비민감 생활 일정과 메모만 사용하세요.
 
 ### 출시 노트
 
@@ -57,7 +57,7 @@
 |---|---|---|---|---|---|
 | 대략적인 위치 | 선택적 수집 | 비일시적 | 앱 기능, 분석, 사기 방지·보안·규정 준수 | 아니요* | Hugging Face가 IP 주소에서 추정할 수 있는 위치 |
 | 앱 상호작용 | 선택적 수집 | 비일시적 | 앱 기능, 분석, 사기 방지·보안·규정 준수 | 아니요* | 선택한 모델 요청 경로와 서비스 이용 기록 |
-| 기기/기타 ID | 아니요 | 해당 없음 | 해당 없음 | 아니요 | 최종 AAB·네트워크 검증에서 FID·FCM 토큰 등 지속 식별자가 없을 때만 이 값을 사용 |
+| 기기/기타 ID | 아니요 | 해당 없음 | 해당 없음 | 아니요 | 최종 AAB와 그 AAB에서 만든 universal APK 모두에서 Firebase Messaging/Installations, FCM/FID, Cloud Messaging/DataTransport, ShortcutBadger 및 광고 ID 패키지가 없고 실기기 네트워크 관찰이 일치할 때만 이 값을 사용 |
 | 건강정보 | 아니요 | 해당 없음 | 해당 없음 | 아니요 | 원격 수집/공유 없음 |
 | 캘린더 | 아니요 | 해당 없음 | 해당 없음 | 아니요 | 원격 수집/공유 없음 |
 | 연락처 | 아니요 | 해당 없음 | 해당 없음 | 아니요 | 원격 수집/공유 없음 |
@@ -88,7 +88,7 @@ A local-first workspace for schedules, notes, checklists, and personal tools.
 
 Life Steward AI is a general personal-productivity, local-first tool for ordinary life tasks, schedules, tasks, notes, checklists, and user-created declarative features. It does not provide medical, medication, diagnostic, treatment, or emergency functions.
 
-It keeps workspace data on device. Mobile storage uses SQLCipher and a SecureStore/Android Keystore boundary, device authentication, background locking, screen-capture blocking, and disabled Android backup. Notifications are local only, use a generic title, and contain only a task ID in their payload.
+It keeps workspace data on device. Mobile storage uses SQLCipher and a SecureStore/Android Keystore boundary, device authentication, background locking, screen-capture blocking, and disabled Android backup. Android notifications are local only, use a generic title, and contain only a task ID in their payload. They request delivery after 9 a.m. for a future date, but power-saving, DND, and device policies may delay or suppress them. Notifications are not currently available on iOS.
 
 Optional local AI runs on device CPU after the user reviews a pinned Korean GGUF file’s source, size, SHA-256, and license. It only summarizes or rewrites existing text, suggests a title, or drafts a checklist; it is not a free-form chat feature. Results are not saved until the user approves them. Installing a model is optional and may request the pinned file from Hugging Face. The host may log IP-derived metadata and the model request, but prompts, outputs, and workspace content are not sent with that request.
 

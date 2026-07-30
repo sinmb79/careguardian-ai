@@ -19,10 +19,12 @@ describe("workspace entry", () => {
     expect(source).toContain('placeholder={isTask ? "무엇을 해야 하나요?" : "목록 이름"}');
     expect(source).toContain('accessibilityLabel={`${label} 제목`}');
     expect(source).toContain('accessibilityLabel={`새 ${isTask ? "작업" : "개인 목록"} 추가`}');
-    expect(source).toContain('알림 날짜 (선택, 오전 9시)');
+    expect(source).toContain('알림 날짜 (선택, 오전 9시 무렵)');
     expect(source).toContain('placeholder="YYYY-MM-DD"');
-    expect(source).toContain('accessibilityLabel="알림 날짜 (선택, 오전 9시)"');
-    expect(source).toContain('accessibilityHint="선택한 날짜의 기기 현지 시간 오전 9시에 알립니다."');
+    expect(source).toContain('accessibilityLabel="알림 날짜 (선택, 오전 9시 무렵)"');
+    expect(source).toContain(
+      'accessibilityHint="선택한 날짜의 기기 현지 시간 오전 9시 이후에 알립니다. 기기 절전 상태에 따라 지연될 수 있습니다."'
+    );
     expect(source).toContain('isTask ? <TextInput');
     expect(source).toContain('setDueDate("");');
     expect(source).toContain('? addWorkspaceTask(workspace, title, dueDate, createMobileWorkspaceEntryDependencies())');

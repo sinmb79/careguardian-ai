@@ -63,9 +63,7 @@
           "faceIDPermission": "저장된 개인 작업공간을 보호하기 위해 기기 인증을 사용합니다."
         }
       ],
-      "expo-notifications",
       "expo-font",
-      "./plugins/with-local-only-notifications",
       [
         "llama.rn",
         {

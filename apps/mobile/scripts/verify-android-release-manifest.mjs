@@ -6,6 +6,12 @@ import xml2js from "xml2js";
 const { Parser } = xml2js;
 const ANDROID_NAMESPACE_URI = "http://schemas.android.com/apk/res/android";
 const C2DM_PERMISSION = "com.google.android.c2dm.permission.RECEIVE";
+const FORBIDDEN_PLATFORM_PERMISSIONS = [
+  "android.permission.VIBRATE",
+  "android.permission.SCHEDULE_EXACT_ALARM",
+  "android.permission.USE_EXACT_ALARM",
+  "com.google.android.gms.permission.AD_ID"
+];
 const BADGE_PERMISSIONS = [
   "com.sec.android.provider.badge.permission.READ",
   "com.sec.android.provider.badge.permission.WRITE",
@@ -26,6 +32,8 @@ const BADGE_PERMISSIONS = [
 ];
 const FORBIDDEN_COMPONENTS = [
   "expo.modules.notifications.service.ExpoFirebaseMessagingService",
+  "expo.modules.notifications.service.NotificationsService",
+  "expo.modules.notifications.service.NotificationForwarderActivity",
   "com.google.firebase.iid.FirebaseInstanceIdReceiver",
   "com.google.firebase.messaging.FirebaseMessagingService",
   "com.google.firebase.components.ComponentDiscoveryService",
@@ -33,6 +41,8 @@ const FORBIDDEN_COMPONENTS = [
 ];
 const FORBIDDEN_COMPONENT_TAGS = [
   "service",
+  "receiver",
+  "activity",
   "receiver",
   "service",
   "service",
@@ -47,19 +57,20 @@ const FORBIDDEN_REGISTRARS = [
 ];
 const REQUIRED_PERMISSIONS = [
   "android.permission.POST_NOTIFICATIONS",
-  "android.permission.VIBRATE",
   "android.permission.RECEIVE_BOOT_COMPLETED"
 ];
-const REQUIRED_LOCAL_RECEIVER =
-  "expo.modules.notifications.service.NotificationsService";
-const REQUIRED_LOCAL_ACTIVITY =
-  "expo.modules.notifications.service.NotificationForwarderActivity";
-const REQUIRED_LOCAL_ACTIONS = [
-  "expo.modules.notifications.NOTIFICATION_EVENT",
+const REQUIRED_REMINDER_RECEIVER =
+  "expo.modules.lifelocalnotifications.LifeReminderReceiver";
+const REQUIRED_RESTORE_RECEIVER =
+  "expo.modules.lifelocalnotifications.LifeRestoreReceiver";
+const REQUIRED_RESTORE_ACTIONS = [
   "android.intent.action.BOOT_COMPLETED",
   "android.intent.action.MY_PACKAGE_REPLACED"
 ];
-const REQUIRED_FALSE_METADATA = [
+const FORBIDDEN_ACTIONS = [
+  "expo.modules.notifications.NOTIFICATION_EVENT"
+];
+const FORBIDDEN_FIREBASE_METADATA = [
   "firebase_messaging_auto_init_enabled",
   "firebase_analytics_collection_enabled",
   "google_analytics_adid_collection_enabled"
@@ -254,6 +265,11 @@ export async function validateReleaseManifest(manifest) {
   if (permissionNames.includes(C2DM_PERMISSION)) {
     problems.push(`forbidden C2DM receive permission: ${C2DM_PERMISSION}`);
   }
+  for (const permission of FORBIDDEN_PLATFORM_PERMISSIONS) {
+    if (permissionNames.includes(permission)) {
+      problems.push(`forbidden Android permission: ${permission}`);
+    }
+  }
   for (const permission of BADGE_PERMISSIONS) {
     if (permissionNames.includes(permission)) {
       problems.push(`forbidden launcher badge permission: ${permission}`);
@@ -307,57 +323,87 @@ export async function validateReleaseManifest(manifest) {
     }
   }
 
-  const localReceivers = applicationComponents("receiver").filter((receiver) =>
-    hasAndroidAttributeValue(
-      receiver,
-      "name",
-      REQUIRED_LOCAL_RECEIVER
-    )
-  );
-  if (localReceivers.length !== 1) {
-    problems.push(`required local notification receiver is missing: ${REQUIRED_LOCAL_RECEIVER}`);
-  } else {
-    const localReceiverActions = childElements(
-      localReceivers[0],
-      "intent-filter"
-    ).flatMap((intentFilter) =>
+  const requirePrivateReceiver = (name) => {
+    const receivers = applicationComponents("receiver").filter((receiver) =>
+      hasAndroidAttributeValue(receiver, "name", name)
+    );
+    if (receivers.length !== 1) {
+      problems.push(
+        `required private local notification receiver must occur once: ${name}`
+      );
+      return null;
+    }
+    const exportedValues = androidAttributeValues(receivers[0], "exported");
+    if (exportedValues.length !== 1 || exportedValues[0] !== "false") {
+      problems.push(`local notification receiver must be exported=false: ${name}`);
+    }
+    const enabledValues = androidAttributeValues(receivers[0], "enabled");
+    if (enabledValues.length !== 1 || enabledValues[0] !== "true") {
+      problems.push(`local notification receiver must be enabled=true: ${name}`);
+    }
+    return receivers[0];
+  };
+
+  const reminderReceiver = requirePrivateReceiver(REQUIRED_REMINDER_RECEIVER);
+  if (
+    reminderReceiver &&
+    childElements(reminderReceiver, "intent-filter").length !== 0
+  ) {
+    problems.push(
+      `local reminder receiver must not declare an intent filter: ${REQUIRED_REMINDER_RECEIVER}`
+    );
+  }
+
+  const restoreReceiver = requirePrivateReceiver(REQUIRED_RESTORE_RECEIVER);
+  if (restoreReceiver) {
+    const restoreFilters = childElements(restoreReceiver, "intent-filter");
+    if (restoreFilters.length !== 1) {
+      problems.push(
+        `local restore receiver must declare exactly one intent-filter: ${REQUIRED_RESTORE_RECEIVER}`
+      );
+    }
+    const restoreActions = restoreFilters.flatMap((intentFilter) =>
       childElements(intentFilter, "action").flatMap((action) =>
         androidAttributeValues(action, "name")
       )
     );
-    for (const action of REQUIRED_LOCAL_ACTIONS) {
-      if (!localReceiverActions.includes(action)) {
-        problems.push(`required local notification receiver action is missing: ${action}`);
+    for (const action of REQUIRED_RESTORE_ACTIONS) {
+      if (!restoreActions.includes(action)) {
+        problems.push(`required local restore receiver action is missing: ${action}`);
       }
     }
-  }
-  const localActivities = applicationComponents("activity").filter((activity) =>
-    hasAndroidAttributeValue(
-      activity,
-      "name",
-      REQUIRED_LOCAL_ACTIVITY
-    )
-  );
-  if (localActivities.length !== 1) {
-    problems.push(`required local notification activity is missing: ${REQUIRED_LOCAL_ACTIVITY}`);
+    if (
+      restoreActions.length !== REQUIRED_RESTORE_ACTIONS.length ||
+      restoreActions.some(
+        (action) => !REQUIRED_RESTORE_ACTIONS.includes(action)
+      ) ||
+      REQUIRED_RESTORE_ACTIONS.some(
+        (action) =>
+          restoreActions.filter((candidate) => candidate === action).length !== 1
+      )
+    ) {
+      problems.push(
+        "local restore receiver action set must contain exactly " +
+        REQUIRED_RESTORE_ACTIONS.join(" and ")
+      );
+    }
   }
 
-  const metadata = applications.flatMap((application) =>
-    childElements(application, "meta-data")
-  );
-  for (const name of REQUIRED_FALSE_METADATA) {
-    const matchingMetadata = metadata.filter((element) =>
-      hasAndroidAttributeValue(
-        element,
-        "name",
-        name
-      )
+  const allActions = applications.flatMap((application) =>
+    collectDescendants(application, "action")
+  ).flatMap((action) => androidAttributeValues(action, "name"));
+  for (const action of FORBIDDEN_ACTIONS) {
+    if (allActions.includes(action)) {
+      problems.push(`forbidden legacy notification receiver action: ${action}`);
+    }
+  }
+
+  for (const name of FORBIDDEN_FIREBASE_METADATA) {
+    const isPresent = metadataDescendants.some((element) =>
+      hasAndroidAttributeValue(element, "name", name)
     );
-    const values = matchingMetadata.flatMap((element) =>
-      androidAttributeValues(element, "value")
-    );
-    if (values.length !== 1 || values[0] !== "false") {
-      problems.push(`required disable metadata must occur once with value false: ${name}`);
+    if (isPresent) {
+      problems.push(`forbidden Firebase or analytics metadata must be absent: ${name}`);
     }
   }
 

@@ -19,9 +19,9 @@ test("rejects deployment that no longer depends on verify", () => {
 });
 
 test("rejects a missing gate or a gate moved after artifact upload", () => {
-  const missing = source.replace("        run: npm run release:audit-policy\n", "");
+  const missing = source.replace("        run: npm run verify:no-remote-push\n", "");
   const moved = `${source.replace("        run: npm run mobile:doctor\n", "")}\nrun: npm run mobile:doctor\n`;
-  assert.match(validateReleaseWorkflow(missing).problems.join("\n"), /audit-policy/);
+  assert.match(validateReleaseWorkflow(missing).problems.join("\n"), /verify:no-remote-push/);
   assert.match(validateReleaseWorkflow(moved).problems.join("\n"), /mobile:doctor/);
 });
 

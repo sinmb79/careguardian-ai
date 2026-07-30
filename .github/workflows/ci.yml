@@ -47,6 +47,9 @@ jobs:
       - name: Expo local AI doctor
         run: npm run mobile:doctor
 
+      - name: No remote push dependency surface
+        run: npm run verify:no-remote-push
+
       - name: Non-medical release policy
         run: npm run release:policy-check
 

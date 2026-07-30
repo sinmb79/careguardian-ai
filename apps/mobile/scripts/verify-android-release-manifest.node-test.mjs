@@ -65,6 +65,10 @@ test("rejects the current manifest fixture with remote-push and badge surfaces",
   assert.match(report.problems.join("\n"), /FirebaseMessagingRegistrar/);
   assert.match(report.problems.join("\n"), /FirebaseInstallationsRegistrar/);
   assert.match(report.problems.join("\n"), /TransportRegistrar/);
+  assert.match(report.problems.join("\n"), /NotificationsService/);
+  assert.match(report.problems.join("\n"), /NotificationForwarderActivity/);
+  assert.match(report.problems.join("\n"), /NOTIFICATION_EVENT/);
+  assert.match(report.problems.join("\n"), /firebase_messaging_auto_init_enabled/);
 });
 
 test("accepts the hardened local-notification-only manifest fixture", async () => {
@@ -196,7 +200,7 @@ test("detects every ShortcutBadger launcher permission independently", async (t)
   }
 });
 
-test("requires every local notification permission and component", async (t) => {
+test("requires both local notification permissions and private receivers", async (t) => {
   const cases = [
     [
       "post notifications permission",
@@ -204,24 +208,19 @@ test("requires every local notification permission and component", async (t) => 
       /POST_NOTIFICATIONS/
     ],
     [
-      "vibrate permission",
-      /  <uses-permission android:name="android\.permission\.VIBRATE" \/>\r?\n/,
-      /VIBRATE/
-    ],
-    [
       "boot permission",
       /  <uses-permission android:name="android\.permission\.RECEIVE_BOOT_COMPLETED" \/>\r?\n/,
       /RECEIVE_BOOT_COMPLETED/
     ],
     [
-      "local notification receiver",
-      /    <receiver[\s\S]*?<\/receiver>\r?\n/,
-      /NotificationsService/
+      "local reminder receiver",
+      /    <receiver\r?\n      android:name="expo\.modules\.lifelocalnotifications\.LifeReminderReceiver"[\s\S]*?\/>\r?\n/,
+      /LifeReminderReceiver/
     ],
     [
-      "notification forwarder activity",
-      /    <activity[\s\S]*?\/>\r?\n/,
-      /NotificationForwarderActivity/
+      "local restore receiver",
+      /    <receiver\r?\n      android:name="expo\.modules\.lifelocalnotifications\.LifeRestoreReceiver"[\s\S]*?<\/receiver>\r?\n/,
+      /LifeRestoreReceiver/
     ]
   ];
 
@@ -236,9 +235,8 @@ test("requires every local notification permission and component", async (t) => 
   }
 });
 
-test("requires local scheduling, reboot, and package-replacement receiver actions", async (t) => {
+test("requires reboot and package-replacement restore actions", async (t) => {
   const actions = [
-    "expo.modules.notifications.NOTIFICATION_EVENT",
     "android.intent.action.BOOT_COMPLETED",
     "android.intent.action.MY_PACKAGE_REPLACED"
   ];
@@ -259,7 +257,7 @@ test("requires local scheduling, reboot, and package-replacement receiver action
   }
 });
 
-test("requires each Firebase and analytics disable metadata value to be false", async (t) => {
+test("requires Firebase and analytics disable metadata to be absent entirely", async (t) => {
   const flags = [
     "firebase_messaging_auto_init_enabled",
     "firebase_analytics_collection_enabled",
@@ -267,30 +265,141 @@ test("requires each Firebase and analytics disable metadata value to be false", 
   ];
 
   for (const flag of flags) {
-    await t.test(`${flag} absent`, async () => {
+    for (const value of ["false", "true"]) {
+      await t.test(`${flag}=${value}`, async () => {
+        const mutated = addApplicationChild(
+          `<meta-data android:name="${flag}" android:value="${value}" />`
+        );
+        const report = await manifestVerifier.validateReleaseManifest(mutated);
+        assert.equal(report.status, "fail");
+        assert.match(report.problems.join("\n"), new RegExp(flag));
+      });
+    }
+  }
+});
+
+test("rejects exact alarms, advertising IDs, vibration, and legacy Expo surfaces", async (t) => {
+  for (const permission of [
+    "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.USE_EXACT_ALARM",
+    "com.google.android.gms.permission.AD_ID",
+    "android.permission.VIBRATE"
+  ]) {
+    await t.test(permission, async () => {
+      const report = await manifestVerifier.validateReleaseManifest(
+        addManifestChild(
+          `<uses-permission android:name="${permission}" />`
+        )
+      );
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), new RegExp(permission.split(".").at(-1)));
+    });
+  }
+
+  for (const [fragment, expected] of [
+    [
+      '<receiver android:name="expo.modules.notifications.service.NotificationsService" />',
+      /NotificationsService/
+    ],
+    [
+      '<activity android:name="expo.modules.notifications.service.NotificationForwarderActivity" />',
+      /NotificationForwarderActivity/
+    ],
+    [
+      '<receiver android:name="example.Decoy"><intent-filter><action android:name="expo.modules.notifications.NOTIFICATION_EVENT" /></intent-filter></receiver>',
+      /NOTIFICATION_EVENT/
+    ]
+  ]) {
+    await t.test(String(expected), async () => {
+      const report = await manifestVerifier.validateReleaseManifest(
+        addApplicationChild(fragment)
+      );
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), expected);
+    });
+  }
+});
+
+test("requires both custom receivers to stay non-exported", async (t) => {
+  for (const receiver of ["LifeReminderReceiver", "LifeRestoreReceiver"]) {
+    await t.test(receiver, async () => {
       const mutated = hardenedManifest.replace(
         new RegExp(
-          `\\s*<meta-data\\s+android:name="${flag}"\\s+android:value="false"\\s*\\/>`
+          `(android:name="expo\\.modules\\.lifelocalnotifications\\.${receiver}"[\\s\\S]*?android:exported=")false(")`
         ),
-        ""
+        "$1true$2"
       );
       assert.notEqual(mutated, hardenedManifest);
       const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
-      assert.match(report.problems.join("\n"), new RegExp(flag));
+      assert.match(report.problems.join("\n"), /exported=false/);
+    });
+  }
+});
+
+test("requires both custom receivers to stay explicitly enabled", async (t) => {
+  for (const receiver of ["LifeReminderReceiver", "LifeRestoreReceiver"]) {
+    await t.test(`${receiver} missing enabled`, async () => {
+      const mutated = hardenedManifest.replace(
+        new RegExp(
+          `(android:name="expo\\.modules\\.lifelocalnotifications\\.${receiver}"[\\s\\S]*?)\\r?\\n      android:enabled="true"`
+        ),
+        "$1"
+      );
+      assert.notEqual(mutated, hardenedManifest);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), /enabled=true/);
     });
 
-    await t.test(`${flag} true`, async () => {
+    await t.test(`${receiver} disabled`, async () => {
       const mutated = hardenedManifest.replace(
         new RegExp(
-          `(android:name="${flag}")(\\r?\\n\\s+android:value=")false(")`
+          `(android:name="expo\\.modules\\.lifelocalnotifications\\.${receiver}"[\\s\\S]*?android:enabled=")true(")`
         ),
-        "$1$2true$3"
+        "$1false$2"
       );
       assert.notEqual(mutated, hardenedManifest);
       const report = await manifestVerifier.validateReleaseManifest(mutated);
       assert.equal(report.status, "fail");
-      assert.match(report.problems.join("\n"), new RegExp(flag));
+      assert.match(report.problems.join("\n"), /enabled=true/);
+    });
+  }
+});
+
+test("forbids an intent filter on the internal due-alarm receiver", async () => {
+  const mutated = hardenedManifest.replace(
+    /(<receiver\r?\n      android:name="expo\.modules\.lifelocalnotifications\.LifeReminderReceiver"[\s\S]*?)\/>/,
+    '$1><intent-filter><action android:name="example.UNTRUSTED" /></intent-filter></receiver>'
+  );
+  assert.notEqual(mutated, hardenedManifest);
+  const report = await manifestVerifier.validateReleaseManifest(mutated);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /must not declare an intent filter/);
+});
+
+test("requires one restore filter with exactly the two approved actions", async (t) => {
+  const mutations = [
+    hardenedManifest.replace(
+      '        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+      '        <action android:name="android.intent.action.BOOT_COMPLETED" />'
+    ),
+    hardenedManifest.replace(
+      "      </intent-filter>",
+      '        <action android:name="example.UNAPPROVED" />\n      </intent-filter>'
+    ),
+    hardenedManifest.replace(
+      "    </receiver>\n  </application>",
+      '      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>\n    </receiver>\n  </application>'
+    )
+  ];
+
+  for (const [index, mutated] of mutations.entries()) {
+    await t.test(`restore filter mutation ${index + 1}`, async () => {
+      assert.notEqual(mutated, hardenedManifest);
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), /restore receiver|action set|intent-filter/i);
     });
   }
 });
@@ -437,14 +546,14 @@ test("rejects duplicate disable metadata through an application-scoped alias", a
 
 test("rejects a descendant rebind that removes the receiver Android name", async () => {
   const rebound = hardenedManifest.replace(
-    /    <receiver(\r?\n)      android:name="expo\.modules\.notifications\.service\.NotificationsService"/,
-    '    <receiver$1      xmlns:android="urn:not-android"$1      android:name="expo.modules.notifications.service.NotificationsService"'
+    /    <receiver(\r?\n)      android:name="expo\.modules\.lifelocalnotifications\.LifeReminderReceiver"/,
+    '    <receiver$1      xmlns:android="urn:not-android"$1      android:name="expo.modules.lifelocalnotifications.LifeReminderReceiver"'
   );
   assert.notEqual(rebound, hardenedManifest);
 
   const report = await manifestVerifier.validateReleaseManifest(rebound);
   assert.equal(report.status, "fail");
-  assert.match(report.problems.join("\n"), /namespace|NotificationsService/i);
+  assert.match(report.problems.join("\n"), /namespace|LifeReminderReceiver/i);
 });
 
 test("honors an action-scoped Android namespace alias", async () => {
@@ -522,8 +631,8 @@ test("detects an sdk-23 C2DM permission through a scoped namespace alias", async
 
 test("accepts a required permission in the official sdk-23 element", async () => {
   const sdk23Permission = hardenedManifest.replace(
-    '<uses-permission android:name="android.permission.VIBRATE" />',
-    '<uses-permission-sdk-23 android:name="android.permission.VIBRATE" />'
+    '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+    '<uses-permission-sdk-23 android:name="android.permission.RECEIVE_BOOT_COMPLETED" />'
   );
   assert.notEqual(sdk23Permission, hardenedManifest);
 

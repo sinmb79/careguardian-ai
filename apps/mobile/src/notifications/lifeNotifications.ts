@@ -1,29 +1,25 @@
-import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import type { LifeTask } from "@life-steward/life-core";
-import { isFutureLocalReminder, localNineAmForDate } from "../reminders/localReminderTime";
+import { PermissionsAndroid, Platform } from "react-native";
+import {
+  areLocalNotificationsEnabled,
+  cancelAllLocalNotifications,
+  cancelLocalNotification,
+  cleanupLegacyNotifications,
+  createLocalNotificationChannel,
+  isLifeLocalNotificationsAvailable,
+  listLocalNotificationIdentifiers,
+  scheduleLocalNotification
+} from "../../modules/life-local-notifications";
+import {
+  isFutureLocalReminder,
+  localNineAmForDate
+} from "../reminders/localReminderTime";
 
-const CHANNEL_ID = "life-steward-tasks-v1";
 const IDENTIFIER_PREFIX = "life-steward-task-";
-const PREVIOUS_TEST_IDENTIFIER_PREFIX = "careguardian-medication-";
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true
-  })
-});
 
 export type LifeNotificationRequest = {
   identifier: string;
-  content: {
-    title: "생활 일정 알림";
-    body: "";
-    data: { taskId: string };
-  };
-  trigger: { type: "date"; date: Date; channelId?: string };
+  epochMs: number;
 };
 
 function dateForTask(task: LifeTask): Date | null {
@@ -31,97 +27,157 @@ function dateForTask(task: LifeTask): Date | null {
   return localNineAmForDate(task.dueDate);
 }
 
-export function buildLifeNotification(task: LifeTask): LifeNotificationRequest {
+export function buildLifeNotification(
+  task: LifeTask
+): LifeNotificationRequest {
   const date = dateForTask(task);
-  if (!date) throw new Error("an open task with a valid due date is required");
+  if (!date) {
+    throw new Error("an open task with a valid due date is required");
+  }
   return {
     identifier: `${IDENTIFIER_PREFIX}${task.id}`,
-    content: {
-      title: "생활 일정 알림",
-      body: "",
-      data: { taskId: task.id }
-    },
-    trigger: { type: "date", date, channelId: Platform.OS === "android" ? CHANNEL_ID : undefined }
+    epochMs: date.getTime()
   };
 }
 
-async function ensurePermission(): Promise<boolean> {
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: "생활 일정 알림",
-      description: "알림에는 일정 제목이나 메모를 표시하지 않습니다.",
-      importance: Notifications.AndroidImportance.HIGH,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.SECRET
-    });
+export async function initializeLifeNotifications(): Promise<boolean> {
+  if (
+    Platform.OS !== "android" ||
+    !isLifeLocalNotificationsAvailable()
+  ) {
+    return false;
   }
-  const existing = await Notifications.getPermissionsAsync();
-  return existing.granted || (await Notifications.requestPermissionsAsync()).granted;
+  await cleanupLegacyNotifications();
+  await createLocalNotificationChannel();
+  return true;
 }
 
-async function cancelNotificationsWithPrefix(prefix: string, errorMessage: string): Promise<void> {
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const identifiers = scheduled
-    .map((notification) => notification.identifier)
+async function ensurePermission(): Promise<boolean> {
+  if (!(await initializeLifeNotifications())) return false;
+  const platformVersion = Number(Platform.Version);
+  if (Number.isFinite(platformVersion) && platformVersion >= 33) {
+    const permission = PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
+    const granted = await PermissionsAndroid.check(permission);
+    if (
+      !granted &&
+      (await PermissionsAndroid.request(permission)) !==
+        PermissionsAndroid.RESULTS.GRANTED
+    ) {
+      return false;
+    }
+  }
+  return areLocalNotificationsEnabled();
+}
+
+async function cancelNotificationsWithPrefix(
+  prefix: string,
+  errorMessage: string
+): Promise<void> {
+  if (!isLifeLocalNotificationsAvailable()) return;
+  const identifiers = (await listLocalNotificationIdentifiers())
     .filter((identifier) => identifier.startsWith(prefix));
-  await Promise.allSettled(identifiers.map((identifier) => Notifications.cancelScheduledNotificationAsync(identifier)));
-  const remaining = await Notifications.getAllScheduledNotificationsAsync();
-  if (remaining.some((notification) => notification.identifier.startsWith(prefix))) {
+  const cancellations = await Promise.allSettled(
+    identifiers.map((identifier) =>
+      cancelLocalNotification(identifier)
+    )
+  );
+  const remaining = await listLocalNotificationIdentifiers();
+  if (
+    cancellations.some((result) => result.status === "rejected") ||
+    remaining.some((identifier) => identifier.startsWith(prefix))
+  ) {
     throw new Error(errorMessage);
   }
 }
 
-async function rollbackScheduledNotifications(identifiers: string[]): Promise<void> {
+async function rollbackScheduledNotifications(
+  identifiers: string[]
+): Promise<void> {
   const cancellations = await Promise.allSettled(
-    identifiers.map((identifier) => Notifications.cancelScheduledNotificationAsync(identifier))
+    identifiers.map((identifier) =>
+      cancelLocalNotification(identifier)
+    )
   );
-  let remaining: { identifier: string }[];
+  let remaining: string[];
   try {
-    remaining = await Notifications.getAllScheduledNotificationsAsync();
+    remaining = await listLocalNotificationIdentifiers();
   } catch {
-    throw new Error("notification rollback failed: could not verify scheduled notifications");
+    throw new Error(
+      "notification rollback failed: could not verify scheduled notifications"
+    );
   }
-  const remainingIds = new Set(remaining.map((notification) => notification.identifier));
-  if (cancellations.some((result) => result.status === "rejected") || identifiers.some((identifier) => remainingIds.has(identifier))) {
+  const remainingIds = new Set(remaining);
+  if (
+    cancellations.some((result) => result.status === "rejected") ||
+    identifiers.some((identifier) => remainingIds.has(identifier))
+  ) {
     throw new Error("notification rollback failed");
   }
 }
 
 export async function cancelAllLifeNotifications(): Promise<void> {
-  await cancelNotificationsWithPrefix(IDENTIFIER_PREFIX, "생활 알림 취소 검증에 실패했습니다.");
+  await cancelNotificationsWithPrefix(
+    IDENTIFIER_PREFIX,
+    "생활 알림 취소 검증에 실패했습니다."
+  );
 }
 
 export async function cancelPreviousTestNotifications(): Promise<void> {
-  await cancelNotificationsWithPrefix(PREVIOUS_TEST_IDENTIFIER_PREFIX, "이전 테스트 알림 취소 검증에 실패했습니다.");
-}
-
-/** This app owns no unrelated notification namespace. Full deletion therefore
- * cancels every scheduled notification and verifies the native scheduler is empty. */
-export async function cancelAllScheduledNotificationsForFullDeletion(): Promise<void> {
-  try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-    const remaining = await Notifications.getAllScheduledNotificationsAsync();
-    if (remaining.length > 0) throw new Error(`${remaining.length} scheduled notification(s) remain`);
-  } catch (error) {
-    throw new Error(`full notification deletion verification failed: ${error instanceof Error ? error.message : String(error)}`);
+  if (isLifeLocalNotificationsAvailable()) {
+    await cleanupLegacyNotifications();
   }
 }
 
-export async function syncLifeNotifications(tasks: LifeTask[], now: () => Date = () => new Date()): Promise<number> {
+export async function cancelAllScheduledNotificationsForFullDeletion(): Promise<void> {
+  if (!isLifeLocalNotificationsAvailable()) return;
+  try {
+    await cancelAllLocalNotifications();
+    const remaining = await listLocalNotificationIdentifiers();
+    if (remaining.length > 0) {
+      throw new Error(`${remaining.length} scheduled notification(s) remain`);
+    }
+  } catch (error) {
+    throw new Error(
+      `full notification deletion verification failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+export async function syncLifeNotifications(
+  tasks: LifeTask[],
+  now: () => Date = () => new Date()
+): Promise<number> {
   const currentTime = now();
   const requests = tasks.flatMap((task) => {
-    if (!task.dueDate || !isFutureLocalReminder(task.dueDate, currentTime)) return [];
+    if (
+      !task.dueDate ||
+      !isFutureLocalReminder(task.dueDate, currentTime)
+    ) {
+      return [];
+    }
     try {
       return [buildLifeNotification(task)];
     } catch {
       return [];
     }
   });
+
+  if (!isLifeLocalNotificationsAvailable()) return 0;
   await cancelAllLifeNotifications();
   if (requests.length === 0 || !(await ensurePermission())) return 0;
+
   const scheduledIdentifiers: string[] = [];
   try {
     for (const request of requests) {
-      const nativeIdentifier = await Notifications.scheduleNotificationAsync(request as Notifications.NotificationRequestInput);
+      const nativeIdentifier = await scheduleLocalNotification(
+        request.identifier,
+        request.epochMs
+      );
+      if (nativeIdentifier !== request.identifier) {
+        throw new Error("native local reminder identifier mismatch");
+      }
       scheduledIdentifiers.push(nativeIdentifier);
     }
   } catch (error) {
@@ -132,8 +188,13 @@ export async function syncLifeNotifications(tasks: LifeTask[], now: () => Date =
     }
     throw error;
   }
-  const reserved = new Set((await Notifications.getAllScheduledNotificationsAsync()).map((item) => item.identifier));
-  if (scheduledIdentifiers.some((identifier) => !reserved.has(identifier))) {
+
+  const reserved = new Set(
+    await listLocalNotificationIdentifiers()
+  );
+  if (
+    scheduledIdentifiers.some((identifier) => !reserved.has(identifier))
+  ) {
     await rollbackScheduledNotifications(scheduledIdentifiers);
     throw new Error("생활 알림 예약 검증에 실패했습니다.");
   }

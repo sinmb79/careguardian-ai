@@ -10,6 +10,7 @@ const REQUIRED_VERIFY_COMMANDS = [
   "npm run release:static-security-check",
   "npm run mobile:typecheck",
   "npm run mobile:doctor",
+  "npm run verify:no-remote-push",
   "npm run release:policy-check",
   "npm run release:model-check",
   "npm run release:gate-tests",

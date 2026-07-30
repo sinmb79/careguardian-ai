@@ -1,6 +1,8 @@
 import { StatusBar } from "expo-status-bar";
 import { usePreventScreenCapture } from "expo-screen-capture";
+import { useEffect } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { initializeLifeNotifications } from "./src/notifications/lifeNotifications";
 import { getPrivacyGateRecoveryMode } from "./src/security/privacyGate";
 import { useLifeWorkspace } from "./src/state/useLifeWorkspace";
 import { LifeWorkspaceScreen } from "./src/ui/LifeWorkspaceScreen";
@@ -8,6 +10,9 @@ import { PrivacyGateScreen } from "./src/ui/PrivacyGateScreen";
 
 export default function App() {
   usePreventScreenCapture("life-steward-personal-workspace");
+  useEffect(() => {
+    void initializeLifeNotifications().catch(() => undefined);
+  }, []);
   const state = useLifeWorkspace();
   if (!state.isLoaded) return <View style={styles.loading}><Text style={styles.loadingTitle}>개인 작업공간을 준비하고 있습니다.</Text><ActivityIndicator size="large" color="#6f8a70" /></View>;
   if (state.privacyGate === "locked") return <PrivacyGateScreen message={state.statusMessage} isAuthenticating={state.isAuthenticating} isDeleting={state.isDeleting} recoveryMode={getPrivacyGateRecoveryMode(state.deletionFailure?.failedDomains ?? null)} onUnlock={state.actions.unlock} onRetryDelete={state.actions.deleteAllData} />;

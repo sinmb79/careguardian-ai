@@ -507,12 +507,12 @@ if ((globalThis as any).navigator?.product === "ReactNative") {
   assert.match(report.problems.join("\n"), /computed remote URL/);
 });
 
-test("rejects changes or duplicates in intentional denial and cloud-disable lines", () => {
+test("rejects changes or duplicates in intentional denial and FCM-free lines", () => {
   const report = mutate(
-    "apps/mobile/plugins/with-local-only-notifications.js",
+    "apps/mobile/scripts/verify-no-remote-push.mjs",
     (source) => source.replace(
-      '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
-      '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", true);'
+      '  ["Firebase Messaging", /com\\.google\\.firebase:firebase-messaging/i],',
+      '  ["Firebase Messaging", /com\\.google\\.firebase:firebase-optional/i],'
     )
   );
   const problems = report.problems.join("\n");
@@ -520,35 +520,33 @@ test("rejects changes or duplicates in intentional denial and cloud-disable line
   assert.match(problems, /must occur exactly once/);
 });
 
-test("rejects removal of any exact local-only notification manifest hardening entry", () => {
-  const removalLines = [
-    '  "com.google.android.c2dm.permission.RECEIVE",',
-    '  "com.sec.android.provider.badge.permission.READ",',
-    '  "com.sec.android.provider.badge.permission.WRITE",',
-    '  "com.htc.launcher.permission.READ_SETTINGS",',
-    '  "com.htc.launcher.permission.UPDATE_SHORTCUT",',
-    '  "com.sonyericsson.home.permission.BROADCAST_BADGE",',
-    '  "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",',
-    '  "com.anddoes.launcher.permission.UPDATE_COUNT",',
-    '  "com.majeur.launcher.permission.UPDATE_BADGE",',
-    '  "com.huawei.android.launcher.permission.CHANGE_BADGE",',
-    '  "com.huawei.android.launcher.permission.READ_SETTINGS",',
-    '  "com.huawei.android.launcher.permission.WRITE_SETTINGS",',
-    '  "android.permission.READ_APP_BADGE",',
-    '  "com.oppo.launcher.permission.READ_SETTINGS",',
-    '  "com.oppo.launcher.permission.WRITE_SETTINGS",',
-    '  "me.everything.badger.permission.BADGE_COUNT_READ",',
-    '  "me.everything.badger.permission.BADGE_COUNT_WRITE"',
-    '    "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
-    '    "com.google.firebase.messaging.FirebaseMessagingService",',
-    '    "com.google.firebase.components.ComponentDiscoveryService"',
-    '  receiver: ["com.google.firebase.iid.FirebaseInstanceIdReceiver"],',
-    '  provider: ["com.google.firebase.provider.FirebaseInitProvider"]'
+test("rejects removal of any custom local-notification release boundary", () => {
+  const removals = [
+    [
+      "apps/mobile/modules/life-local-notifications/expo-module.config.json",
+      '      "expo.modules.lifelocalnotifications.LifeLocalNotificationsModule"'
+    ],
+    [
+      "apps/mobile/modules/life-local-notifications/android/src/main/AndroidManifest.xml",
+      '  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />'
+    ],
+    [
+      "apps/mobile/modules/life-local-notifications/android/src/main/java/expo/modules/lifelocalnotifications/NotificationScheduler.kt",
+      "    alarmManager.setAndAllowWhileIdle("
+    ],
+    [
+      "apps/mobile/scripts/verify-native-android-contracts.mjs",
+      '    runGradleContract(":life-local-notifications:compileDebugKotlin", {'
+    ],
+    [
+      "apps/mobile/scripts/verify-no-remote-push.mjs",
+      '  ["Firebase Messaging", /com\\.google\\.firebase:firebase-messaging/i],'
+    ]
   ];
 
-  for (const line of removalLines) {
+  for (const [file, line] of removals) {
     const report = mutate(
-      "apps/mobile/plugins/with-local-only-notifications.js",
+      file,
       (source) => source.replace(line, "")
     );
     assert.match(
@@ -558,30 +556,48 @@ test("rejects removal of any exact local-only notification manifest hardening en
   }
 });
 
-test("requires the local-only notification plugin and pure hardening application", () => {
-  const withoutPlugin = mutate(
+test("rejects every legacy Expo notification dependency or plugin form", () => {
+  const withStringPlugin = mutate(
     "apps/mobile/app.json",
     (source) => source.replace(
-      '      "./plugins/with-local-only-notifications",',
-      ""
+      '      "expo-font",',
+      '      "expo-notifications",\n      "expo-font",'
     )
   );
-  const withoutApplication = mutate(
-    "apps/mobile/plugins/with-local-only-notifications.js",
+  const withArrayPlugin = mutate(
+    "apps/mobile/app.json",
     (source) => source.replace(
-      "    androidConfig.modResults.manifest = applyLocalOnlyNotificationManifest(",
-      "    void applyLocalOnlyNotificationManifest("
+      '      "expo-font",',
+      '      ["expo-notifications", {}],\n      "expo-font",'
+    )
+  );
+  const withLegacyPlugin = mutate(
+    "apps/mobile/app.json",
+    (source) => source.replace(
+      '      "expo-font",',
+      '      "./plugins/with-local-only-notifications",\n      "expo-font",'
+    )
+  );
+  const withDependency = mutate(
+    "apps/mobile/package.json",
+    (source) => source.replace(
+      '    "expo-local-authentication": "~17.0.8",',
+      '    "expo-local-authentication": "~17.0.8",\n    "expo-notifications": "~0.32.16",'
     )
   );
 
-  assert.match(
-    withoutPlugin.problems.join("\n"),
-    /local-only notification manifest hardening/
-  );
-  assert.match(
-    withoutApplication.problems.join("\n"),
-    /local-only notification manifest hardening/
-  );
+  for (const report of [
+    withStringPlugin,
+    withArrayPlugin,
+    withLegacyPlugin,
+    withDependency
+  ]) {
+    assert.equal(report.status, "fail");
+    assert.match(
+      report.problems.join("\n"),
+      /legacy Expo notification|expo-notifications/
+    );
+  }
 });
 
 test("allows only exact public policy and privacy contact links", () => {

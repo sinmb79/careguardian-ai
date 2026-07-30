@@ -19,7 +19,7 @@ flowchart LR
 |---|---|
 | 웹 PWA | 개인 작업공간을 브라우저 IndexedDB에만 저장합니다. |
 | 모바일 | 기기 인증, 화면 캡처 차단, 백그라운드 잠금, SQLCipher 저장을 제공합니다. |
-| 일반 알림 | 알림 표시 제목은 일반 문구이며, data payload에는 `taskId`만 둡니다. 제목·메모 본문은 payload에 넣지 않습니다. |
+| 일반 알림 | Android 자체 로컬 모듈로만 예약합니다. 표시 제목은 일반 문구이며 data payload에는 `taskId`만 둡니다. 제목·메모 본문은 저장하거나 payload에 넣지 않습니다. |
 | 로컬 AI | 사용자가 고정된 GGUF 파일 설치에 동의한 경우에만 기기 CPU에서 요약·문장 다듬기·제목 제안·체크리스트 초안을 수행합니다. 결과는 자동 저장되지 않습니다. |
 | 전체 삭제 | 실행 중인 로컬 AI 중지, 일반 알림 취소, 모델·부분 파일·작업공간·키·메모리 초기화를 순서대로 시도합니다. |
 
@@ -45,7 +45,7 @@ npm run build
 npm run mobile:typecheck
 ```
 
-Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알림·로컬 AI 같은 네이티브 경계 확인에는 개발 또는 배포 빌드가 필요합니다.
+Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알림·로컬 AI 같은 네이티브 경계 확인에는 개발 또는 배포 빌드가 필요합니다. 현재 알림은 Android 전용입니다. 출시 후보는 `npm run verify:no-remote-push:artifacts -- --aab <final.aab> --universal-apk <universal.apk>`로 FCM/FID·Cloud Messaging·ShortcutBadger 부재를 확인해야 합니다.
 
 ## 배포 상태
 

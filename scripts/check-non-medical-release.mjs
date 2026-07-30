@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -12,7 +12,6 @@ import {
 const RELEASE_ROOTS = ["apps/mobile/", "src/", "packages/life-core/", "public/"];
 const ANDROID_XML_ANDROID_NAMESPACE =
   "http://schemas.android.com/apk/res/android";
-const ANDROID_XML_TOOLS_NAMESPACE = "http://schemas.android.com/tools";
 const APP_PRIVACY_POLICY_URL =
   "https://sinmb79.github.io/careguardian-ai/privacy-policy.html";
 const HUGGING_FACE_PRIVACY_POLICY_URL = "https://huggingface.co/privacy";
@@ -286,12 +285,15 @@ const FORBIDDEN_CAPABILITY_PROPERTIES = new Set([
 ]);
 
 // These are line-level, single-occurrence contracts for explicit policy
-// denials, migration identifiers, and cloud-disable metadata. No whole file is
+// denials, migration identifiers, and cloud-removal gates. No whole file is
 // exempted from health, cloud, URL, import, or network checks.
 const POLICY_LINE_CONTRACTS = new Map([
   ["package.json", [
     '    "release:policy-check": "node scripts/check-non-medical-release.mjs",',
-    '    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/plugins/with-local-only-notifications.node-test.cjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs",'
+    '    "release:policy-check:test": "node --test scripts/check-non-medical-release.node-test.mjs apps/mobile/modules/life-local-notifications/life-local-notifications.node-test.mjs apps/mobile/scripts/verify-android-release-manifest.node-test.mjs apps/mobile/scripts/verify-no-remote-push.node-test.mjs",',
+    '    "verify:no-remote-push": "node apps/mobile/scripts/verify-no-remote-push.mjs --package-lock package-lock.json",',
+    '    "verify:no-remote-push:artifacts": "node apps/mobile/scripts/verify-no-remote-push.mjs --package-lock package-lock.json",',
+    '    "verify:no-remote-push:test": "node --test apps/mobile/scripts/verify-no-remote-push.node-test.mjs",'
   ]],
   ["packages/life-core/src/policy.ts", [
     '  reasonCode?: "restricted_health_intent";',
@@ -326,14 +328,6 @@ const POLICY_LINE_CONTRACTS = new Map([
   ["apps/mobile/src/storage/mobileWorkspaceRepository.ts", [
     " * a release install can erase health-era records without opening or migrating them."
   ]],
-  ["apps/mobile/src/notifications/lifeNotifications.ts", [
-    'const PREVIOUS_TEST_IDENTIFIER_PREFIX = "careguardian-medication-";'
-  ]],
-  ["apps/mobile/plugins/with-local-only-notifications.js", [
-    '  setBooleanMetadata(application, "firebase_messaging_auto_init_enabled", false);',
-    '  setBooleanMetadata(application, "firebase_analytics_collection_enabled", false);',
-    '  setBooleanMetadata(application, "google_analytics_adid_collection_enabled", false);'
-  ]],
   ["public/privacy-policy.html", [
     "  <p>The operator is Google Play developer <strong>22B</strong>, and the project/EAS owner is <strong>sinmb79</strong>. Contact: <a href=\"mailto:sinmb79@naver.com\">sinmb79@naver.com</a>. Life Steward AI has no accounts, ads, analytics SDKs, or off-device AI service. General tasks, lists, notes, user-created features, prompts, and outputs are processed on the user’s device.</p>",
     "  <p>There are no accounts, ads, analytics SDKs, or remote push. The displayed notification title is generic and its data payload contains only a task ID. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>"
@@ -341,33 +335,45 @@ const POLICY_LINE_CONTRACTS = new Map([
 ]);
 
 const LOCAL_NOTIFICATION_HARDENING_LINE_CONTRACTS = new Map([
-  ["apps/mobile/app.json", [
-    '      "./plugins/with-local-only-notifications",'
+  ["apps/mobile/modules/life-local-notifications/expo-module.config.json", [
+    '      "expo.modules.lifelocalnotifications.LifeLocalNotificationsModule"'
   ]],
-  ["apps/mobile/plugins/with-local-only-notifications.js", [
-    '  "com.google.android.c2dm.permission.RECEIVE",',
-    '  "com.sec.android.provider.badge.permission.READ",',
-    '  "com.sec.android.provider.badge.permission.WRITE",',
-    '  "com.htc.launcher.permission.READ_SETTINGS",',
-    '  "com.htc.launcher.permission.UPDATE_SHORTCUT",',
-    '  "com.sonyericsson.home.permission.BROADCAST_BADGE",',
-    '  "com.sonymobile.home.permission.PROVIDER_INSERT_BADGE",',
-    '  "com.anddoes.launcher.permission.UPDATE_COUNT",',
-    '  "com.majeur.launcher.permission.UPDATE_BADGE",',
-    '  "com.huawei.android.launcher.permission.CHANGE_BADGE",',
-    '  "com.huawei.android.launcher.permission.READ_SETTINGS",',
-    '  "com.huawei.android.launcher.permission.WRITE_SETTINGS",',
-    '  "android.permission.READ_APP_BADGE",',
-    '  "com.oppo.launcher.permission.READ_SETTINGS",',
-    '  "com.oppo.launcher.permission.WRITE_SETTINGS",',
-    '  "me.everything.badger.permission.BADGE_COUNT_READ",',
-    '  "me.everything.badger.permission.BADGE_COUNT_WRITE"',
-    '    "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
-    '    "com.google.firebase.messaging.FirebaseMessagingService",',
-    '    "com.google.firebase.components.ComponentDiscoveryService"',
-    '  receiver: ["com.google.firebase.iid.FirebaseInstanceIdReceiver"],',
-    '  provider: ["com.google.firebase.provider.FirebaseInitProvider"]',
-    '    androidConfig.modResults.manifest = applyLocalOnlyNotificationManifest('
+  ["apps/mobile/modules/life-local-notifications/android/src/main/AndroidManifest.xml", [
+    '  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    '  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+    '      android:name=".LifeReminderReceiver"',
+    '      android:name=".LifeRestoreReceiver"'
+  ]],
+  ["apps/mobile/modules/life-local-notifications/android/src/main/java/expo/modules/lifelocalnotifications/NotificationScheduler.kt", [
+    '    const val CHANNEL_ID = "life-steward-local-v2"',
+    '    const val TITLE = "생활 일정 알림"',
+    '      "expo.modules.notifications.SharedPreferencesNotificationsStore"',
+    '      "expo.modules.notifications.SharedPreferencesNotificationCategoriesStore"',
+    '      "expo.modules.notifications.NOTIFICATION_EVENT"',
+    '      "expo.modules.notifications.service.NotificationsService"',
+    "      throw NotificationDeletionException(failures)",
+    "      .setLocalOnly(true)",
+    "      .setVisibility(Notification.VISIBILITY_SECRET)",
+    "    alarmManager.setAndAllowWhileIdle("
+  ]],
+  ["apps/mobile/modules/life-local-notifications/android/src/main/java/expo/modules/lifelocalnotifications/LifeReminderReceiver.kt", [
+    "    NotificationScheduler.from(context).consumeAndShow(identifier, epochMs)"
+  ]],
+  ["apps/mobile/scripts/verify-native-android-contracts.mjs", [
+    '    (candidate) => candidate.packageName === "life-local-notifications"',
+    '      candidate.packageName === "expo-notifications" ||',
+    '      "releaseRuntimeClasspath"',
+    '    runGradleContract(":life-local-notifications:compileDebugKotlin", {'
+  ]],
+  ["apps/mobile/scripts/verify-no-remote-push.mjs", [
+    '  ["Firebase Messaging", /com\\.google\\.firebase:firebase-messaging/i],',
+    '  ["Firebase Installations", /com\\.google\\.firebase:firebase-installations/i],',
+    '  ["Firebase namespace", /com[./\\\\]google[./\\\\]firebase/i],',
+    '  ["Firebase Messaging", /FirebaseMessaging|firebase[_-]?messaging/i],',
+    '  ["Firebase Installations", /firebase[_-]?installations?/i],',
+    '  ["Firebase", /(?:^|\\s)com\\.google\\.firebase(?:[.$\\s]|$)/im],',
+    '      "Android SDK apkanalyzer is required for universal APK DEX inspection"',
+    '      `apkanalyzer DEX package inspection failed for ${basename(apkPath)}: ` +'
   ]]
 ]);
 
@@ -375,7 +381,12 @@ const ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS = new Map([
   ["apps/mobile/scripts/verify-android-release-manifest.mjs", [
     'const ANDROID_NAMESPACE_URI = "http://schemas.android.com/apk/res/android";',
     'const C2DM_PERMISSION = "com.google.android.c2dm.permission.RECEIVE";',
+    '  "android.permission.SCHEDULE_EXACT_ALARM",',
+    '  "android.permission.USE_EXACT_ALARM",',
+    '  "com.google.android.gms.permission.AD_ID"',
     '  "expo.modules.notifications.service.ExpoFirebaseMessagingService",',
+    '  "expo.modules.notifications.service.NotificationsService",',
+    '  "expo.modules.notifications.service.NotificationForwarderActivity",',
     '  "com.google.firebase.iid.FirebaseInstanceIdReceiver",',
     '  "com.google.firebase.messaging.FirebaseMessagingService",',
     '  "com.google.firebase.components.ComponentDiscoveryService",',
@@ -385,10 +396,15 @@ const ANDROID_MANIFEST_VERIFIER_LINE_CONTRACTS = new Map([
     '  "FirebaseInstallationsKtxRegistrar",',
     '  "FirebaseInstallationsRegistrar",',
     '  "TransportRegistrar"',
+    "const FORBIDDEN_FIREBASE_METADATA = [",
     '  "firebase_messaging_auto_init_enabled",',
     '  "firebase_analytics_collection_enabled",',
     '  "google_analytics_adid_collection_enabled"',
-    '      problems.push(`forbidden Firebase registrar: ${registrar}`);'
+    'const REQUIRED_REMINDER_RECEIVER =',
+    'const REQUIRED_RESTORE_RECEIVER =',
+    '      problems.push(`forbidden Firebase registrar: ${registrar}`);',
+    "  for (const name of FORBIDDEN_FIREBASE_METADATA) {",
+    '      problems.push(`forbidden Firebase or analytics metadata must be absent: ${name}`);'
   ]]
 ]);
 
@@ -405,9 +421,6 @@ const REQUIRE_LINE_CONTRACTS = new Map([
   ["apps/mobile/metro.config.js", [
     'const path = require("path");',
     'const { getDefaultConfig } = require("expo/metro-config");'
-  ]],
-  ["apps/mobile/plugins/with-local-only-notifications.js", [
-    'const { withAndroidManifest } = require("@expo/config-plugins");'
   ]],
   ["apps/mobile/plugins/with-cpu-only-llama.js", [
     'const { withAppBuildGradle } = require("@expo/config-plugins");'
@@ -429,10 +442,6 @@ const REQUIRE_LINE_CONTRACTS = new Map([
 const MODULE_EXPORT_LINE_CONTRACTS = new Map([
   ["apps/mobile/metro.config.js", [
     "module.exports = config;"
-  ]],
-  ["apps/mobile/plugins/with-local-only-notifications.js", [
-    "module.exports = function withLocalOnlyNotifications(config) {",
-    "module.exports.applyLocalOnlyNotificationManifest = applyLocalOnlyNotificationManifest;"
   ]],
   ["apps/mobile/plugins/with-cpu-only-llama.js", [
     "module.exports = withCpuOnlyLlama;",
@@ -496,13 +505,14 @@ function isApprovedReleaseLink(file, link) {
     return true;
   }
   if (
-    file === "apps/mobile/plugins/with-local-only-notifications.js" &&
-    link === ANDROID_XML_TOOLS_NAMESPACE
+    file === "apps/mobile/scripts/verify-android-release-manifest.mjs" &&
+    link === ANDROID_XML_ANDROID_NAMESPACE
   ) {
     return true;
   }
   if (
-    file === "apps/mobile/scripts/verify-android-release-manifest.mjs" &&
+    file ===
+      "apps/mobile/modules/life-local-notifications/android/src/main/AndroidManifest.xml" &&
     link === ANDROID_XML_ANDROID_NAMESPACE
   ) {
     return true;
@@ -1853,20 +1863,30 @@ function validateIdentity(files, problems) {
   if (permissions.length !== 1 || permissions[0] !== "android.permission.POST_NOTIFICATIONS") {
     problems.push("Android permissions are not minimal");
   }
-  if (
-    !Array.isArray(app?.plugins) ||
-    !app.plugins.includes("./plugins/with-local-only-notifications")
-  ) {
-    problems.push("local-only notification manifest hardening plugin is missing");
+  if (!Array.isArray(app?.plugins)) {
+    problems.push("mobile plugin inventory is missing");
+  } else {
+    const pluginNames = app.plugins.map((plugin) =>
+      Array.isArray(plugin) ? plugin[0] : plugin
+    );
+    if (
+      pluginNames.includes("./plugins/with-local-only-notifications") ||
+      pluginNames.includes("expo-notifications")
+    ) {
+      problems.push("legacy Expo notification plugin is forbidden");
+    }
   }
   const allowedDependencies = new Set([
     "expo", "expo-asset", "expo-crypto", "expo-device", "expo-file-system", "expo-font",
-    "expo-local-authentication", "expo-notifications", "expo-screen-capture", "expo-secure-store",
+    "expo-local-authentication", "expo-screen-capture", "expo-secure-store",
     "expo-sqlite", "expo-status-bar", "llama.rn", "react", "react-native", "@life-steward/life-core"
   ]);
   for (const dependency of Object.keys(mobilePackage.dependencies ?? {})) {
     if (!allowedDependencies.has(dependency)) problems.push(`unexpected mobile dependency: ${dependency}`);
     if (FORBIDDEN_CLOUD.test(dependency)) problems.push(`prohibited cloud dependency: ${dependency}`);
+  }
+  if (Object.hasOwn(mobilePackage.dependencies ?? {}, "expo-notifications")) {
+    problems.push("expo-notifications dependency is forbidden");
   }
   if (
     mobilePackage.dependencies?.["expo-file-system"] !==
@@ -1991,7 +2011,8 @@ export function loadReleaseFiles(root) {
   )
     .split("\0")
     .filter(Boolean)
-    .filter(isReleaseFile);
+    .filter(isReleaseFile)
+    .filter((file) => existsSync(resolve(root, file)));
   return new Map(inventory.map((file) => [file, readFileSync(resolve(root, file), "utf8")]));
 }
 
