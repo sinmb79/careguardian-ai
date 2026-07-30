@@ -15,9 +15,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "CareGuardian AI",
-        short_name: "CareGuardian",
-        description: "Local-first caregiving continuity assistant.",
+        name: "생활후견 AI",
+        short_name: "생활후견 AI",
+        description: "브라우저 안에서 개인 생활 작업을 정리하는 로컬 작업공간.",
         theme_color: "#f3efe6",
         background_color: "#f7f2e8",
         display: "standalone",

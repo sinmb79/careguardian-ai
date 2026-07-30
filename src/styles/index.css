@@ -131,9 +131,10 @@ input,
   font-weight: 800;
 }
 
-.workspace-button { background: #c4684f; }
+.workspace-button { background: #963a27; }
 .workspace-button-secondary { background: #183138; }
 .workspace-clear-button { background: #8e3d32; }
+.workspace-cancel-button { background: #496064; }
 
 .workspace-empty,
 .workspace-message {
@@ -172,6 +173,21 @@ input,
 .workspace-actions {
   display: grid;
   gap: 0.75rem;
+}
+
+.workspace-dirty,
+.workspace-confirmation {
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  color: #513200;
+  background: #fff0cc;
+  font-weight: 700;
+}
+
+.workspace-confirmation > div {
+  display: grid;
+  gap: 0.5rem;
 }
 
 @media (min-width: 640px) {
