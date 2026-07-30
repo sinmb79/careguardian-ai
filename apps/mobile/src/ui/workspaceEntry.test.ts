@@ -80,6 +80,33 @@ describe("workspace entry", () => {
     expect(fixtureWorkspace).toEqual(before);
   });
 
+  test.each([
+    ["nowDate Invalid Date", { now: (): string => "2026-07-31T01:02:03.000Z", nowDate: (): Date => new Date(Number.NaN) }],
+    ["unparsable fallback now", { now: (): string => "not-a-date" }],
+    ["nowDate Infinity", { now: (): string => "2026-07-31T01:02:03.000Z", nowDate: (): Date => new Date(Number.POSITIVE_INFINITY) }]
+  ])("fails closed for a due date when the clock is invalid: %s", (_label, clock) => {
+    const before = structuredClone(fixtureWorkspace);
+    const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", "2026-08-01", {
+      ...clock,
+      createId: () => "task-buy-flowers"
+    });
+
+    expect(result).toEqual({ ok: false, error: "기기 시간을 확인할 수 없습니다. 알림 날짜를 다시 확인해 주세요." });
+    expect(fixtureWorkspace).toEqual(before);
+  });
+
+  test("allows a task without a reminder date when the clock is invalid", () => {
+    const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", {
+      now: () => "2026-07-31T01:02:03.000Z",
+      nowDate: () => new Date(Number.NaN),
+      createId: () => "task-buy-flowers"
+    });
+
+    expect(result.ok && result.workspace.tasks.at(-1)).toEqual({
+      id: "task-buy-flowers", title: "Buy flowers", status: "open"
+    });
+  });
+
   test("adds a list with no records", () => {
     const result = addWorkspaceList(fixtureWorkspace, "Weekend plans", {
       now: () => now,

@@ -44,9 +44,14 @@ export function addWorkspaceTask(
   if (dueDate && !localNineAmForDate(dueDate)) {
     return { ok: false, error: "알림 날짜는 YYYY-MM-DD 형식의 실제 날짜로 입력해 주세요." };
   }
-  const now = dependencies.nowDate?.() ?? new Date(dependencies.now());
-  if (dueDate && localNineAmForDate(dueDate)!.getTime() <= now.getTime()) {
-    return { ok: false, error: "알림 날짜는 기기 시간 기준 미래로 선택해 주세요." };
+  if (dueDate) {
+    const now = dependencies.nowDate?.() ?? new Date(dependencies.now());
+    if (!Number.isFinite(now.getTime())) {
+      return { ok: false, error: "기기 시간을 확인할 수 없습니다. 알림 날짜를 다시 확인해 주세요." };
+    }
+    if (localNineAmForDate(dueDate)!.getTime() <= now.getTime()) {
+      return { ok: false, error: "알림 날짜는 기기 시간 기준 미래로 선택해 주세요." };
+    }
   }
   return addEntry(workspace, inputTitle, "task-", workspace.tasks, dependencies, (id, title) => ({
     id,
