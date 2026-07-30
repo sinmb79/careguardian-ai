@@ -30,7 +30,7 @@ class ModelIntegrityModule : Module() {
     val reactContext = appContext.reactContext
       ?: error("React context is unavailable")
     val documentsRoot = reactContext.filesDir.canonicalFile
-    val modelsRoot = File(reactContext.filesDir, "models")
+    val modelsRoot = File(documentsRoot, "models")
     require(modelsRoot.parentFile?.canonicalFile == documentsRoot) {
       "Models root must stay inside app files storage"
     }

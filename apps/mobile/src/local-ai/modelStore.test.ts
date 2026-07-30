@@ -835,14 +835,16 @@ describe("Android ModelIntegrity module contract", () => {
     expect(readFileSync(expoDirectoriesPath, "utf8")).toContain("get() = context.filesDir");
   });
 
-  test("rejects models-root and child symlink escapes in native canonical validation", () => {
+  test("builds the models root from the canonical app-files root before rejecting child symlink escapes", () => {
     const kotlinPath = resolve(
       process.cwd(),
       "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
     );
     const source = readFileSync(kotlinPath, "utf8");
 
-    expect(source).toContain("File(reactContext.filesDir, \"models\")");
+    expect(source).toContain("val documentsRoot = reactContext.filesDir.canonicalFile");
+    expect(source).toContain("val modelsRoot = File(documentsRoot, \"models\")");
+    expect(source).not.toContain("File(reactContext.filesDir, \"models\")");
     expect(source).toContain("modelsRoot.absolutePath == canonicalModelsRoot.path");
     expect(source).toContain("artifact.path.startsWith(modelsPrefix)");
   });
