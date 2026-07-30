@@ -3,7 +3,7 @@
 ## RED → GREEN
 
 - RED: 날짜 입력 UI, `dueDate` 저장, 엄격한 실제 날짜 검증, 현지 오전 9시 과거 차단, 과거 트리거의 네이티브 예약 미시도 테스트가 기존 구현에서 실패했다.
-- GREEN: `apps/mobile/src/reminders/localReminderTime.ts`에 기기 현지 시각 기준의 순수 날짜 변환을 두고, 작업 입력과 알림 동기화가 같은 검증을 사용하도록 구현했다.
+- GREEN: `apps/mobile/src/reminders/localReminderTime.ts`에 기기 현지 시각 기준의 순수 날짜 변환을 두고, 작업 입력과 알림 동기화가 같은 검증을 사용하도록 구현했다. 입력 검증에는 고정된 기기 현지 시각을 주입하는 `nowDate`도 추가해 테스트 실행 시간대와 무관하게 검증한다.
 
 ## 구현 결과
 
@@ -23,3 +23,4 @@
 ## 커밋
 
 - 제품 구현: `aa7bd25 fix(mobile): enable local task reminders`
+- 시간대 안정화: `f5cb3be fix(mobile): inject local reminder clock`
