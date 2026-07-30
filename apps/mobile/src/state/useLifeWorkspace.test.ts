@@ -223,11 +223,14 @@ describe("life workspace state", () => {
     await controller.deleteAll();
 
     expect(events).toEqual(["notifications", "models", "workspace"]);
-    expect(controller.snapshot()).toMatchObject({
-      workspace: createEmptyWorkspace(),
+    const snapshot = controller.snapshot();
+    expect(snapshot).toMatchObject({
       hasStoredWorkspace: false,
       privacyGate: "unlocked"
     });
+    expect(snapshot.workspace).toEqual(
+      createEmptyWorkspace(snapshot.workspace.createdAt)
+    );
   });
 
   test("stops and releases active inference before every production full-delete mutation", async () => {
