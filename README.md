@@ -2,11 +2,11 @@
 
 [English](./README.en.md)
 
-생활후견 AI는 일정, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 비의료·로컬 우선 도구입니다. 계정이나 광고·분석 서비스를 만들지 않으며, 웹은 브라우저의 IndexedDB에, 모바일은 SQLCipher와 SecureStore/Android Keystore 경계에 데이터를 둡니다.
+생활후견 AI는 일정, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 일반 개인 생산성·로컬 우선 도구입니다. 계정이나 광고·분석 서비스를 만들지 않으며, 웹은 브라우저의 IndexedDB에, 모바일은 SQLCipher와 SecureStore/Android Keystore 경계에 데이터를 둡니다.
 
 ```mermaid
 flowchart LR
-  Core["packages/life-core\n검증·비의료 정책"] --> Web["Web PWA\nIndexedDB"]
+  Core["packages/life-core\n검증·사용 범위 정책"] --> Web["Web PWA\nIndexedDB"]
   Core --> Mobile["Expo Mobile\nSQLCipher + SecureStore"]
   Mobile --> Notify["로컬 알림\ntaskId만 payload에 포함"]
   Mobile --> AI["선택 설치 로컬 AI\nCPU llama.rn"]
@@ -19,7 +19,7 @@ flowchart LR
 |---|---|
 | 웹 PWA | 개인 작업공간을 브라우저 IndexedDB에만 저장합니다. |
 | 모바일 | 기기 인증, 화면 캡처 차단, 백그라운드 잠금, SQLCipher 저장을 제공합니다. |
-| 일반 알림 | 제목·메모를 넣지 않고 일반 제목과 `taskId`만 기기 내 알림 payload에 둡니다. |
+| 일반 알림 | 알림 표시 제목은 일반 문구이며, data payload에는 `taskId`만 둡니다. 제목·메모 본문은 payload에 넣지 않습니다. |
 | 로컬 AI | 사용자가 고정된 GGUF 파일 설치에 동의한 경우에만 기기 CPU에서 요약·문장 다듬기·제목 제안·체크리스트 초안을 수행합니다. 결과는 자동 저장되지 않습니다. |
 | 전체 삭제 | 실행 중인 로컬 AI 중지, 일반 알림 취소, 모델·부분 파일·작업공간·키·메모리 초기화를 순서대로 시도합니다. |
 
@@ -46,7 +46,7 @@ Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알
 - 표시명: `생활후견 AI` / `Life Steward AI`
 - Android 대상 버전: `1.1.0` (`versionCode 7`)
 - 유지하는 식별자: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Play 등록은 `Productivity`, 전체이용가, 기능 제한형 로컬 문서 정리 도구 기준으로 준비합니다.
+- Play 등록은 `Productivity`, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 기준으로 준비합니다. IARC 콘텐츠 등급은 설문 후 확정합니다.
 
 ## 문서
 

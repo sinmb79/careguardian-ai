@@ -2,7 +2,7 @@
 
 [한국어](./README.md)
 
-Life Steward AI is a non-health, local-first tool for organizing schedules, notes, checklists, and user-created personal features on one device.
+Life Steward AI is a general personal-productivity, local-first tool for organizing schedules, notes, checklists, and user-created personal features on one device.
 
 ```mermaid
 flowchart LR
@@ -17,7 +17,7 @@ flowchart LR
 
 - The web PWA stores its workspace only in browser IndexedDB.
 - The mobile app uses SQLCipher, SecureStore/Android Keystore separation, device authentication, background locking, and screen-capture blocking.
-- Local notifications contain a generic title and only a task ID; titles and note text are excluded.
+- The displayed notification title is generic and the data payload contains only a task ID; note text is excluded.
 - Optional AI runs locally on the device and offers only summarizing, rewriting, title suggestions, and checklist drafts. Results require user approval before saving.
 - “Delete all local data” stops active inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, then resets memory.
 
@@ -32,7 +32,7 @@ Data safety values are not final until the Task 10 production-AAB and real-devic
 - Display name: `생활후견 AI` / `Life Steward AI`
 - Android: `1.1.0` (`versionCode 7`)
 - Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Planned Play positioning: Productivity, 18+, limited-scope local document helper.
+- Planned Play positioning: Productivity, target age 18+, limited-scope local document helper; IARC content rating is confirmed after its questionnaire.
 
 ```powershell
 npm ci

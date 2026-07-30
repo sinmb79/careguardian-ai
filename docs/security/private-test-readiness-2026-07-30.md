@@ -49,7 +49,7 @@
 3. production AAB의 권한, ABI, `allowBackup=false`, debug/development surface 부재 검사
 4. Samsung과 Pixel에서 저장·잠금·삭제·일반 알림·로컬 AI의 합성 데이터 smoke
 5. 모델 다운로드 외 네트워크 동작과 모델 설치 시 메타데이터 노출 경계 관찰
-6. Play Console에서 Productivity·18+·비건강 앱 상태, 최신 문안·자산·Data safety를 최종 AAB와 대조
+6. Play Console에서 Productivity·타깃 연령·해당 선언 없음, 최신 문안·자산·Data safety를 최종 AAB와 대조
 7. Task 9의 이전 데이터·알림 삭제, CSP, production 의존성 위험 승인 게이트를 해소 또는 명시적으로 차단
 8. Task 10의 Android Expo 실제 화면 재캡처가 완료되기 전에는 현재 PNG를 Play에 업로드하지 않음
 

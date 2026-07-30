@@ -12,14 +12,14 @@
 <body>
   <h1>생활후견 AI 개인정보 안내</h1>
   <p class="date">최종 수정일: 2026-07-30</p>
-  <p class="notice"><strong>비공개 테스트 안내:</strong> 생활후견 AI는 개인 생활 작업을 정리하는 비의료 도구입니다. 테스트에는 합성·비민감 데이터만 사용하고, 실제 개인정보나 민감정보를 입력하지 마세요.</p>
+  <p class="notice"><strong>비공개 테스트 안내:</strong> 생활후견 AI는 개인 생활 작업을 정리하는 일반 개인 생산성 도구입니다. 테스트에는 합성·비민감 데이터만 사용하고, 실제 개인정보나 민감정보를 입력하지 마세요.</p>
 
   <h2>1. 웹 PWA의 저장</h2>
   <p>웹 PWA는 작업공간 이름과 사용자가 만든 생활 기능을 브라우저의 <strong>IndexedDB</strong>에만 보관합니다. 계정, 자체 서버, 광고 또는 분석 서비스로 전송하지 않습니다. 브라우저 데이터 삭제, 비공개 모드 종료, IndexedDB 접근 차단이나 기기 교체는 데이터를 지울 수 있습니다.</p>
 
   <h2>2. 모바일 앱의 저장과 보호</h2>
   <p>모바일 앱은 개인 작업공간을 SQLCipher 데이터베이스에 저장하고, 데이터베이스 키를 SecureStore 및 Android Keystore 경계에 분리합니다. 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용합니다. Android 백업은 비활성화합니다.</p>
-  <p>일반 알림에는 일정 제목이나 메모를 넣지 않습니다. 기기 내 알림 payload에는 일반 제목과 <code>taskId</code>만 포함됩니다.</p>
+  <p>알림 표시 제목은 일반 문구입니다. 기기 내 알림의 data payload에는 <code>taskId</code>만 포함되며, 일정 제목과 메모 본문은 넣지 않습니다.</p>
 
   <h2>3. 선택 설치 로컬 AI와 네트워크</h2>
   <p>로컬 AI는 사용자가 고정된 모델 파일 설치에 동의한 경우에만 기기 CPU에서 실행합니다. 요약, 문장 다듬기, 제목 제안, 체크리스트 초안만 제공하며 결과는 자동 저장하지 않습니다.</p>
@@ -37,13 +37,13 @@
   <hr />
   <h1>Privacy Notice (English)</h1>
   <p class="date">Last updated: 2026-07-30</p>
-  <p class="notice"><strong>Closed test:</strong> Life Steward AI is a non-health tool for personal life tasks. Use only synthetic, non-sensitive data during testing.</p>
+  <p class="notice"><strong>Closed test:</strong> Life Steward AI is a general personal-productivity tool for personal life tasks. Use only synthetic, non-sensitive data during testing.</p>
   <h2>1. Local storage</h2>
   <p>The web PWA keeps its workspace only in browser IndexedDB. The mobile app uses a SQLCipher database with a key separated through SecureStore and Android Keystore. It also uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>
   <h2>2. Optional model installation</h2>
   <p>Choosing an install requests a pinned GGUF model file from Hugging Face. The host may see the device IP address and ordinary network metadata. Prompts and generated outputs are not sent with that request; inference runs on the device CPU.</p>
   <h2>3. Deletion and no-account boundary</h2>
-  <p>There are no accounts, ads, analytics SDKs, or remote push. Local notifications use a generic title and task ID only. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>
+  <p>There are no accounts, ads, analytics SDKs, or remote push. The displayed notification title is generic and its data payload contains only a task ID. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>
   <h2>4. Contact</h2>
   <p>Privacy or deletion questions: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
 </body>

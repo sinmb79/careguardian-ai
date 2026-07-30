@@ -1,7 +1,7 @@
 # 생활후견 AI 비공개 테스트 운영 가이드
 
 - 대상 버전: Android `1.1.0` (`versionCode 7` 이상 AAB)
-- 제품 위치: Productivity / 18+ / 기능 제한형 로컬 문서 정리 도구
+- 제품 위치: Productivity / 타깃 연령 18세 이상 / 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정)
 - 데이터 범위: **합성·비민감 생활 일정과 메모만 허용**
 - 테스트 시작 전제: 새 AAB, Play 등록값, Data safety 최종값, 실기기 네트워크 관찰을 Task 10에서 확인
 
@@ -80,6 +80,6 @@ Android 버전:
 
 ## 6. Play Console 적용 전 확인
 
-기존 건강형 대기 변경과 자산은 새 AAB·문안·스크린샷·feature graphic으로 완전히 교체합니다. 새 제출은 Productivity, 18+, 비건강 앱 상태로 작성하며, Data safety 최종값은 Task 10의 AAB와 네트워크 관찰 결과가 기준입니다. Play Console의 실제 opt-in 참여자 수는 목록 인원과 별도로 매일 확인합니다.
+기존 대기 변경과 자산은 새 AAB·문안·스크린샷·feature graphic으로 완전히 교체합니다. 새 제출은 Productivity, 타깃 연령 18세 이상, 해당 선언 없음으로 작성하며, IARC 콘텐츠 등급은 설문 후 확정합니다. Data safety 최종값은 Task 10의 AAB와 네트워크 관찰 결과가 기준입니다. Play Console의 실제 opt-in 참여자 수는 목록 인원과 별도로 매일 확인합니다.
 
-출시 전에 Task 9가 이전 건강형 저장 자료·알림을 전체 삭제가 포함하는지, `index.html` CSP, production 의존성 위험 승인을 확인해야 합니다. `npm audit --omit=dev`의 2026-07-30 관찰값은 Critical 0 / High 19 / Moderate 10이며, AAB 도달 가능성·owner·검토일·만료일이 있는 risk acceptance gate 전에는 안전 판정으로 해석하지 않습니다.
+출시 전에 Task 9가 이전 저장 자료·알림을 전체 삭제가 포함하는지, `index.html` CSP, production 의존성 위험 승인을 확인해야 합니다. `npm audit --omit=dev`의 2026-07-30 관찰값은 Critical 0 / High 19 / Moderate 10이며, AAB 도달 가능성·owner·검토일·만료일이 있는 risk acceptance gate 전에는 안전 판정으로 해석하지 않습니다.

@@ -1,6 +1,6 @@
 # 생활후견 AI 모바일 배포 가이드
 
-이 문서는 `apps/mobile` Expo 앱의 현재 비공개 테스트 준비 범위와 Android·iOS 빌드 경로를 설명합니다. 과거 건강형 자료는 현재 제출 근거가 아니며 이 문서에서 인용하지 않습니다.
+이 문서는 `apps/mobile` Expo 앱의 현재 비공개 테스트 준비 범위와 Android·iOS 빌드 경로를 설명합니다. 과거 제품 자료는 현재 제출 근거가 아니며 이 문서에서 인용하지 않습니다.
 
 ## 현재 대상
 
@@ -10,7 +10,7 @@
 | Android 버전 | `1.1.0` / `versionCode 7` |
 | package | `com.sinmb.careguardianai` (기존 식별자 유지) |
 | EAS slug / project ID | `careguardian-ai-mobile` / `15b9e293-b631-4b77-8cfc-9937cd604dd4` |
-| Play 위치 | Productivity, 18+, 기능 제한형 로컬 문서 정리 도구 |
+| Play 위치 | Productivity, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정) |
 | 테스트 데이터 | 합성·비민감 생활 일정과 메모만 허용 |
 
 ```mermaid
@@ -61,7 +61,7 @@ Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트
 
 | 파일 | 크기 | 용도 |
 |---|---:|---|
-| `feature-graphic.png` | 1024×500 | 무문자·비의료 feature graphic |
+| `feature-graphic.png` | 1024×500 | 무문자 feature graphic |
 | `phone-screenshot-{1-4}.png` | 1081×2402 | phone 스크린샷 4장 |
 | `tablet7-screenshot-{1-2}.png` | 900×1536 | 7-inch tablet 2장 |
 | `tablet10-screenshot-{1-2}.png` | 1600×2560 | 10-inch tablet 2장 |
@@ -72,7 +72,7 @@ Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트
 
 1. Task 10의 native prebuild, production AAB, 정적 검사와 Samsung·Pixel 검증
 2. 모델 다운로드를 포함한 실기기 네트워크 관찰
-3. Play Console에서 Productivity, 18+, 비건강 앱 상태, 최신 문안·자산·AAB로 이전 대기 변경을 교체
+3. Play Console에서 Productivity, 타깃 연령, 최신 문안·자산·AAB로 이전 대기 변경을 교체
 4. 최종 Data safety 답변 확정과 비공개 테스트 opt-in 운영
 5. Android Expo 실제 화면으로 Play 자산을 재캡처·교체하고 업로드 전 확인
 
