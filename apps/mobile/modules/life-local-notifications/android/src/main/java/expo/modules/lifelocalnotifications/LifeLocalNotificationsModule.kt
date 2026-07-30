@@ -14,15 +14,15 @@ class LifeLocalNotificationsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LifeLocalNotifications")
 
-    AsyncFunction("createChannel") Coroutine {
+    AsyncFunction("createChannel") Coroutine { ->
       scheduler().createChannel()
     }
 
-    AsyncFunction("areEnabled") Coroutine {
+    AsyncFunction("areEnabled") Coroutine { ->
       scheduler().areEnabled()
     }
 
-    AsyncFunction("cleanupLegacy") Coroutine {
+    AsyncFunction("cleanupLegacy") Coroutine { ->
       scheduler().cleanupLegacy(false)
     }
 
@@ -30,7 +30,7 @@ class LifeLocalNotificationsModule : Module() {
       scheduler().schedule(identifier, epochMs)
     }
 
-    AsyncFunction("listIdentifiers") Coroutine {
+    AsyncFunction("listIdentifiers") Coroutine { ->
       scheduler().listIdentifiers()
     }
 
@@ -38,7 +38,7 @@ class LifeLocalNotificationsModule : Module() {
       scheduler().cancel(identifier)
     }
 
-    AsyncFunction("cancelAll") Coroutine {
+    AsyncFunction("cancelAll") Coroutine { ->
       scheduler().cancelAll()
     }
   }
