@@ -1,25 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { createEmptyWorkspace, type PersonalWorkspace } from "@life-steward/life-core";
 import {
-  WORKSPACE_STORAGE_KEY,
   clearWorkspace,
   initializeWorkspace,
   loadWorkspace,
   saveWorkspace,
+  subscribeWorkspaceChanges,
   type WorkspaceLoadResult
 } from "../../features/workspace/workspaceRepository";
 
 type PendingConfirmation = "delete" | "initialize" | null;
-
-function initialState() {
-  const result = loadWorkspace();
-  return {
-    workspace: result.kind === "loaded" ? result.workspace : createEmptyWorkspace(),
-    revision: result.kind === "loaded" ? result.revision : 0,
-    loadResult: result,
-    statusMessage: statusForLoad(result)
-  };
-}
 
 function statusForLoad(result: WorkspaceLoadResult): string {
   if (result.kind === "invalid") return "저장된 작업공간을 안전하게 읽지 못했습니다.";
@@ -28,13 +18,35 @@ function statusForLoad(result: WorkspaceLoadResult): string {
 }
 
 export function useLifeAppState() {
-  const [initial] = useState(initialState);
-  const [workspace, setWorkspace] = useState<PersonalWorkspace>(initial.workspace);
-  const [revision, setRevision] = useState(initial.revision);
-  const [loadResult, setLoadResult] = useState<WorkspaceLoadResult>(initial.loadResult);
-  const [statusMessage, setStatusMessage] = useState(initial.statusMessage);
+  const [workspace, setWorkspace] = useState<PersonalWorkspace>(() => createEmptyWorkspace());
+  const [revision, setRevision] = useState(0);
+  const [loadResult, setLoadResult] = useState<WorkspaceLoadResult>({ kind: "missing" });
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
+
+  const applyLoadResult = (result: WorkspaceLoadResult) => {
+    setLoadResult(result);
+    setStatusMessage(statusForLoad(result));
+    if (result.kind === "loaded") {
+      setWorkspace(result.workspace);
+      setRevision(result.revision);
+    } else if (result.kind === "missing") {
+      setWorkspace(createEmptyWorkspace());
+      setRevision(0);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    void loadWorkspace().then((result) => {
+      if (!active) return;
+      applyLoadResult(result);
+      setIsLoaded(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -46,24 +58,13 @@ export function useLifeAppState() {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [isDirty]);
 
-  useEffect(() => {
-    const syncAcrossTabs = (event: StorageEvent) => {
-      if (event.key !== WORKSPACE_STORAGE_KEY || event.storageArea !== localStorage) return;
-      if (isDirty) {
-        setStatusMessage("다른 탭에서 작업공간이 변경되었습니다. 저장하기 전에 최신 데이터를 확인해 주세요.");
-        return;
-      }
-      const result = loadWorkspace();
-      setLoadResult(result);
-      setStatusMessage(statusForLoad(result));
-      if (result.kind === "loaded") {
-        setWorkspace(result.workspace);
-        setRevision(result.revision);
-      }
-    };
-    window.addEventListener("storage", syncAcrossTabs);
-    return () => window.removeEventListener("storage", syncAcrossTabs);
-  }, [isDirty]);
+  useEffect(() => subscribeWorkspaceChanges(() => {
+    if (isDirty) {
+      setStatusMessage("다른 탭에서 작업공간이 변경되었습니다. 저장하기 전에 최신 데이터를 확인해 주세요.");
+      return;
+    }
+    void loadWorkspace().then(applyLoadResult);
+  }), [isDirty]);
 
   const actions = useMemo(() => ({
     updateWorkspace(nextWorkspace: PersonalWorkspace) {
@@ -71,13 +72,14 @@ export function useLifeAppState() {
       setIsDirty(true);
       if (loadResult.kind !== "invalid" && loadResult.kind !== "unavailable") setStatusMessage("");
     },
-    save() {
+    async save() {
+      if (!isLoaded) return;
       if (loadResult.kind === "invalid") {
         setStatusMessage("저장된 작업공간을 안전하게 읽지 못했습니다. 새 작업공간으로 초기화한 후에만 저장할 수 있습니다.");
         return;
       }
       const nextWorkspace = { ...workspace, updatedAt: new Date().toISOString() };
-      const result = saveWorkspace(nextWorkspace, revision);
+      const result = await saveWorkspace(nextWorkspace, revision);
       if (result.kind === "saved") {
         setWorkspace(nextWorkspace);
         setRevision(result.revision);
@@ -93,10 +95,10 @@ export function useLifeAppState() {
     requestDelete() { setPendingConfirmation("delete"); },
     requestInitialize() { setPendingConfirmation("initialize"); },
     cancelConfirmation() { setPendingConfirmation(null); },
-    confirm() {
+    async confirm() {
       if (pendingConfirmation === "initialize" && loadResult.kind === "invalid") {
         const nextWorkspace = createEmptyWorkspace();
-        const result = initializeWorkspace(nextWorkspace, loadResult.raw);
+        const result = await initializeWorkspace(nextWorkspace, loadResult.raw);
         if (result.kind === "saved") {
           setWorkspace(nextWorkspace);
           setRevision(result.revision);
@@ -110,7 +112,7 @@ export function useLifeAppState() {
         }
       }
       if (pendingConfirmation === "delete") {
-        const result = clearWorkspace(revision);
+        const result = await clearWorkspace(revision);
         if (result.kind === "cleared") {
           setWorkspace(createEmptyWorkspace());
           setRevision(0);
@@ -125,7 +127,7 @@ export function useLifeAppState() {
       }
       setPendingConfirmation(null);
     }
-  }), [loadResult, pendingConfirmation, revision, workspace]);
+  }), [isLoaded, loadResult, pendingConfirmation, revision, workspace]);
 
-  return { workspace, statusMessage, isDirty, recoveryRequired: loadResult.kind === "invalid", pendingConfirmation, actions };
+  return { workspace, statusMessage, isLoaded, isDirty, recoveryRequired: loadResult.kind === "invalid", pendingConfirmation, actions };
 }

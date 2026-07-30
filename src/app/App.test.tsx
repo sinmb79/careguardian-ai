@@ -1,28 +1,51 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createEmptyWorkspace } from "@life-steward/life-core";
-import { WORKSPACE_STORAGE_KEY, loadWorkspace, saveWorkspace } from "../features/workspace/workspaceRepository";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  WORKSPACE_CHANGE_EVENT,
+  WORKSPACE_DATABASE_NAME,
+  WORKSPACE_STORAGE_KEY,
+  clearWorkspace,
+  loadWorkspace,
+  saveWorkspace
+} from "../features/workspace/workspaceRepository";
 import { App } from "./App";
 
-describe("App", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    localStorage.clear();
+function deleteWorkspaceDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(WORKSPACE_DATABASE_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
   });
-  afterEach(cleanup);
+}
 
-  test("renders the neutral personal workspace without care or health copy", () => {
+async function waitForReady() {
+  await waitFor(() => expect(screen.getByRole("button", { name: "이 브라우저에 저장" })).toBeEnabled());
+}
+
+describe("App", () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    await deleteWorkspaceDatabase();
+  });
+  afterEach(() => cleanup());
+
+  test("renders the neutral personal workspace without care or health copy", async () => {
     render(<App />);
+    await waitForReady();
 
     expect(screen.getByRole("heading", { name: "생활후견 AI" })).toBeInTheDocument();
     expect(screen.getByText("나만의 생활 기능 만들기")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/복약|질환|치료|피돌봄/);
   });
 
-  test("adds a personal extension, marks it unsaved, and saves it to this browser", async () => {
+  test("adds a personal extension, marks it unsaved, and saves it to IndexedDB", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await waitForReady();
 
     await user.type(screen.getByLabelText("새 기능 이름"), "여행 준비");
     await user.click(screen.getByRole("button", { name: "기능 추가" }));
@@ -30,13 +53,14 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "이 브라우저에 저장" }));
 
     expect(screen.getByText("여행 준비")).toBeInTheDocument();
-    expect(screen.getByText("이 브라우저에 작업공간을 저장했습니다.")).toBeInTheDocument();
+    await screen.findByText("이 브라우저에 작업공간을 저장했습니다.");
   });
 
   test("warns before leaving when there are unsaved changes", async () => {
     const user = userEvent.setup();
     const listener = vi.spyOn(window, "addEventListener");
     render(<App />);
+    await waitForReady();
     await user.type(screen.getByLabelText("작업공간 이름"), "새 계획");
     const beforeUnload = listener.mock.calls.find(([type]) => type === "beforeunload")?.[1] as ((event: BeforeUnloadEvent) => void);
     const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
@@ -46,38 +70,68 @@ describe("App", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  test("shows an unavailable message instead of crashing when browser storage cannot be read", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
-
+  test("shows an unavailable message instead of crashing when the localStorage getter is blocked", async () => {
+    vi.spyOn(window, "localStorage", "get").mockImplementation(() => { throw new DOMException("blocked", "SecurityError"); });
     render(<App />);
 
-    expect(screen.getByText("저장 데이터에 접근할 수 없습니다.")).toBeInTheDocument();
+    await screen.findByText("저장 데이터에 접근할 수 없습니다.");
   });
 
-  test("shows a save failure message when browser storage cannot be written", async () => {
+  test("shows a save failure message when IndexedDB is unavailable", async () => {
     const user = userEvent.setup();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.stubGlobal("indexedDB", undefined);
     render(<App />);
+    await waitForReady();
 
     await user.click(screen.getByRole("button", { name: "이 브라우저에 저장" }));
 
-    expect(screen.getByText("이 브라우저에 작업공간을 저장하지 못했습니다.")).toBeInTheDocument();
+    await screen.findByText("이 브라우저에 작업공간을 저장하지 못했습니다.");
   });
 
   test("shows a conflict and preserves the newer browser tab workspace", async () => {
     const user = userEvent.setup();
     const initialWorkspace = createEmptyWorkspace("2026-07-30T00:00:00.000Z");
-    saveWorkspace(initialWorkspace, 0);
+    await saveWorkspace(initialWorkspace, 0);
     render(<App />);
+    await waitForReady();
     await user.clear(screen.getByLabelText("작업공간 이름"));
     await user.type(screen.getByLabelText("작업공간 이름"), "내 탭 변경");
     const newerWorkspace = { ...initialWorkspace, title: "다른 탭 변경", updatedAt: "2026-07-31T00:00:00.000Z" };
-    saveWorkspace(newerWorkspace, 1);
+    await saveWorkspace(newerWorkspace, 1);
 
     await user.click(screen.getByRole("button", { name: "이 브라우저에 저장" }));
 
-    expect(screen.getByText("다른 탭에서 작업공간이 변경되었습니다. 최신 데이터를 다시 불러온 뒤 저장해 주세요.")).toBeInTheDocument();
-    expect(loadWorkspace()).toEqual({ kind: "loaded", workspace: newerWorkspace, revision: 2 });
+    await screen.findByText("다른 탭에서 작업공간이 변경되었습니다. 최신 데이터를 다시 불러온 뒤 저장해 주세요.");
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "loaded", workspace: newerWorkspace, revision: 2 });
+  });
+
+  test("synchronizes a clean tab to an empty workspace after another tab deletes", async () => {
+    const storedWorkspace = { ...createEmptyWorkspace("2026-07-30T00:00:00.000Z"), title: "보관된 계획" };
+    await saveWorkspace(storedWorkspace, 0);
+    render(<App />);
+    await waitForReady();
+    expect(screen.getByLabelText("작업공간 이름")).toHaveValue("보관된 계획");
+
+    await clearWorkspace(1);
+    window.dispatchEvent(new Event(WORKSPACE_CHANGE_EVENT));
+
+    await waitFor(() => expect(screen.getByLabelText("작업공간 이름")).toHaveValue("개인 생활"));
+  });
+
+  test("keeps dirty tab edits and warns when another tab deletes", async () => {
+    const user = userEvent.setup();
+    const storedWorkspace = { ...createEmptyWorkspace("2026-07-30T00:00:00.000Z"), title: "보관된 계획" };
+    await saveWorkspace(storedWorkspace, 0);
+    render(<App />);
+    await waitForReady();
+    await user.clear(screen.getByLabelText("작업공간 이름"));
+    await user.type(screen.getByLabelText("작업공간 이름"), "내 미저장 계획");
+
+    await clearWorkspace(1);
+    window.dispatchEvent(new Event(WORKSPACE_CHANGE_EVENT));
+
+    await screen.findByText("다른 탭에서 작업공간이 변경되었습니다. 저장하기 전에 최신 데이터를 확인해 주세요.");
+    expect(screen.getByLabelText("작업공간 이름")).toHaveValue("내 미저장 계획");
   });
 
   test("preserves invalid data until explicit initialization is confirmed", async () => {
@@ -85,36 +139,39 @@ describe("App", () => {
     const raw = JSON.stringify({ schemaVersion: 2 });
     localStorage.setItem(WORKSPACE_STORAGE_KEY, raw);
     render(<App />);
-
-    expect(screen.getByText("저장된 작업공간을 안전하게 읽지 못했습니다.")).toBeInTheDocument();
+    await screen.findByText("저장된 작업공간을 안전하게 읽지 못했습니다.");
     await user.click(screen.getByRole("button", { name: "새 작업공간으로 초기화" }));
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBe(raw);
+    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "invalid", raw });
     await user.click(screen.getByRole("button", { name: "초기화 확인" }));
 
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).not.toBe(raw);
+    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "loaded", revision: 1 });
   });
 
   test("requires a second confirmation before deleting the browser-local workspace", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await waitForReady();
     await user.click(screen.getByRole("button", { name: "이 브라우저에 저장" }));
+    await screen.findByText("이 브라우저에 작업공간을 저장했습니다.");
     await user.click(screen.getByRole("button", { name: "이 브라우저의 작업공간 삭제" }));
 
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).not.toBeNull();
+    await expect(loadWorkspace()).resolves.toMatchObject({ kind: "loaded", revision: 1 });
     expect(screen.getByRole("button", { name: "삭제 확인" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "삭제 확인" }));
 
-    expect(localStorage.getItem(WORKSPACE_STORAGE_KEY)).toBeNull();
+    await expect(loadWorkspace()).resolves.toEqual({ kind: "missing" });
   });
 
-  test("keeps data when deletion fails and reports the failure", async () => {
+  test("keeps data when IndexedDB deletion fails and reports the failure", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await waitForReady();
     await user.click(screen.getByRole("button", { name: "이 브라우저에 저장" }));
-    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("blocked"); });
+    await screen.findByText("이 브라우저에 작업공간을 저장했습니다.");
+    vi.stubGlobal("indexedDB", undefined);
     await user.click(screen.getByRole("button", { name: "이 브라우저의 작업공간 삭제" }));
     await user.click(screen.getByRole("button", { name: "삭제 확인" }));
 
-    expect(screen.getByText("이 브라우저의 작업공간을 삭제하지 못했습니다.")).toBeInTheDocument();
+    await screen.findByText("이 브라우저의 작업공간을 삭제하지 못했습니다.");
   });
 });

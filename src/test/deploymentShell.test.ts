@@ -17,7 +17,8 @@ describe("deployed web shell", () => {
   test("describes only the current browser-local non-medical web behavior in privacy policy", () => {
     const policy = readFileSync(fromRepositoryRoot("public/privacy-policy.html"), "utf8");
 
-    expect(policy).toContain("브라우저의 로컬 저장소");
+    expect(policy).toContain("IndexedDB");
+    expect(policy).not.toMatch(/localStorage/i);
     expect(policy).not.toMatch(/SpeechRecognition|CareManual|복약|릴레이|고정 passphrase/i);
   });
 });

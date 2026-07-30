@@ -4,15 +4,16 @@ import { WorkspaceEditor } from "./WorkspaceEditor";
 type WorkspaceHomeProps = {
   workspace: PersonalWorkspace;
   statusMessage: string;
+  isLoaded: boolean;
   isDirty: boolean;
   recoveryRequired: boolean;
   pendingConfirmation: "delete" | "initialize" | null;
   onChange(workspace: PersonalWorkspace): void;
-  onSave(): void;
+  onSave(): Promise<void>;
   onRequestDelete(): void;
   onRequestInitialize(): void;
   onCancelConfirmation(): void;
-  onConfirm(): void;
+  onConfirm(): Promise<void>;
 };
 
 export function WorkspaceHome(props: WorkspaceHomeProps) {
@@ -55,9 +56,9 @@ export function WorkspaceHome(props: WorkspaceHomeProps) {
         </section>
 
         <section className="workspace-actions" aria-label="작업공간 저장 및 삭제">
-          {props.recoveryRequired ? <button className="workspace-button" type="button" onClick={props.onRequestInitialize}>새 작업공간으로 초기화</button> : <button className="workspace-button" type="button" onClick={props.onSave}>이 브라우저에 저장</button>}
-          <button className="workspace-clear-button" type="button" onClick={props.onRequestDelete}>이 브라우저의 작업공간 삭제</button>
-          {props.pendingConfirmation ? <div className="workspace-confirmation" role="alert"><p>{confirmationText}</p><div><button className="workspace-clear-button" type="button" onClick={props.onConfirm}>{confirmationLabel}</button><button className="workspace-cancel-button" type="button" onClick={props.onCancelConfirmation}>취소</button></div></div> : null}
+          {props.recoveryRequired ? <button className="workspace-button" type="button" disabled={!props.isLoaded} onClick={props.onRequestInitialize}>새 작업공간으로 초기화</button> : <button className="workspace-button" type="button" disabled={!props.isLoaded} onClick={() => void props.onSave()}>이 브라우저에 저장</button>}
+          <button className="workspace-clear-button" type="button" disabled={!props.isLoaded} onClick={props.onRequestDelete}>이 브라우저의 작업공간 삭제</button>
+          {props.pendingConfirmation ? <div className="workspace-confirmation" role="alert"><p>{confirmationText}</p><div><button className="workspace-clear-button" type="button" onClick={() => void props.onConfirm()}>{confirmationLabel}</button><button className="workspace-cancel-button" type="button" onClick={props.onCancelConfirmation}>취소</button></div></div> : null}
           {props.statusMessage ? <p className="workspace-message" role="status">{props.statusMessage}</p> : null}
         </section>
       </div>

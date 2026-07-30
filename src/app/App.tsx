@@ -2,12 +2,13 @@ import { WorkspaceHome } from "../features/workspace/WorkspaceHome";
 import { useLifeAppState } from "./state/useLifeAppState";
 
 export function App() {
-  const { workspace, statusMessage, isDirty, recoveryRequired, pendingConfirmation, actions } = useLifeAppState();
+  const { workspace, statusMessage, isLoaded, isDirty, recoveryRequired, pendingConfirmation, actions } = useLifeAppState();
 
   return (
     <WorkspaceHome
       workspace={workspace}
       statusMessage={statusMessage}
+      isLoaded={isLoaded}
       isDirty={isDirty}
       recoveryRequired={recoveryRequired}
       pendingConfirmation={pendingConfirmation}

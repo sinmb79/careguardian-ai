@@ -16,8 +16,8 @@
   <h2>1. 현재 웹 기능</h2>
   <p>생활후견 AI 웹 PWA는 작업공간 이름과 사용자가 만든 개인 생활 기능을 브라우저 안에서 정리합니다. 진단, 처방, 건강 관리, 긴급 대응, 음성 입력, 파일 내보내기 또는 자동 백업 기능을 제공하지 않습니다.</p>
   <h2>2. 저장 위치와 접근</h2>
-  <p>입력한 작업공간 데이터는 사용 중인 브라우저의 로컬 저장소에만 보관됩니다. 계정, 자체 서버, 광고, 분석 서비스로 전송하지 않습니다. 브라우저 설정·확장 프로그램·운영체제 또는 배포 환경의 동작까지 보증하지는 않습니다.</p>
-  <p>브라우저 데이터 삭제, 비공개 모드 종료, 저장소 접근 차단 또는 기기 교체 시 작업공간이 사라질 수 있습니다. 다른 탭에서 같은 작업공간을 변경한 경우, 오래된 탭의 저장·삭제는 충돌 메시지와 함께 중단됩니다.</p>
+  <p>입력한 작업공간 데이터는 사용 중인 브라우저의 <strong>IndexedDB</strong>에만 보관됩니다. 계정, 자체 서버, 광고, 분석 서비스로 전송하지 않습니다. 브라우저 설정·확장 프로그램·운영체제 또는 배포 환경의 동작까지 보증하지는 않습니다.</p>
+  <p>브라우저 데이터 삭제, 비공개 모드 종료, IndexedDB 접근 차단 또는 기기 교체 시 작업공간이 사라질 수 있습니다. 다른 탭에서 같은 작업공간을 변경한 경우, IndexedDB의 단일 쓰기 트랜잭션은 오래된 저장·삭제를 충돌 메시지와 함께 중단합니다.</p>
   <h2>3. 보존과 삭제</h2>
   <p>앱 안의 삭제 기능은 이 웹 PWA 전용 작업공간만 지웁니다. 삭제 전에는 확인 단계를 거치며, 삭제 후에는 되돌릴 수 없습니다. 브라우저가 제공하는 사이트 데이터 삭제는 사용자가 브라우저 설정에서 직접 수행해야 합니다.</p>
   <h2>4. 문의</h2>
@@ -29,7 +29,7 @@
   <h2>1. Current web behavior</h2>
   <p>The web PWA keeps a workspace name and user-created personal life features in the browser. It does not provide diagnosis, treatment, emergency response, voice input, file export, or automatic backup.</p>
   <h2>2. Storage and deletion</h2>
-  <p>Workspace data is kept only in browser local storage. There is no account, first-party server, advertising, or analytics service for this web PWA. Browser data removal, private-mode exit, blocked storage, or changing devices can remove the workspace. The in-app delete action affects only this PWA workspace after confirmation and cannot be undone.</p>
+  <p>Workspace data is kept only in browser IndexedDB. There is no account, first-party server, advertising, or analytics service for this web PWA. Browser data removal, private-mode exit, blocked IndexedDB access, or changing devices can remove the workspace. The in-app delete action affects only this PWA workspace after confirmation and cannot be undone.</p>
   <h2>3. Contact</h2>
   <p>Privacy or deletion questions: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
 </body>
