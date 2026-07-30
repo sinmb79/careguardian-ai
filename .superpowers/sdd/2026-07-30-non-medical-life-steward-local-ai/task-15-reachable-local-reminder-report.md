@@ -24,3 +24,11 @@
 
 - 제품 구현: `aa7bd25 fix(mobile): enable local task reminders`
 - 시간대 안정화: `f5cb3be fix(mobile): inject local reminder clock`
+
+## Fix round 1 — 잘못된 기기 시계 차단
+
+- RED: `nowDate()`의 `Invalid Date`, 파싱할 수 없는 `now()`, `Infinity` 기반 잘못된 시계가 미래 알림 날짜를 통과시키는 회귀를 재현했다.
+- GREEN: 날짜가 있는 작업에 한해 시계의 `getTime()`이 유한한지 먼저 확인하고, 잘못된 시계는 `기기 시간을 확인할 수 없습니다. 알림 날짜를 다시 확인해 주세요.` 오류로 작업공간 변경 전에 차단한다.
+- 날짜 없는 작업은 알림 날짜 검증에 시계가 필요하지 않으므로 `nowDate()`가 잘못되어도 정상적으로 생성된다. 기존의 `updatedAt` 타임스탬프는 계속 유효한 `now()` 값을 사용한다.
+- 검증: 대상 3 파일 45 통과, 모바일 타입 검사 통과, 전체 `npm run verify` 30 파일 293 통과, Expo Doctor 18/18 및 모든 릴리스 게이트 통과, `git diff --check` 통과.
+- 제품 수정: `81c396f fix(mobile): fail closed on invalid reminder clocks`
