@@ -2,7 +2,7 @@
 
 ## Release decision
 
-The current source tree is a non-medical, local-first personal workspace. This gate must pass before a build is accepted for a private test or release. It is not a substitute for the Task 10 Android AAB inspection and real-device test.
+The current source tree is a non-medical, local-first personal workspace. This source gate must pass before a build can be considered for a private test or release. Synthetic closed-test submission and operation also require a final AAB, static AAB inspection, Android-native screenshots, and Play Console reconciliation. Samsung/Pixel physical-device evidence is collected during the synthetic closed test; it gates real personal/sensitive data and general release, not submission or start of that synthetic test.
 
 ```mermaid
 flowchart LR
@@ -12,7 +12,11 @@ flowchart LR
   D --> E["gate mutation tests"]
   E --> F["exact production audit baseline"]
   F --> G["same-SHA Pages artifact"]
-  G --> H["Task 10 AAB + device evidence"]
+  G --> H["final AAB + static inspection"]
+  H --> I["Android-native assets + Console reconciliation"]
+  I --> J["synthetic closed test"]
+  J --> K["Samsung/Pixel evidence"]
+  K --> L["real data + general release review"]
 ```
 
 ## Full deletion inventory
@@ -45,7 +49,7 @@ The mobile controller resets in-process copies even when a persistent deletion d
 
 ## Device authentication
 
-The lock invokes `expo-local-authentication` with `disableDeviceFallback: false`. It deliberately does not reject based on `hasHardwareAsync()`: Android PIN/pattern/password credentials may be usable without enrolled biometric hardware. A failed prompt or thrown native error remains locked. Task 10 still must prove the PIN-only path on Samsung and Pixel hardware.
+The lock invokes `expo-local-authentication` with `disableDeviceFallback: false`. It deliberately does not reject based on `hasHardwareAsync()`: Android PIN/pattern/password credentials may be usable without enrolled biometric hardware. A failed prompt or thrown native error remains locked. The synthetic closed test must collect PIN-only-path evidence on Samsung and Pixel hardware before any real personal/sensitive-data phase or general release.
 
 ## Static web protections
 
@@ -82,7 +86,7 @@ On 2026-07-30, `npm audit --omit=dev` reported **Critical 0, High 19, Moderate 1
 
 The current chains are Expo/React Native build and tooling dependencies: Expo CLI/config/prebuild/Metro, React Native codegen/community CLI/dev middleware, Babel/Jest test transform, and glob/minimatch/rimraf/postcss/tar/xcode/uuid transitives. Identified GHSA references are `GHSA-6g55-p6wh-862q`, `GHSA-mh99-v99m-4gvg`, `GHSA-qx2v-qp2m-jg93`, `GHSA-r28c-9q8g-f849`, `GHSA-r292-9mhp-454m`, and `GHSA-w5hq-g745-h8pq`.
 
-No claim is made that these findings are harmless or unreachable in a production AAB. Their AAB reachability remains unproven until Task 10 inspects the built artifact. The mitigation is bounded acceptance plus reproducible lockfile installs, pinned GitHub Actions, release/model policy gates, and mandatory AAB review; upgrading Expo or React Native major versions is intentionally out of scope for this gate.
+No claim is made that these findings are harmless or unreachable in a production AAB. Their AAB reachability remains unproven until the final artifact is inspected. The mitigation is bounded acceptance plus reproducible lockfile installs, pinned GitHub Actions, release/model policy gates, and mandatory final-AAB review before synthetic closed-test submission; upgrading Expo or React Native major versions is intentionally out of scope for this gate. Samsung/Pixel evidence is then collected during that test and must be complete before real personal/sensitive data or general release.
 
 ## Same-SHA Pages deployment
 

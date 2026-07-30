@@ -3,9 +3,11 @@
 - 대상 버전: Android `1.1.0` (`versionCode 7` 이상 AAB)
 - 제품 위치: Productivity / 타깃 연령 18세 이상 / 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정)
 - 데이터 범위: **합성·비민감 생활 일정과 메모만 허용**
-- 테스트 시작 전제: 새 AAB, Play 등록값, `docs/store-listing.md` Data safety 입력값, 실기기 네트워크 관찰을 서로 대조
+- 테스트 시작 전제: 현재 버전 final AAB, AAB 정적 검사, Android-native 스크린샷, Play 등록 문안·선언·`docs/store-listing.md` Data safety 입력값 대조 완료
 
 > 실제 개인정보, 민감정보, 계정 자격증명, 연락처, 위치 정보는 입력하지 마세요. 로컬 AI는 일반 생활 문서 정리만 돕고 결과를 자동 저장하지 않습니다.
+
+Samsung/Pixel 물리 기기 증거는 이 합성 데이터 비공개 테스트 중 수집합니다. 물리 기기 검증은 제출·운영 시작의 절대 선행 조건은 아니지만, 실제 개인정보·민감정보 단계와 정식 출시 전에는 반드시 완료하고 중대한 발견사항을 해소해야 합니다.
 
 ## 1. 참여 전에 확인할 것
 
@@ -80,6 +82,8 @@ Android 버전:
 
 ## 6. Play Console 적용 전 확인
 
-기존 대기 변경과 자산은 새 AAB·문안·스크린샷·feature graphic으로 완전히 교체합니다. 새 제출은 Productivity, 타깃 연령 18세 이상, Health apps declaration `My app doesn't provide any health features`로 작성하며, IARC 콘텐츠 등급은 설문 후 확정합니다. Data safety는 `docs/store-listing.md`의 입력값을 새 AAB와 네트워크 관찰 결과로 대조합니다. Play Console의 실제 opt-in 참여자 수는 목록 인원과 별도로 매일 확인합니다.
+기존 대기 변경과 자산은 final AAB·문안·Android-native 스크린샷·feature graphic으로 완전히 교체합니다. 새 제출은 Productivity, 타깃 연령 18세 이상, Health apps declaration `My app doesn't provide any health features`로 작성하며, IARC 콘텐츠 등급은 설문 후 확정합니다. Data safety는 `docs/store-listing.md`의 입력값을 final AAB 정적 검사와 고정 네트워크 경로 계약으로 대조합니다. 이 조건을 충족하면 합성 데이터 비공개 테스트 제출·운영을 시작할 수 있습니다.
+
+Play Console의 실제 opt-in 참여자 수는 목록 인원과 별도로 매일 확인합니다. 테스트 중 Samsung/Pixel 관찰이 Console 입력과 다르면 즉시 운영을 중단하고 값을 보수적으로 수정합니다. 물리 기기 증거 완료 전 실제 개인정보·민감정보 사용과 정식 출시는 `NO-GO`입니다.
 
 출시 전에는 이전 저장 자료·알림이 전체 삭제에 포함되는지, `index.html` CSP, production 의존성 위험 승인을 현재 증거로 확인해야 합니다. `npm audit --omit=dev`의 2026-07-30 관찰값은 Critical 0 / High 19 / Moderate 10이며, AAB 도달 가능성·owner·검토일·만료일이 있는 risk acceptance gate 전에는 안전 판정으로 해석하지 않습니다.

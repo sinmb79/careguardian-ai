@@ -49,9 +49,18 @@ npm run release:policy-check
 
 ## Remaining external gates
 
-1. Rebuild and inspect a fresh production APK/AAB for the current version and manifest/network contract.
-2. Record Samsung and Pixel physical-device validation, including lock, deletion, local notifications, model installation, and network observation.
-3. Recapture Android-native Play screenshots before any upload; the current web-rendered PNGs are review assets only.
-4. Enter the current listing and Data safety answers in Play Console, verify every answer against the final AAB and observed request path, then operate the closed test with real opt-in counts.
+### Before synthetic closed-test submission and operation
+
+1. Rebuild and statically inspect a fresh final AAB for the current version and manifest/network contract.
+2. Recapture Android-native Play screenshots before any upload; the current web-rendered PNGs are review assets only.
+3. Reconcile the current listing, declarations, and Data safety answers against the final AAB, then enter them in Play Console.
+
+### During the synthetic closed test
+
+Record Samsung and Pixel physical-device evidence for lock, PIN fallback, deletion, local notifications, model installation, and network observation. Physical-device evidence is collected during this stage and is not an absolute prerequisite for submitting or starting the synthetic closed test.
+
+### Before real personal/sensitive data or general release
+
+Require the completed Samsung/Pixel evidence, resolved material findings, and the remaining release approval checks. Until then, real personal or sensitive data remains NO-GO.
 
 The 2026-07-20 organization-account rejection concerned the retired health-oriented product and is retained only as historical background; it is not a next step for this release.

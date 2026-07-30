@@ -27,6 +27,12 @@ There are no accounts, ads, analytics, remote push, or contact, location, microp
 
 The privacy policy distinguishes Hugging Face’s possible external installation-request records from on-device deletion. Closed testing uses only synthetic, non-sensitive schedules and notes.
 
+## Validation stages
+
+- **Start synthetic closed-test submission and operation:** require the final AAB for the current version, static AAB inspection, Android-native screenshots, and reconciliation of the Play Console listing, declarations, and Data safety entries. Samsung/Pixel physical-device evidence is not an absolute prerequisite for this stage.
+- **Collect during the closed test:** use synthetic data on Samsung and Pixel devices to record lock, PIN fallback, deletion, local-notification, model-installation, and network evidence.
+- **Real personal/sensitive data or general release:** remains NO-GO until the physical-device evidence and remaining release checks are complete.
+
 ## Delivery target
 
 - Display name: `생활후견 AI` / `Life Steward AI`

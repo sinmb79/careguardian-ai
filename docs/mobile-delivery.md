@@ -16,10 +16,13 @@
 ```mermaid
 flowchart LR
   Source["source + tests"] --> Prebuild["Expo prebuild"]
-  Prebuild --> AAB["production AAB 1.1.0 / 7"]
+  Prebuild --> AAB["final AAB 1.1.0 / 7"]
   AAB --> Static["manifest·권한·식별자 검사"]
-  AAB --> Device["Samsung + Pixel 실기기 검증"]
-  Device --> Play["Play 비공개 테스트"]
+  Static --> Assets["Android-native screenshots"]
+  Assets --> Console["Play Console 대조"]
+  Console --> Closed["합성 데이터 비공개 테스트"]
+  Closed --> Device["Samsung + Pixel 증거 수집"]
+  Device --> Release["실데이터·정식 출시 검토"]
 ```
 
 ## 구현된 경계
@@ -53,7 +56,9 @@ cd apps/mobile
 npx eas-cli build --platform android --profile production --non-interactive
 ```
 
-새 production AAB에서는 package, versionName, versionCode, target SDK, 64비트 ABI, `allowBackup=false`, 불필요 권한 부재를 확인하고 SHA-256을 기록합니다. `docs/store-listing.md`의 Data safety 입력값은 그 AAB와 Samsung/Pixel 실기기 네트워크 관찰로 대조한 뒤 실제 Console에 저장합니다. 관찰이 설치 직전 고지·사용자 시작 다운로드 예외와 다르면 공유값은 보수적으로 수정합니다.
+새 final AAB에서는 package, versionName, versionCode, target SDK, 64비트 ABI, `allowBackup=false`, 불필요 권한 부재를 정적으로 확인하고 SHA-256을 기록합니다. `docs/store-listing.md`의 Data safety 입력값과 문안·선언을 이 AAB 및 고정 네트워크 경로 계약과 대조한 뒤 실제 Console에 저장합니다. 이 대조와 Android-native 스크린샷 완료까지가 합성 데이터 비공개 테스트 제출·운영 시작 조건입니다.
+
+Samsung/Pixel 네트워크 관찰은 합성 데이터 비공개 테스트 중 수집합니다. 그 결과가 설치 직전 고지·사용자 시작 다운로드 예외 또는 Console 입력과 다르면 테스트를 중단하고 공유값을 보수적으로 수정합니다. 물리 기기 증거와 발견사항 처리는 실제 개인정보·민감정보 단계와 정식 출시의 필수 조건이지만, 합성 데이터 비공개 테스트 제출 자체의 절대 선행 조건은 아닙니다.
 
 ## 스크린샷과 Play 자산
 
@@ -68,12 +73,22 @@ npx eas-cli build --platform android --profile production --non-interactive
 
 재생성은 `npm run build` 뒤 `npx vite preview --port 4173`와 별도 터미널의 `node scripts/capture-screenshots.mjs`로 수행합니다. 스크립트는 phone을 1080×1920 9:16, tablet을 2:1 이하, 8-bit opaque RGB, 각 8MB 이하로 검사합니다. 현재 캡처는 웹 PWA 실제 렌더입니다. **Android Expo 앱을 에뮬레이터 또는 실기기에서 재캡처해 동일 파일을 교체하기 전에는 어떤 현재 PNG도 Play에 업로드하지 않습니다.**
 
-## 출시 전 남은 외부 게이트
+## 단계별 남은 게이트
 
-1. native prebuild, production AAB, 정적 검사와 Samsung·Pixel 검증
-2. 모델 다운로드를 포함한 실기기 네트워크 관찰
-3. Play Console에서 Productivity, 타깃 연령, 최신 문안·자산·AAB로 이전 대기 변경을 교체
-4. Data safety Console 입력값 대조 및 비공개 테스트 opt-in 운영
-5. Android Expo 실제 화면으로 Play 자산을 재캡처·교체하고 업로드 전 확인
+### 합성 데이터 비공개 테스트 제출·운영 시작 전
+
+1. native prebuild, final AAB 생성과 정적 검사
+2. Android Expo 실제 화면으로 Play 자산 재캡처·교체 및 업로드 전 확인
+3. Play Console에서 Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety를 final AAB와 대조
+
+### 합성 데이터 비공개 테스트 중
+
+1. Samsung·Pixel에서 저장·잠금·PIN fallback·삭제·일반 알림·로컬 AI 검증
+2. 모델 다운로드를 포함한 물리 기기 네트워크 관찰과 발견사항 기록
+3. 실제 opt-in 참여자 수와 운영 일수 확인
+
+### 실제 개인정보·민감정보 단계 또는 정식 출시 전
+
+Samsung·Pixel 증거, 중대한 발견사항 해소, 출시 승인 기록이 모두 필요합니다. 그 전까지 실제 데이터 사용과 정식 출시는 `NO-GO`입니다.
 
 현재 준비도는 [2026-07-30 준비도 기록](./security/private-test-readiness-2026-07-30.md)을 따릅니다.
