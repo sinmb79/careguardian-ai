@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import {
@@ -8,6 +9,25 @@ import {
 
 const root = resolve(import.meta.dirname, "..");
 const baseline = loadReleaseFiles(root);
+const expoFileSystemDeclarationFiles = [
+  "index.d.ts",
+  "FileSystem.d.ts",
+  "ExpoFileSystem.types.d.ts",
+  "legacyWarnings.d.ts",
+  "pathUtilities/index.d.ts",
+  "legacy/index.d.ts",
+  "legacy/FileSystem.d.ts",
+  "legacy/FileSystem.types.d.ts"
+];
+const expoFileSystemTypeDeclarations = new Map(
+  expoFileSystemDeclarationFiles.map((file) => [
+    file,
+    readFileSync(
+      resolve(root, "node_modules/expo-file-system/build", file),
+      "utf8"
+    )
+  ])
+);
 
 function mutate(file, transform) {
   const files = new Map(baseline);
@@ -168,6 +188,121 @@ void reviewNetworkFacade.transport("/collect");
 
   assert.equal(report.status, "fail");
   assert.match(report.problems.join("\n"), /unapproved network API \(fetch\)/i);
+});
+
+test("rejects every legacy upload surface and the new expo-file-system download API", () => {
+  const directUpload = mutate(
+    "apps/mobile/src/ui/LocalAiSettingsScreen.tsx",
+    (source) => source.replace(
+      "      const text = await FileSystem.readAsStringAsync(uri);",
+      `      const text = await FileSystem.readAsStringAsync(uri);
+      await FileSystem.uploadAsync("/collect", uri);`
+    )
+  );
+  const uploadTask = mutate(
+    "apps/mobile/src/local-ai/modelStore.ts",
+    (source) => `${source}
+async function reviewUpload(uri: string): Promise<void> {
+  const ExpoFileSystem = await import("expo-file-system/legacy");
+  const task = ExpoFileSystem.createUploadTask("/collect", uri);
+  await task.uploadAsync();
+}
+`
+  );
+  const newApi = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+async function reviewNewFileSystemApi(file: unknown): Promise<void> {
+  const NewFileSystem = await import("expo-file-system");
+  await NewFileSystem.File.downloadFileAsync("/collect", file as never);
+}
+`
+  );
+
+  for (const report of [directUpload, uploadTask, newApi]) {
+    assert.equal(report.status, "fail");
+    assert.match(
+      report.problems.join("\n"),
+      /expo-file-system|upload|downloadFileAsync|network API/i
+    );
+  }
+});
+
+test("rejects extra file-system imports, destructuring, aliases, and computed members", () => {
+  const extraStaticImport = mutate(
+    "apps/mobile/src/local-ai/assistantPolicy.ts",
+    (source) => `${source}
+import * as ReviewFileSystem from "expo-file-system/legacy";
+void ReviewFileSystem.getInfoAsync("file:///private");
+`
+  );
+  const destructured = mutate(
+    "apps/mobile/src/ui/LocalAiSettingsScreen.tsx",
+    (source) => source.replace(
+      '      const FileSystem = await import("expo-file-system/legacy");',
+      '      const { readAsStringAsync: FileSystemRead } = await import("expo-file-system/legacy");'
+    ).replace(
+      "      const text = await FileSystem.readAsStringAsync(uri);",
+      "      const text = await FileSystemRead(uri);"
+    )
+  );
+  const aliased = mutate(
+    "apps/mobile/src/local-ai/modelStore.ts",
+    (source) => source.replace(
+      "    await ExpoFileSystem.makeDirectoryAsync(uri, { intermediates: true });",
+      `    const FileSystemAlias = ExpoFileSystem;
+    await FileSystemAlias.makeDirectoryAsync(uri, { intermediates: true });`
+    )
+  );
+  const computed = mutate(
+    "apps/mobile/src/storage/mobileWorkspaceRepository.ts",
+    (source) => source.replace(
+      "FileSystem.getInfoAsync(`${directory}${separator}${name}`)",
+      'FileSystem["getInfoAsync"](`${directory}${separator}${name}`)'
+    )
+  );
+
+  for (const report of [extraStaticImport, destructured, aliased, computed]) {
+    assert.equal(report.status, "fail");
+    assert.match(
+      report.problems.join("\n"),
+      /expo-file-system|computed call|namespace|import|member/i
+    );
+  }
+});
+
+test("fails closed when either expo-file-system entry point gains a public API", () => {
+  const legacyDeclarations = new Map(expoFileSystemTypeDeclarations);
+  legacyDeclarations.set(
+    "legacy/FileSystem.d.ts",
+    `${legacyDeclarations.get("legacy/FileSystem.d.ts")}
+export declare function transmitFileAsync(url: string, fileUri: string): Promise<void>;
+`
+  );
+  const mainDeclarations = new Map(expoFileSystemTypeDeclarations);
+  mainDeclarations.set(
+    "ExpoFileSystem.types.d.ts",
+    `${mainDeclarations.get("ExpoFileSystem.types.d.ts")}
+export declare function transmitFileAsync(url: string, fileUri: string): Promise<void>;
+`
+  );
+
+  for (const declarations of [legacyDeclarations, mainDeclarations]) {
+    const report = validateReleasePolicy(baseline, {
+      expoFileSystemTypeDeclarations: declarations
+    });
+    assert.equal(report.status, "fail");
+    assert.match(report.problems.join("\n"), /expo-file-system.*inventory/i);
+  }
+});
+
+test("fails closed when the installed expo-file-system version drifts", () => {
+  const report = validateReleasePolicy(baseline, {
+    expoFileSystemVersion: "19.0.24"
+  });
+
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /expo-file-system installed version mismatch/i);
 });
 
 test("rejects an array-joined remote URL used in a conditional registry mutation", () => {
