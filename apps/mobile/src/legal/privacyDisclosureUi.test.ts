@@ -10,7 +10,7 @@ describe("privacy disclosure UI contract", () => {
     );
 
     expect(source).toContain("개인정보처리방침");
-    expect(source).toContain("로그인·광고·분석 SDK·클라우드 AI를 사용하지 않습니다.");
+    expect(source).toContain("로그인·광고·분석 SDK·외부 AI 처리 서비스를 사용하지 않습니다.");
     expect(source).toContain("작업·목록·사용자 기능·프롬프트·결과는 이 기기에 저장됩니다.");
     expect(source).toContain("모델 설치를 사용자가 선택한 경우에만 Hugging Face에 네트워크 요청이 발생합니다.");
     expect(source).toContain("개인정보처리방침 열기");
