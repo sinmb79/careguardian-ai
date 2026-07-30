@@ -1,105 +1,57 @@
-# 돌봄후견 AI
+# 생활후견 AI
 
-보호자가 남긴 생활 지식을 구조화하고 이어받을 수 있게 만드는 `웹 + 모바일` 돌봄 연속성 플랫폼입니다. 웹은 빠른 데모와 백업 경로를 맡고, 모바일은 실제 배포와 현장 사용을 맡습니다.  
 [English](./README.en.md)
+
+생활후견 AI는 일정, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 일반 개인 생산성·로컬 우선 도구입니다. 계정이나 광고·분석 서비스를 만들지 않으며, 웹은 브라우저의 IndexedDB에, 모바일은 SQLCipher와 SecureStore/Android Keystore 경계에 데이터를 둡니다.
 
 ```mermaid
 flowchart LR
-  Core["packages/care-core"] --> Web["Web PWA"]
-  Core --> Mobile["Expo Mobile App"]
-  Web --> Pages["GitHub Pages"]
-  Mobile --> Android["Android phone / tablet"]
-  Mobile --> IOS["iPhone / iPad"]
-  Mobile --> EAS["EAS Build"]
+  Core["packages/life-core\n검증·사용 범위 정책"] --> Web["Web PWA\nIndexedDB"]
+  Core --> Mobile["Expo Mobile\nSQLCipher + SecureStore"]
+  Mobile --> Notify["로컬 알림\ntaskId만 payload에 포함"]
+  Mobile --> AI["선택 설치 로컬 AI\nCPU llama.rn"]
+  Registry["고정 Hugging Face\nGGUF 레지스트리"] --> AI
 ```
 
-## 한눈에 보기
+## 현재 범위
 
-| 항목 | 현재 상태 | 설명 |
-|---|---|---|
-| 공용 돌봄 코어 | 완료 | `packages/care-core`에 매뉴얼, 일정, 복약, 릴레이 로직 공유화 |
-| 웹 PWA | 완료 | GitHub Pages 데모와 백업/암호화 경로 유지 |
-| Expo 모바일 앱 | 비공개 테스트 후보 | Android `1.0.1`, production AAB와 Play 비공개 테스트 준비 |
-| Android 에뮬레이터 검증 | 완료 | 릴리스 APK 기동과 주요 화면 렌더링 확인 |
-| iOS 배포 준비 | 완료 | `apps/mobile/eas.json` 추가, Windows 기준 EAS 경로 정리 |
-| 로컬 암호화·잠금 | 완료 | SQLCipher + SecureStore 키 분리, 기기 인증, 백그라운드 잠금, 화면 캡처 차단 |
-| 복약 알림 준비 | 완료 | 민감정보 없는 매일 로컬 알림, 예약·취소 결과 재확인 |
+| 항목 | 실제 동작 |
+|---|---|
+| 웹 PWA | 개인 작업공간을 브라우저 IndexedDB에만 저장합니다. |
+| 모바일 | 기기 인증, 화면 캡처 차단, 백그라운드 잠금, SQLCipher 저장을 제공합니다. |
+| 일반 알림 | 알림 표시 제목은 일반 문구이며, data payload에는 `taskId`만 둡니다. 제목·메모 본문은 payload에 넣지 않습니다. |
+| 로컬 AI | 사용자가 고정된 GGUF 파일 설치에 동의한 경우에만 기기 CPU에서 요약·문장 다듬기·제목 제안·체크리스트 초안을 수행합니다. 결과는 자동 저장되지 않습니다. |
+| 전체 삭제 | 실행 중인 로컬 AI 중지, 일반 알림 취소, 모델·부분 파일·작업공간·키·메모리 초기화를 순서대로 시도합니다. |
 
-## 시스템 구조
+## 개인정보와 네트워크 경계
 
-```mermaid
-flowchart TD
-  Core["Shared Care Core"] --> WebState["Web State + Web Storage"]
-  Core --> MobileState["Mobile State + SQLCipher/SecureStore"]
-  WebState --> WebUI["Vite React PWA"]
-  MobileState --> MobileUI["Expo React Native UI"]
-  MobileState --> MobileAuth["Device authentication + privacy lock"]
-  MobileState --> MobileNotify["Privacy-safe local notifications"]
-```
+- 계정, 광고, 분석 SDK, 원격 푸시, 연락처·위치·마이크·카메라·외부 저장소 권한을 사용하지 않습니다.
+- 로컬 AI 설치를 선택하면 고정된 Hugging Face GGUF 파일을 요청합니다. 이 요청에서 사용자의 IP 주소와 일반 네트워크 메타데이터는 호스트에 보일 수 있습니다. 프롬프트와 생성 결과는 이 요청으로 전송하지 않습니다.
+- Data safety의 최종 제출값은 Task 10의 production AAB 및 실기기 네트워크 관찰 결과를 확인한 뒤 확정합니다. 현재 문서는 그 전의 구현 기준입니다.
+- 비공개 테스트에서는 합성·비민감 생활 일정과 메모만 사용하세요. 실제 개인정보나 민감정보를 입력하지 마세요.
 
-## 작업 공간
+## 실행과 검증
 
-| 경로 | 역할 | 비고 |
-|---|---|---|
-| `src` | 기존 웹 PWA | Pages 데모 유지 |
-| `apps/mobile` | Expo 앱 | Android, iPhone, iPad 대상 |
-| `packages/care-core` | 공용 도메인 | 웹/모바일 공유 |
-| `docs/mobile-delivery.md` | 배포 준비 문서 | Android/iOS 실행 경로 |
-| `CLAUDE.md` | Claude Code 인계 문서 | 후속 협업용 |
-
-## 빠른 실행
-
-```bash
-npm install
-npm run dev
-```
-
-```bash
+```powershell
+npm ci
 npm test -- --run
 npm run build
 npm run mobile:typecheck
 ```
 
-## Android 실행
+Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알림·로컬 AI 같은 네이티브 경계 확인에는 개발 또는 배포 빌드가 필요합니다.
 
-```powershell
-$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
-$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
-$env:Path="$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:JAVA_HOME\bin;$env:Path"
-npm run mobile:android:go
-```
+## 배포 상태
 
-한국어: 위 명령은 Expo Go 기준의 빠른 UI 확인용입니다. 복약 알림 같은 네이티브 모듈 검증은 `npm run mobile:android:dev`로 진행합니다.  
-English: The command above is the quick Expo Go path. Validate native modules such as medication notifications with `npm run mobile:android:dev`.
+- 표시명: `생활후견 AI` / `Life Steward AI`
+- Android 대상 버전: `1.1.0` (`versionCode 7`)
+- 유지하는 식별자: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
+- Play 등록은 `Productivity`, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 기준으로 준비합니다. IARC 콘텐츠 등급은 설문 후 확정합니다.
 
-## 실제 배포 명령
+## 문서
 
-```powershell
-npx eas-cli login
-npx eas-cli build --platform android --profile production
-npx eas-cli build --platform ios --profile preview
-```
-
-한국어: 이 저장소는 이미 `@sinmb79/careguardian-ai-mobile` EAS 프로젝트와 연결돼 있습니다.  
-English: This repository is already linked to the `@sinmb79/careguardian-ai-mobile` EAS project.
-
-## 공개 링크
-
-```text
-GitHub Repository: https://github.com/sinmb79/careguardian-ai/
-GitHub Pages: https://sinmb79.github.io/careguardian-ai/
-```
-
-## 현재 제약
-
-1. 현재 비공개 테스트는 가상의 인물·약·연락처만 허용합니다. 실제 건강·복약정보 테스트는 실기기 포렌식·네트워크·알림 매트릭스 검증 뒤에 별도로 판단합니다.
-2. Expo Go는 네이티브 보안·알림 검증 대상이 아닙니다. Play 후보는 EAS production AAB로만 만듭니다.
-3. Windows에서는 iOS 시뮬레이터를 직접 돌릴 수 없습니다.
-
-## 참고 문서
-
-1. [모바일 배포 준비 문서](./docs/mobile-delivery.md)
-2. [비공개 테스트 운영 가이드](./docs/private-test-operations.md)
-3. [보안·안전 준비도 감사](./docs/security/private-test-readiness-2026-07-20.md)
-4. [Claude Code 인계 문서](./CLAUDE.md)
-5. [모바일 설계 문서](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)
+1. [모바일 배포와 재캡처 가이드](./docs/mobile-delivery.md)
+2. [비공개 테스트 운영](./docs/private-test-operations.md)
+3. [비공개 테스트 준비도](./docs/security/private-test-readiness-2026-07-30.md)
+4. [스토어 등록 문안](./docs/store-listing.md)
+5. [개인정보처리방침](./public/privacy-policy.html)

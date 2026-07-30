@@ -12,25 +12,39 @@
 <body>
   <h1>생활후견 AI 개인정보 안내</h1>
   <p class="date">최종 수정일: 2026-07-30</p>
-  <p class="notice"><strong>현재 웹 PWA 안내:</strong> 생활후견 AI는 개인 생활 작업을 정리하는 비의료 도구입니다. 실제 개인정보나 민감정보는 입력하지 마세요.</p>
-  <h2>1. 현재 웹 기능</h2>
-  <p>생활후견 AI 웹 PWA는 작업공간 이름과 사용자가 만든 개인 생활 기능을 브라우저 안에서 정리합니다. 진단, 처방, 건강 관리, 긴급 대응, 음성 입력, 파일 내보내기 또는 자동 백업 기능을 제공하지 않습니다.</p>
-  <h2>2. 저장 위치와 접근</h2>
-  <p>입력한 작업공간 데이터는 사용 중인 브라우저의 <strong>IndexedDB</strong>에만 보관됩니다. 계정, 자체 서버, 광고, 분석 서비스로 전송하지 않습니다. 브라우저 설정·확장 프로그램·운영체제 또는 배포 환경의 동작까지 보증하지는 않습니다.</p>
-  <p>브라우저 데이터 삭제, 비공개 모드 종료, IndexedDB 접근 차단 또는 기기 교체 시 작업공간이 사라질 수 있습니다. 다른 탭에서 같은 작업공간을 변경한 경우, IndexedDB의 단일 쓰기 트랜잭션은 오래된 저장·삭제를 충돌 메시지와 함께 중단합니다.</p>
-  <h2>3. 보존과 삭제</h2>
-  <p>앱 안의 삭제 기능은 이 웹 PWA 전용 작업공간만 지웁니다. 삭제 전에는 확인 단계를 거치며, 삭제 후에는 되돌릴 수 없습니다. 브라우저가 제공하는 사이트 데이터 삭제는 사용자가 브라우저 설정에서 직접 수행해야 합니다.</p>
-  <h2>4. 문의</h2>
+  <p class="notice"><strong>비공개 테스트 안내:</strong> 생활후견 AI는 개인 생활 작업을 정리하는 일반 개인 생산성 도구입니다. 테스트에는 합성·비민감 데이터만 사용하고, 실제 개인정보나 민감정보를 입력하지 마세요.</p>
+
+  <h2>1. 웹 PWA의 저장</h2>
+  <p>웹 PWA는 작업공간 이름과 사용자가 만든 생활 기능을 브라우저의 <strong>IndexedDB</strong>에만 보관합니다. 계정, 자체 서버, 광고 또는 분석 서비스로 전송하지 않습니다. 브라우저 데이터 삭제, 비공개 모드 종료, IndexedDB 접근 차단이나 기기 교체는 데이터를 지울 수 있습니다.</p>
+
+  <h2>2. 모바일 앱의 저장과 보호</h2>
+  <p>모바일 앱은 개인 작업공간을 SQLCipher 데이터베이스에 저장하고, 데이터베이스 키를 SecureStore 및 Android Keystore 경계에 분리합니다. 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용합니다. Android 백업은 비활성화합니다.</p>
+  <p>알림 표시 제목은 일반 문구입니다. 기기 내 알림의 data payload에는 <code>taskId</code>만 포함되며, 일정 제목과 메모 본문은 넣지 않습니다.</p>
+
+  <h2>3. 선택 설치 로컬 AI와 네트워크</h2>
+  <p>로컬 AI는 사용자가 고정된 모델 파일 설치에 동의한 경우에만 기기 CPU에서 실행합니다. 요약, 문장 다듬기, 제목 제안, 체크리스트 초안만 제공하며 결과는 자동 저장하지 않습니다.</p>
+  <p>모델 설치를 선택하면 고정된 Hugging Face GGUF 파일을 요청합니다. 이 요청에서 IP 주소와 일반 네트워크 메타데이터는 해당 호스트에 보일 수 있습니다. 프롬프트와 생성 결과는 모델 다운로드 요청으로 전송하지 않습니다. 임의 URL, 임의 모델 또는 외부 플러그인은 실행하지 않습니다.</p>
+
+  <h2>4. 수집하지 않는 항목</h2>
+  <p>생활후견 AI는 계정, 광고, 분석 SDK, 원격 푸시를 사용하지 않습니다. 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다. Data safety의 최종 제출값은 production AAB와 실기기 네트워크 관찰을 완료한 뒤 확정합니다.</p>
+
+  <h2>5. 보존과 삭제</h2>
+  <p>웹의 삭제 기능은 이 PWA 작업공간만 지우며 되돌릴 수 없습니다. 모바일의 <strong>이 기기의 모든 데이터 삭제</strong>는 실행 중인 로컬 AI 중지, 일반 알림 취소, 모델과 부분 다운로드 삭제, 작업공간 데이터베이스·키 삭제, 메모리 초기화를 순서대로 시도합니다. 운영체제·브라우저가 별도로 보관하는 항목은 각 환경의 설정에서 관리해야 합니다.</p>
+
+  <h2>6. 문의</h2>
   <p>개인정보 또는 삭제 관련 문의: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+
   <hr />
   <h1>Privacy Notice (English)</h1>
   <p class="date">Last updated: 2026-07-30</p>
-  <p class="notice"><strong>Current web PWA:</strong> Life Steward AI is a non-medical tool for organizing personal life tasks. Do not enter real personal or sensitive information.</p>
-  <h2>1. Current web behavior</h2>
-  <p>The web PWA keeps a workspace name and user-created personal life features in the browser. It does not provide diagnosis, treatment, emergency response, voice input, file export, or automatic backup.</p>
-  <h2>2. Storage and deletion</h2>
-  <p>Workspace data is kept only in browser IndexedDB. There is no account, first-party server, advertising, or analytics service for this web PWA. Browser data removal, private-mode exit, blocked IndexedDB access, or changing devices can remove the workspace. The in-app delete action affects only this PWA workspace after confirmation and cannot be undone.</p>
-  <h2>3. Contact</h2>
+  <p class="notice"><strong>Closed test:</strong> Life Steward AI is a general personal-productivity tool for personal life tasks. Use only synthetic, non-sensitive data during testing.</p>
+  <h2>1. Local storage</h2>
+  <p>The web PWA keeps its workspace only in browser IndexedDB. The mobile app uses a SQLCipher database with a key separated through SecureStore and Android Keystore. It also uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>
+  <h2>2. Optional model installation</h2>
+  <p>Choosing an install requests a pinned GGUF model file from Hugging Face. The host may see the device IP address and ordinary network metadata. Prompts and generated outputs are not sent with that request; inference runs on the device CPU.</p>
+  <h2>3. Deletion and no-account boundary</h2>
+  <p>There are no accounts, ads, analytics SDKs, or remote push. The displayed notification title is generic and its data payload contains only a task ID. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>
+  <h2>4. Contact</h2>
   <p>Privacy or deletion questions: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
 </body>
 </html>

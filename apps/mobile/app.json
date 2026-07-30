@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "CareGuardian AI",
+    "name": "생활후견 AI",
     "slug": "careguardian-ai-mobile",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sinmb.careguardianai",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "저장된 돌봄 정보를 보호하기 위해 기기 인증을 사용합니다."
+        "NSFaceIDUsageDescription": "저장된 개인 작업공간을 보호하기 위해 기기 인증을 사용합니다."
       }
     },
     "android": {
@@ -27,7 +27,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "versionCode": 6,
+      "versionCode": 7,
       "allowBackup": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
@@ -48,7 +48,7 @@
         "expo-secure-store",
         {
           "configureAndroidBackup": true,
-          "faceIDPermission": "저장된 돌봄 정보를 보호하기 위해 기기 인증을 사용합니다."
+          "faceIDPermission": "저장된 개인 작업공간을 보호하기 위해 기기 인증을 사용합니다."
         }
       ],
       [
@@ -60,7 +60,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "저장된 돌봄 정보를 보호하기 위해 기기 인증을 사용합니다."
+          "faceIDPermission": "저장된 개인 작업공간을 보호하기 위해 기기 인증을 사용합니다."
         }
       ],
       "expo-notifications",

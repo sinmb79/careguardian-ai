@@ -1,156 +1,79 @@
-# Mobile Delivery Guide
+# 생활후견 AI 모바일 배포 가이드
 
-This document covers the delivery pipeline for the `apps/mobile` Expo app to Android phones, Android tablets, iPhone, and iPad.
+이 문서는 `apps/mobile` Expo 앱의 현재 비공개 테스트 준비 범위와 Android·iOS 빌드 경로를 설명합니다. 과거 제품 자료는 현재 제출 근거가 아니며 이 문서에서 인용하지 않습니다.
 
-## Current Status (2026-07-22)
+## 현재 대상
 
-| Item | Status | Notes |
-|---|---|---|
-| Shared care core | Done | `packages/care-core` |
-| Web demo | Maintained | GitHub Pages deployment |
-| Mobile app | Closed-test candidate | `1.0.1`, Android `versionCode 6` |
-| UX accessibility overhaul | Done | 15 files, larger fonts, emoji icons, emotion check-in |
-| Tablet 2-column layout | Done | Web (Tailwind sm:grid-cols-2) + Mobile (flexWrap) |
-| App icons | Done | Generated from SVG (1024, 512, adaptive) |
-| Android emulator | Verified | Production-release APK launch and primary UI render |
-| iOS simulator | N/A | Windows cannot run iOS simulator, use EAS |
-| EAS project | Connected | `@sinmb79/careguardian-ai-mobile` |
-| Production AAB | Built and verified | `apps/mobile/careguardian-ai-private-test-v1.0.1-vc6.aab`, build `c4968750-6d8a-41a9-ab50-b4a55661623e` |
-| Play Console | Rejected; account remediation required | Health/medical app was submitted from a personal developer account; 13 changes are pending resubmission |
-| Privacy policy | Deployed and verified | `https://sinmb79.github.io/careguardian-ai/privacy-policy.html` returned HTTP 200 on 2026-07-20 |
-| Store screenshots | Captured | 4 phone + 2 tablet 7" + 2 tablet 10" + feature graphic |
-| Security gate | Synthetic-data only | SQLCipher, device authentication, privacy-safe local notifications, deletion and screen-capture controls implemented |
-
-## Workspace
+| 항목 | 값 |
+|---|---|
+| 표시명 | `생활후견 AI` / `Life Steward AI` |
+| Android 버전 | `1.1.0` / `versionCode 7` |
+| package | `com.sinmb.careguardianai` (기존 식별자 유지) |
+| EAS slug / project ID | `careguardian-ai-mobile` / `15b9e293-b631-4b77-8cfc-9937cd604dd4` |
+| Play 위치 | Productivity, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정) |
+| 테스트 데이터 | 합성·비민감 생활 일정과 메모만 허용 |
 
 ```mermaid
 flowchart LR
-  Core["packages/care-core"] --> Web["Web PWA"]
-  Core --> Mobile["Expo Mobile App"]
-  Web --> Pages["GitHub Pages"]
-  Mobile --> AAB["Production AAB"]
-  AAB --> PlayConsole["Google Play Console"]
-  PlayConsole --> ClosedTest["Closed test / Alpha"]
-  Mobile --> EAS["EAS Build"]
-  EAS --> IOS["iOS TestFlight"]
+  Source["source + tests"] --> Prebuild["Expo prebuild"]
+  Prebuild --> AAB["production AAB 1.1.0 / 7"]
+  AAB --> Static["manifest·권한·식별자 검사"]
+  AAB --> Device["Samsung + Pixel 실기기 검증"]
+  Device --> Play["Play 비공개 테스트"]
 ```
 
-## Required Local Tools
+## 구현된 경계
 
-| Tool | Status | Path |
-|---|---|---|
-| Node.js | v24.14.0 | system |
-| Android Studio | Installed | `C:\Program Files\Android\Android Studio` |
-| Android SDK | Installed | `%LOCALAPPDATA%\Android\Sdk` |
-| Emulator AVD | Ready | `Medium_Phone_API_36.1` |
-| Java | Android Studio JBR | `C:\Program Files\Android\Android Studio\jbr` |
-| Xcode | N/A | iOS simulator requires macOS |
+- 개인 작업공간은 SQLCipher에 저장하고, 키는 SecureStore/Android Keystore 경계에 둡니다.
+- 기기 인증, 백그라운드 잠금, 화면 캡처 차단, Android 백업 비활성화를 사용합니다.
+- 로컬 알림은 기기에서만 예약합니다. 표시 제목은 일반 문구이며 data payload에는 `taskId`만 둡니다.
+- 계정, 광고, 분석 SDK, 원격 푸시, 연락처·위치·마이크·카메라·외부 저장소 권한을 사용하지 않습니다.
+- 로컬 AI는 고정 Hugging Face GGUF 파일을 사용자가 선택 설치한 뒤 기기 CPU에서 실행합니다. 설치 요청에서는 IP 주소와 일반 네트워크 메타데이터가 호스트에 보일 수 있으며, 프롬프트와 출력은 전송하지 않습니다.
+- 전체 삭제는 실행 중인 추론 중지, 일반 알림 취소, 모델·부분 파일, SQLCipher 작업공간, SecureStore 키, 메모리 초기화를 순서대로 수행합니다.
 
-## Windows Commands
-
-Set environment variables in PowerShell first:
+## 로컬 도구와 명령
 
 ```powershell
 $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
 $env:Path="$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:JAVA_HOME\bin;$env:Path"
+
+npm ci
+npm test -- --run
+npm run build
+npm run mobile:typecheck
 ```
 
-Quick UI check (Expo Go):
-```powershell
-npm run mobile:android:go
-```
+`npm run mobile:android:go`는 웹·UI 빠른 확인용입니다. SQLCipher, 기기 인증, 일반 알림, 로컬 AI는 개발 빌드(`npm run mobile:android:dev`) 또는 production AAB에서 검증해야 합니다. Windows에서는 iOS 시뮬레이터를 실행할 수 없으므로 iOS는 EAS와 TestFlight를 별도 경로로 다룹니다.
 
-Native module verification (local native build):
-```powershell
-npm run mobile:android:dev
-```
+## production AAB
 
-## Build and Submit
-
-### Android Production Build
 ```powershell
 cd apps/mobile
 npx eas-cli build --platform android --profile production --non-interactive
 ```
 
-### iOS Preview Build
-```powershell
-npx eas-cli build --platform ios --profile preview
-```
+Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트 ABI, `allowBackup=false`, 불필요 권한 부재를 확인하고 SHA-256을 기록합니다. Data safety 최종값은 그 AAB와 Samsung/Pixel 실기기 네트워크 관찰 후에만 확정합니다.
 
-### Download AAB
+## 스크린샷과 Play 자산
 
-The AAB is intentionally ignored by Git. The verified local candidate is `apps/mobile/careguardian-ai-private-test-v1.0.1-vc6.aab`.
+`docs/screenshots/`에는 웹 PWA의 실제 렌더를 기준으로 한 아래 합성 데이터 자산을 둡니다. 이는 레이아웃·문구 검토용 **잠정 자산이며 Play 업로드 후보가 아닙니다.** 웹 화면의 “이 브라우저” 문구를 Android 앱 화면으로 오인해서는 안 됩니다.
 
-- Size: `63,532,732` bytes
-- SHA-256: `2E67A5011192EF22D3F3E4B406BCE5A6C685AAB2641F152006C960842D649AF0`
-- EAS build: `https://expo.dev/accounts/sinmb79/projects/careguardian-ai-mobile/builds/c4968750-6d8a-41a9-ab50-b4a55661623e`
-- EAS artifact: `https://expo.dev/artifacts/eas/2tYRdcdMuYu5e4CmUMtRgm28prS6yOt7YF-ORcDrehQ.aab`
+| 파일 | 크기 | 용도 |
+|---|---:|---|
+| `feature-graphic.png` | 1024×500 | 무문자 feature graphic |
+| `phone-screenshot-{1-4}.png` | 1080×1920 | phone 스크린샷 4장 |
+| `tablet7-screenshot-{1-2}.png` | 900×1536 | 7-inch tablet 2장 |
+| `tablet10-screenshot-{1-2}.png` | 1600×2560 | 10-inch tablet 2장 |
 
-## Play Store Assets
+재생성은 `npm run build` 뒤 `npx vite preview --port 4173`와 별도 터미널의 `node scripts/capture-screenshots.mjs`로 수행합니다. 스크립트는 phone을 1080×1920 9:16, tablet을 2:1 이하, 8-bit opaque RGB, 각 8MB 이하로 검사합니다. 현재 캡처는 웹 PWA 실제 렌더입니다. **Task 10에서 Android Expo 앱을 에뮬레이터 또는 실기기에서 재캡처해 동일 파일을 최종 교체하는 것이 출시 차단 게이트입니다.**
 
-All in `docs/screenshots/`:
+## 출시 전 남은 외부 게이트
 
-| File | Size | Purpose |
-|---|---|---|
-| `feature-graphic.png` | 1024x500 | Play Store banner |
-| `icon-512.png` | 512x512 | High-res icon |
-| `phone-screenshot-{1-4}.png` | 1081x2402 | Phone screenshots |
-| `tablet7-screenshot-{1-2}.png` | 900x1536 | 7-inch tablet screenshots |
-| `tablet10-screenshot-{1,1-companion}.png` | 1600x2560 | 10-inch tablet screenshots (2-column layout) |
+1. Task 10의 native prebuild, production AAB, 정적 검사와 Samsung·Pixel 검증
+2. 모델 다운로드를 포함한 실기기 네트워크 관찰
+3. Play Console에서 Productivity, 타깃 연령, 최신 문안·자산·AAB로 이전 대기 변경을 교체
+4. 최종 Data safety 답변 확정과 비공개 테스트 opt-in 운영
+5. Android Expo 실제 화면으로 Play 자산을 재캡처·교체하고 업로드 전 확인
 
-Recapture with: `node scripts/capture-screenshots.mjs` (requires `npm run build` first, then `npx vite preview --port 4173`)
-
-## Play Console Status
-
-Google Play Console: developer account **22B**, app **CareGuardian AI**
-
-Observed in the console on 2026-07-20 and rechecked on 2026-07-22:
-
-- Internal test: legacy `versionCode 2` active. It is retired and must not be promoted.
-- Closed test `Alpha`: `1.0.1 (versionCode 6)` AAB uploaded and release saved. It was submitted for Google review with the other pending changes on 2026-07-20.
-- Play recognized minSdk 24+, targetSdk 36 and four ABIs. The only release warning is the optional R8/ProGuard deobfuscation mapping recommendation; code shrinking is not enabled in this project.
-- Data safety: no collection / no sharing, with the deployed privacy-policy URL. Continue real-device network observation during testing.
-- Health declaration: **Medication and Treatment Management** saved.
-- Category: **Medical** saved.
-- Advertising ID declaration: **not used** saved, consistent with the final manifest having no `AD_ID` permission.
-- Google rejected the submission under **Play Console Requirements** in the **Developer Account** area because health/medical apps must be submitted by an organization account. This is not an AAB, code-security or Data safety rejection.
-- The `22B` developer account is currently Personal, has no official website registered, and shows `Change account type` disabled until an organization website is added and verified.
-- Publishing overview again shows 13 changes pending review submission, including the Alpha release, Korean store listing, Data safety, Health, privacy policy and Medical category.
-- Korea is targeted. Selected tester lists are `22B` (1), `젤리테스터` (44) and `테스터` (8), so listed capacity is up to 53. Duplicate accounts and users who have not opted in do not count as active testers.
-- Keep `Medical` and `Medication and Treatment Management`: the app genuinely stores entered medication information and schedules local medication reminders. Do not weaken declarations to bypass the account requirement.
-- Follow `docs/google-play-organization-account-remediation-2026-07-22.md`; after organization conversion, wait at least 72 hours before resubmission.
-- Managed publishing remains off. After a future approval, the release may automatically become available to the selected tester lists.
-- Closed-test production access requires at least 12 opted-in testers for 14 consecutive days; follow `docs/private-test-operations.md`.
-
-## Known Limits
-
-| Item | Description |
-|---|---|
-| Expo Go | UI preview only; never use it as security or notification evidence |
-| Voice | Mobile input/output disabled for this closed test; web SpeechRecognition input disabled by default |
-| Mobile encryption | SQLCipher and SecureStore/Keystore key separation compiled and statically verified; real-device forensic validation remains |
-| Network | Limited Android 15 emulator observation showed 0-byte app UID traffic; Samsung/Pixel real-device observation remains required before a categorical no-transmission claim |
-| iOS validation | Requires EAS cloud build + TestFlight |
-
-## Closed-test policy and safety gate (2026-07-20)
-
-- Use synthetic people, medicines, and contacts only until real-device forensic, deletion, notification-matrix and runtime-network behavior are verified.
-- The mobile CareManual uses an app-specific SQLCipher database with a random 256-bit key stored separately through SecureStore/Android Keystore. Stored profiles require device authentication, background transitions relock the UI, and screen capture is blocked.
-- Local daily notification scheduling is not medication adherence confirmation. Notifications may be delayed or missed because of permission, battery, OS/vendor policy, or device state.
-- The app no longer invents a dose, time, administration method, care instruction, or family relationship when a user enters only a name.
-- The app is not a medical device and does not diagnose, treat, prescribe, validate medication, confirm a dose was taken, or place emergency calls.
-- Expo and FCM/Firebase components may be present. Do not make a no-network, no-analytics, or no-data-transmission claim until dynamic runtime verification has completed.
-- Web SpeechRecognition input is disabled by default. The web PWA has a fixed demo passphrase in localStorage; no real personal data may be entered. Relay exports can be plaintext.
-- The Korean-first/English policy is deployed at the URL above and returned HTTP 200 on 2026-07-20. The first review was rejected only for the developer-account type. Convert and verify the account, wait 72 hours, resubmit, and obtain Google approval before treating the 14-day requirement as started. Then verify that at least 12 unique testers have actually opted in, and keep the contact email `sinmb79@naver.com`.
-
-## Handoff
-
-When resuming work, read:
-1. `README.md` — current state and verified commands
-2. `docs/private-test-operations.md` — tester scope, 14-day plan and stop criteria
-3. `docs/security/private-test-readiness-2026-07-20.md` — security and safety audit
-4. `docs/store-listing.md` — Play Store text and declaration basis
-5. `docs/google-play-organization-account-remediation-2026-07-22.md` — account rejection recovery
-6. `CLAUDE.md` — historical handoff summary
+현재 준비도는 [2026-07-30 준비도 기록](./security/private-test-readiness-2026-07-30.md)을 따릅니다.
