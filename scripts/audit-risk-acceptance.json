@@ -1,0 +1,21 @@
+{
+  "owner": "sinmb79",
+  "reviewDate": "2026-08-06",
+  "expiresOn": "2026-08-13",
+  "acceptedCounts": { "critical": 0, "high": 19, "moderate": 10, "low": 0, "info": 0 },
+  "acceptedPackages": [
+    "@expo/cli", "@expo/config", "@expo/config-plugins", "@expo/metro-config", "@expo/prebuild-config",
+    "@jest/transform", "@react-native/babel-plugin-codegen", "@react-native/babel-preset", "@react-native/codegen",
+    "@react-native/community-cli-plugin", "@react-native/dev-middleware", "babel-jest", "babel-plugin-istanbul",
+    "babel-preset-expo", "brace-expansion", "chromium-edge-launcher", "expo", "expo-asset", "expo-constants",
+    "expo-notifications", "glob", "minimatch", "postcss", "react-native", "rimraf", "tar", "test-exclude", "uuid", "xcode"
+  ],
+  "advisoryIds": [
+    "GHSA-6g55-p6wh-862q", "GHSA-mh99-v99m-4gvg", "GHSA-qx2v-qp2m-jg93",
+    "GHSA-r28c-9q8g-f849", "GHSA-r292-9mhp-454m", "GHSA-w5hq-g745-h8pq"
+  ],
+  "mitigations": [
+    "npm ci lockfile reproducibility", "pinned GitHub Actions", "non-medical release policy gate",
+    "pinned model registry gate", "production AAB static review before release"
+  ]
+}

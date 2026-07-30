@@ -32,3 +32,4 @@ Task 6: complete (commits d0399fe..62e00fc, review clean)
 Task 6: fix round 1 result (6 Important and 1 Minor addressed, 0 known open; typed lifecycle and callback isolation, identity-bound terminal resume, serialized control queue, native models-root confinement, backup/fsync/post-verify replacement, production full-delete integration; commit 4405063)
 Task 6: fix round 2 result (2 remaining Important addressed, 0 known open; active cleanup rejects immediately without blocking cancel/remove-all, native backup unlink is an explicit commit point that preserves verified new on final fsync failure; commit 6bf7bed)
 Task 8: complete (commits 55ea3f1..d50d453, review clean)
+Task 9: security/release gates implemented; full deletion inventory, PIN fallback, CSP, model/release/audit gates, SHA-pinned CI, and evidence added. Pending full verification and commit.

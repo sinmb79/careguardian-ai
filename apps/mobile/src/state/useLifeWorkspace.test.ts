@@ -84,8 +84,11 @@ describe("life workspace state", () => {
       cancelNotifications: async () => { throw new Error("one reminder remains"); }
     });
 
-    await expect(controller.deleteAll()).rejects.toThrow("one reminder remains");
-    expect(deleteWorkspace).not.toHaveBeenCalled();
+    await expect(controller.deleteAll()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ domain: "scheduled-notifications" })]
+    });
+    expect(deleteWorkspace).toHaveBeenCalledOnce();
   });
 
   test("requires explicit deletion before clearing previous test data", async () => {
@@ -249,7 +252,7 @@ describe("life workspace state", () => {
     expect(events).toEqual(["inference", "notifications", "models", "workspace"]);
   });
 
-  test("keeps memory and repository data intact when model deletion fails", async () => {
+  test("keeps UI locked while deleting independent workspace data after model deletion fails", async () => {
     const deleteWorkspace = vi.fn();
     const controller = createLifeWorkspaceController({
       load: async () => fixtureWorkspace,
@@ -262,12 +265,15 @@ describe("life workspace state", () => {
     });
     await controller.load();
 
-    await expect(controller.deleteAll()).rejects.toThrow("model deletion failed");
+    await expect(controller.deleteAll()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ domain: "local-model-files" })]
+    });
 
-    expect(deleteWorkspace).not.toHaveBeenCalled();
+    expect(deleteWorkspace).toHaveBeenCalledOnce();
     expect(controller.snapshot()).toMatchObject({
-      workspace: fixtureWorkspace,
-      hasStoredWorkspace: true,
+      workspace: expect.objectContaining({ id: "personal-workspace", tasks: [], lists: [], records: [] }),
+      hasStoredWorkspace: false,
       privacyGate: "locked",
       isDeleting: false
     });

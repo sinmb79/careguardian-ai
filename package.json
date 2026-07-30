@@ -27,7 +27,12 @@
     "mobile:doctor": "npm --workspace apps/mobile run doctor",
     "preview": "vite preview",
     "test": "vitest",
-    "verify": "npm test -- --run && npm run build && npm run mobile:typecheck && npm run mobile:doctor"
+    "release:policy-check": "node scripts/check-non-medical-release.mjs",
+    "release:model-check": "node scripts/check-model-registry.mjs",
+    "release:model-check:test": "node --test scripts/check-model-registry.node-test.mjs",
+    "release:static-security-check": "node scripts/check-static-security.mjs",
+    "release:audit-policy": "node scripts/check-production-audit.mjs",
+    "verify": "npm test -- --run && npm run build && npm run release:static-security-check && npm run mobile:typecheck && npm run mobile:doctor && npm run release:policy-check && npm run release:model-check && npm run release:model-check:test && npm run release:audit-policy"
   },
   "dependencies": {
     "@life-steward/life-core": "file:packages/life-core",

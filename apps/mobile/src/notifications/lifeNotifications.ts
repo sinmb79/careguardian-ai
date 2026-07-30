@@ -94,6 +94,18 @@ export async function cancelPreviousTestNotifications(): Promise<void> {
   await cancelNotificationsWithPrefix(PREVIOUS_TEST_IDENTIFIER_PREFIX, "이전 테스트 알림 취소 검증에 실패했습니다.");
 }
 
+/** This app owns no unrelated notification namespace. Full deletion therefore
+ * cancels every scheduled notification and verifies the native scheduler is empty. */
+export async function cancelAllScheduledNotificationsForFullDeletion(): Promise<void> {
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    const remaining = await Notifications.getAllScheduledNotificationsAsync();
+    if (remaining.length > 0) throw new Error(`${remaining.length} scheduled notification(s) remain`);
+  } catch (error) {
+    throw new Error(`full notification deletion verification failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function syncLifeNotifications(tasks: LifeTask[]): Promise<number> {
   const requests = tasks.flatMap((task) => {
     try {

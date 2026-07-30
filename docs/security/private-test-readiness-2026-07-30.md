@@ -56,3 +56,6 @@
 ## 역사 자료 경계
 
 `docs/security/private-test-readiness-2026-07-20.md`와 과거 건강형 Play 관련 문서는 이전 구현의 역사 기록입니다. 현재 출시 근거·스토어 등록·Data safety 근거로 사용하지 않습니다.
+# Task 9 security-gate update (2026-07-30)
+
+The source-level full-delete, PIN fallback, static CSP, non-medical release policy, pinned-model registry, and bounded audit-policy gates are now implemented. See [security-release-gate.md](../security-release-gate.md) for the enumerated deletion inventory and commands. This is not Task 10 evidence: Android AAB inspection and Samsung/Pixel PIN-only validation remain release blockers.

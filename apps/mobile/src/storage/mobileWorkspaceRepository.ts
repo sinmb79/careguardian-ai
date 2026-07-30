@@ -56,6 +56,33 @@ export interface MobileWorkspaceRepository {
   hasWorkspace(): Promise<boolean>;
   hasPreviousTestData(): Promise<boolean>;
   deletePreviousTestData(): Promise<void>;
+  /** Deletes every app-owned current and legacy persistence namespace. */
+  deleteAllKnownData(): Promise<void>;
+}
+
+/**
+ * Inventory for destructive cleanup. Legacy names are intentionally retained so
+ * a release install can erase health-era records without opening or migrating them.
+ */
+export const MOBILE_PERSISTENCE_INVENTORY = {
+  current: {
+    plaintextKeys: [] as readonly string[],
+    secureStoreKeys: [WORKSPACE_CONTEXT_KEY, DATABASE_CREATED_KEY, DATABASE_KEY],
+    databaseNames: [DATABASE_NAME]
+  },
+  legacyCareguardian: {
+    plaintextKeys: [PREVIOUS_PLAINTEXT_KEY],
+    secureStoreKeys: [PREVIOUS_CONTEXT_KEY, PREVIOUS_DATABASE_KEY],
+    databaseNames: [PREVIOUS_DATABASE_NAME]
+  }
+} as const;
+
+export class MobileDataDeletionError extends Error {
+  constructor(readonly namespace: string, cause: unknown) {
+    super(`mobile data deletion failed for ${namespace}`);
+    this.name = "MobileDataDeletionError";
+    this.cause = cause;
+  }
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -76,6 +103,9 @@ function parseWorkspace(serialized: string): PersonalWorkspace {
 
 export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceStorageDependencies): MobileWorkspaceRepository {
   const databaseName = dependencies.databaseName ?? DATABASE_NAME;
+  const currentSecureStoreKeys = [WORKSPACE_CONTEXT_KEY, DATABASE_CREATED_KEY, DATABASE_KEY] as const;
+  const legacySecureStoreKeys = [PREVIOUS_CONTEXT_KEY, PREVIOUS_DATABASE_KEY] as const;
+  const legacyPlaintextKeys = [PREVIOUS_PLAINTEXT_KEY] as const;
 
   async function getOrCreateDatabaseKey(): Promise<string> {
     const existing = await dependencies.secureStore.getItem(DATABASE_KEY);
@@ -187,7 +217,7 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
     async deleteWorkspace(): Promise<void> {
       await dependencies.deleteDatabase(databaseName);
       let firstDeletionError: unknown;
-      for (const key of [WORKSPACE_CONTEXT_KEY, DATABASE_CREATED_KEY, DATABASE_KEY]) {
+      for (const key of currentSecureStoreKeys) {
         try {
           await dependencies.secureStore.deleteItem(key);
         } catch (error) {
@@ -209,6 +239,41 @@ export function createMobileWorkspaceRepository(dependencies: MobileWorkspaceSto
       await dependencies.legacyStorage.removeItem(PREVIOUS_PLAINTEXT_KEY);
       await dependencies.secureStore.deleteItem(PREVIOUS_CONTEXT_KEY);
       await dependencies.secureStore.deleteItem(PREVIOUS_DATABASE_KEY);
+    },
+
+    async deleteAllKnownData(): Promise<void> {
+      const failures: MobileDataDeletionError[] = [];
+      const allDatabases = [...new Set([databaseName, ...MOBILE_PERSISTENCE_INVENTORY.legacyCareguardian.databaseNames])];
+      const allPlaintextKeys = [...legacyPlaintextKeys];
+      const allSecureStoreKeys = [...currentSecureStoreKeys, ...legacySecureStoreKeys];
+
+      for (const name of allDatabases) {
+        try {
+          await dependencies.deleteDatabase(name);
+          if (await dependencies.databaseExists(name)) throw new Error("database file remains after deletion");
+        } catch (error) {
+          failures.push(new MobileDataDeletionError(`sqlite:${name}`, error));
+        }
+      }
+      for (const key of allPlaintextKeys) {
+        try {
+          await dependencies.legacyStorage.removeItem(key);
+          if ((await dependencies.legacyStorage.getItem(key)) !== null) throw new Error("plaintext value remains after deletion");
+        } catch (error) {
+          failures.push(new MobileDataDeletionError(`kv-store:${key}`, error));
+        }
+      }
+      for (const key of allSecureStoreKeys) {
+        try {
+          await dependencies.secureStore.deleteItem(key);
+          if ((await dependencies.secureStore.getItem(key)) !== null) throw new Error("SecureStore value remains after deletion");
+        } catch (error) {
+          failures.push(new MobileDataDeletionError(`secure-store:${key}`, error));
+        }
+      }
+      if (failures.length > 0) {
+        throw new AggregateError(failures, "mobile full-data deletion verification failed");
+      }
     }
   };
 }
@@ -228,3 +293,4 @@ export const deleteWorkspace = defaultRepository.deleteWorkspace;
 export const hasWorkspace = defaultRepository.hasWorkspace;
 export const hasPreviousTestData = defaultRepository.hasPreviousTestData;
 export const deletePreviousTestData = defaultRepository.deletePreviousTestData;
+export const deleteAllKnownMobileData = defaultRepository.deleteAllKnownData;

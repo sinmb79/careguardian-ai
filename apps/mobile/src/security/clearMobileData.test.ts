@@ -5,9 +5,9 @@ describe("clearMobileData", () => {
   test("uses the explicit notification, model, repository, memory deletion order", async () => {
     const events: string[] = [];
     await clearMobileData({
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => void events.push("models"),
-      deleteWorkspace: async () => void events.push("workspace"),
+      deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
       resetMemory: vi.fn(() => void events.push("memory"))
     });
     expect(events).toEqual(["notifications", "models", "workspace", "memory"]);
@@ -17,25 +17,28 @@ describe("clearMobileData", () => {
     const events: string[] = [];
     await clearMobileData({
       stopActiveInference: async () => void events.push("inference"),
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => void events.push("models"),
-      deleteWorkspace: async () => void events.push("workspace"),
+      deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
       resetMemory: () => void events.push("memory")
     });
 
     expect(events).toEqual(["inference", "notifications", "models", "workspace", "memory"]);
   });
 
-  test("does not hide a step failure or continue deleting later stores", async () => {
+  test("attempts independent domains after a failure and returns typed aggregate failures", async () => {
     const events: string[] = [];
-    const deleteWorkspace = vi.fn();
+    const deleteAllKnownWorkspaceData = vi.fn();
     await expect(clearMobileData({
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => { throw new Error("partial cleanup failed"); },
-      deleteWorkspace,
+      deleteAllKnownWorkspaceData,
       resetMemory: vi.fn(() => void events.push("memory"))
-    })).rejects.toThrow("partial cleanup failed");
-    expect(deleteWorkspace).not.toHaveBeenCalled();
-    expect(events).toEqual(["notifications"]);
+    })).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ domain: "local-model-files" })]
+    });
+    expect(deleteAllKnownWorkspaceData).toHaveBeenCalledOnce();
+    expect(events).toEqual(["notifications", "memory"]);
   });
 });

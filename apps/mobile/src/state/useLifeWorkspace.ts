@@ -8,6 +8,7 @@ import {
 } from "@life-steward/life-core";
 import {
   cancelAllLifeNotifications,
+  cancelAllScheduledNotificationsForFullDeletion,
   cancelPreviousTestNotifications,
   syncLifeNotifications
 } from "../notifications/lifeNotifications";
@@ -18,8 +19,8 @@ import {
   type PrivacyGateState
 } from "../security/privacyGate";
 import {
+  deleteAllKnownMobileData,
   deletePreviousTestData,
-  deleteWorkspace,
   hasPreviousTestData,
   loadWorkspace,
   saveWorkspace
@@ -67,10 +68,13 @@ export type LifeWorkspaceControllerDependencies = {
   deletePreviousTestData?(): Promise<void>;
   save(workspace: PersonalWorkspace): Promise<void>;
   stopActiveInference?(): Promise<void>;
+  /** Compatibility seam for controller tests; production uses deleteAllKnownWorkspaceData. */
   deleteWorkspace(): Promise<void>;
+  deleteAllKnownWorkspaceData?(): Promise<void>;
   removeAllModels(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
   cancelNotifications(): Promise<void>;
+  cancelAllScheduledNotifications?(): Promise<void>;
   cancelPreviousTestNotifications?(): Promise<void>;
   authenticate?(): Promise<AuthenticationResult>;
 };
@@ -186,14 +190,15 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       try {
         await clearMobileData({
           stopActiveInference: dependencies.stopActiveInference,
-          cancelLifeNotifications: dependencies.cancelNotifications,
+          cancelAllScheduledNotifications: dependencies.cancelAllScheduledNotifications ?? dependencies.cancelNotifications,
           removeAllModels: dependencies.removeAllModels,
-          deleteWorkspace: dependencies.deleteWorkspace,
+          deleteAllKnownWorkspaceData: dependencies.deleteAllKnownWorkspaceData ?? dependencies.deleteWorkspace,
           resetMemory: () => patch({
-            workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked",
+            workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "locked",
             statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
           })
         });
+        patch({ privacyGate: "unlocked", statusMessage: "이 기기의 모든 로컬 데이터를 삭제했습니다." });
       } finally {
         finish("delete", id, { isDeleting: false });
       }
@@ -246,8 +251,10 @@ export function useLifeWorkspace(): LifeWorkspaceState {
     controllerRef.current = createLifeWorkspaceController({
       load: loadWorkspace, hasPreviousTestData, deletePreviousTestData, save: saveWorkspace,
       stopActiveInference: () => stopAndReleaseLocalModel("full-data-delete"),
-      deleteWorkspace, removeAllModels, syncNotifications: syncLifeNotifications,
+      deleteWorkspace: deleteAllKnownMobileData,
+      deleteAllKnownWorkspaceData: deleteAllKnownMobileData, removeAllModels, syncNotifications: syncLifeNotifications,
       cancelNotifications: cancelAllLifeNotifications,
+      cancelAllScheduledNotifications: cancelAllScheduledNotificationsForFullDeletion,
       cancelPreviousTestNotifications, authenticate: authenticateForSensitiveAccess
     });
   }
