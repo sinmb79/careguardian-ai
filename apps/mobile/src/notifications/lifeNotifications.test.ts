@@ -39,7 +39,7 @@ describe("life notifications", () => {
     const request = buildLifeNotification(fixtureWorkspace.tasks[0]);
 
     expect(request.content.title).toBe("생활 일정 알림");
-    expect(request.content.data).toEqual({ notificationType: "life-task", taskId: "buy-fruit" });
+    expect(request.content.data).toEqual({ taskId: "buy-fruit" });
     expect(JSON.stringify(request)).not.toMatch(/약|복약|질환|치료|과일 사기/);
   });
 

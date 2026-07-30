@@ -20,7 +20,7 @@ export type LifeNotificationRequest = {
   content: {
     title: "생활 일정 알림";
     body: "";
-    data: { notificationType: "life-task"; taskId: string };
+    data: { taskId: string };
   };
   trigger: { type: "date"; date: Date; channelId?: string };
 };
@@ -39,7 +39,7 @@ export function buildLifeNotification(task: LifeTask): LifeNotificationRequest {
     content: {
       title: "생활 일정 알림",
       body: "",
-      data: { notificationType: "life-task", taskId: task.id }
+      data: { taskId: task.id }
     },
     trigger: { type: "date", date, channelId: Platform.OS === "android" ? CHANNEL_ID : undefined }
   };
