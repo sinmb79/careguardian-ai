@@ -655,6 +655,54 @@ describe("model store", () => {
     expect(events).toEqual(["cancel", "writer-terminal", "models-delete"]);
   });
 
+  test.each(["cancel", "removeAllModels"] as const)(
+    "rejects active cleanup immediately so %s can cancel the native writer",
+    async (nextOperation) => {
+      const fileSystem = new FakeFileSystem();
+      let finishWriter!: () => void;
+      const writerTerminal = new Promise<void>((resolveWriter) => {
+        finishWriter = resolveWriter;
+      });
+      let cancelCalls = 0;
+      fileSystem.createDownload = (url, destinationUri) => {
+        fileSystem.downloads.push({ url, destinationUri });
+        return {
+          download: async () => {
+            fileSystem.files.set(destinationUri, 10);
+            await writerTerminal;
+            return undefined;
+          },
+          pause: async () => ({ resumeData: "10" }),
+          cancel: async () => {
+            cancelCalls += 1;
+            finishWriter();
+          }
+        };
+      };
+      const store = createModelStore({
+        fileSystem,
+        hasher: { hashFile: async () => installable.sha256! }
+      });
+      const downloading = store.downloadModel(installable);
+      while (fileSystem.downloads.length === 0) await Promise.resolve();
+
+      await expect(store.cleanupPartialDownloads()).rejects.toMatchObject({
+        code: "operation_in_progress"
+      });
+      const interrupting = nextOperation === "cancel"
+        ? store.cancelActiveDownload()
+        : store.removeAllModels();
+
+      await expect(downloading).rejects.toMatchObject({ code: "download_cancelled" });
+      await expect(interrupting).resolves.toBeUndefined();
+      expect(cancelCalls).toBe(1);
+      expect(fileSystem.replacements).toEqual([]);
+      if (nextOperation === "removeAllModels") {
+        expect(fileSystem.deleted).toContain("file:///documents/models/");
+      }
+    }
+  );
+
   test("enforces one installation operation at a time", async () => {
     const fileSystem = new FakeFileSystem();
     let finish!: () => void;
@@ -685,6 +733,78 @@ describe("model store", () => {
 });
 
 describe("Android ModelIntegrity module contract", () => {
+  type ReplacementFailurePoint =
+    | "rename-old"
+    | "fsync-backup"
+    | "rename-new"
+    | "fsync-new-file"
+    | "fsync-new-directory"
+    | "post-verify"
+    | "unlink-backup"
+    | "fsync-commit";
+
+  function hasOrderedCommitPoint(source: string): boolean {
+    const helperStart = source.indexOf("private fun commitBackupRemoval");
+    const helperEnd = source.indexOf("\n  private fun ", helperStart + 1);
+    const helper = source.slice(helperStart, helperEnd);
+    const backupUnlink = helper.indexOf("require(backup.delete())");
+    const committed = helper.indexOf(
+      "transaction.phase = ReplacementPhase.COMMITTED"
+    );
+    const directorySync = helper.indexOf("syncDirectory(parent)");
+    return (
+      helperStart >= 0 &&
+      backupUnlink >= 0 &&
+      committed > backupUnlink &&
+      directorySync > committed
+    );
+  }
+
+  function simulateReplacementFailureContract(
+    source: string,
+    failurePoint: ReplacementFailurePoint
+  ): { oldCompleted: boolean; newCompleted: boolean; backup: boolean } {
+    let oldCompleted = true;
+    let newCompleted = false;
+    let backup = false;
+    let newVerified = false;
+    let committed = false;
+    const keepsVerifiedNew = source.includes(
+      "transaction.phase == ReplacementPhase.NEW_VERIFIED || transaction.phase == ReplacementPhase.COMMITTED"
+    );
+
+    const fail = (point: ReplacementFailurePoint): boolean => {
+      if (failurePoint !== point) return false;
+      if (keepsVerifiedNew && (newVerified || committed)) {
+        return true;
+      }
+      if (backup) {
+        oldCompleted = true;
+        newCompleted = false;
+        backup = false;
+      } else if (newCompleted) {
+        newCompleted = false;
+      }
+      return true;
+    };
+
+    if (fail("rename-old")) return { oldCompleted, newCompleted, backup };
+    oldCompleted = false;
+    backup = true;
+    if (fail("fsync-backup")) return { oldCompleted, newCompleted, backup };
+    if (fail("rename-new")) return { oldCompleted, newCompleted, backup };
+    newCompleted = true;
+    if (fail("fsync-new-file")) return { oldCompleted, newCompleted, backup };
+    if (fail("fsync-new-directory")) return { oldCompleted, newCompleted, backup };
+    if (fail("post-verify")) return { oldCompleted, newCompleted, backup };
+    newVerified = true;
+    if (fail("unlink-backup")) return { oldCompleted, newCompleted, backup };
+    backup = false;
+    committed = hasOrderedCommitPoint(source);
+    fail("fsync-commit");
+    return { oldCompleted, newCompleted, backup };
+  }
+
   test("streams SHA-256 with FileInputStream and a fixed buffer", () => {
     const kotlinPath = resolve(
       process.cwd(),
@@ -737,5 +857,55 @@ describe("Android ModelIntegrity module contract", () => {
     expect(source).toContain("Os.fsync");
     expect(source).toContain("verifyArtifact(completed");
     expect(source).toContain("restoreBackup");
+  });
+
+  test.each([
+    "rename-old",
+    "fsync-backup",
+    "rename-new",
+    "fsync-new-file",
+    "fsync-new-directory",
+    "post-verify",
+    "unlink-backup",
+    "fsync-commit"
+  ] as const)("keeps a verified old or new artifact after injected %s failure", (failurePoint) => {
+    const kotlinPath = resolve(
+      process.cwd(),
+      "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
+    );
+    const source = readFileSync(kotlinPath, "utf8");
+    const result = simulateReplacementFailureContract(source, failurePoint);
+
+    expect(result.oldCompleted || result.newCompleted || result.backup).toBe(true);
+    if (failurePoint === "fsync-commit") {
+      expect(result.newCompleted).toBe(true);
+    }
+  });
+
+  test("marks backup unlink as commit before the final directory fsync", () => {
+    const kotlinPath = resolve(
+      process.cwd(),
+      "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
+    );
+    const source = readFileSync(kotlinPath, "utf8");
+    expect(source).toContain("enum class ReplacementPhase");
+    expect(source).toContain(
+      "transaction.phase == ReplacementPhase.NEW_VERIFIED || transaction.phase == ReplacementPhase.COMMITTED"
+    );
+    expect(hasOrderedCommitPoint(source)).toBe(true);
+  });
+
+  test("uses one explicit replacement transaction for normal and stale recovery commits", () => {
+    const kotlinPath = resolve(
+      process.cwd(),
+      "apps/mobile/modules/model-integrity/android/src/main/java/expo/modules/modelintegrity/ModelIntegrityModule.kt"
+    );
+    const source = readFileSync(kotlinPath, "utf8");
+    const commitCalls = source.match(/commitBackupRemoval\(/g) ?? [];
+
+    expect(source).toContain("class ReplacementTransaction");
+    expect(source).toContain("transaction.phase = ReplacementPhase.COMMITTED");
+    expect(source).toContain("check(recoveryTransaction.phase");
+    expect(commitCalls.length).toBe(3);
   });
 });

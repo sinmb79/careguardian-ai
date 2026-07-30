@@ -16,6 +16,7 @@
 - download 생성 전 오류부터 callback 오류, HTTP/네트워크/디스크/검증/교체 오류까지 하나의 typed lifecycle에서 종료·partial cleanup·active slot 해제를 보장합니다.
 - pause record는 `modelId`, `revision`, `partialUri`, `bytesWritten`, `resumeData`를 함께 묶습니다. 재개 시 선택 모델, revision, canonical partial URI와 terminal byte length가 전부 일치해야 합니다.
 - pause/cancel/remove/cleanup/remove-all은 하나의 control queue에서 직렬화됩니다. pause/remove-all은 native writer terminal을 기다린 뒤 metadata 확인 또는 삭제를 수행합니다.
+- cleanup은 active 또는 preflight 중인 install이 있으면 queue에 들어가지 않고 즉시 typed `operation_in_progress`로 거부합니다. 따라서 뒤의 cancel/remove-all이 native writer를 실제로 중단할 수 있습니다.
 - 관찰자 callback 오류는 설치 transaction과 격리했습니다.
 - 알 수 없는 download total은 `-1` 대신 `null`로 정규화합니다.
 - cleanup 실패는 `ModelStoreCleanupError.primaryError`와 `cleanupError`를 함께 노출합니다.
@@ -31,7 +32,10 @@
   - 기존 완료본을 `.backup`으로 보존
   - `Os.rename` 교체
   - 완료본 size/hash 사후 검증
-  - 오류 시 backup 복구
+  - `ReplacementTransaction` phase에 따른 오류 시 backup 복구
+  - backup unlink를 명시적 commit point로 기록한 뒤 마지막 directory fsync
+- `NEW_VERIFIED` 또는 `COMMITTED` 뒤의 unlink/fsync 오류는 검증된 새 완료본을 삭제하거나 존재하지 않는 backup을 복구하지 않습니다.
+- stale/crash-recovery에서도 완료본 검증과 backup 존재 여부를 분리하고 같은 commit helper를 사용합니다.
 - 기존 정상 완료본은 사전 삭제하지 않습니다.
 
 ### 전체 데이터 삭제
@@ -49,8 +53,10 @@
 - preflight/create/callback 실패와 install slot 회수
 - resume identity/byte mismatch 및 cross-model record 거부
 - pause token/writer terminal race, cancel/remove-all serialization
+- active download → cleanup 즉시 거부 → cancel/remove-all의 native cancel·Promise 종료·replace 미실행
 - size/SHA/HTTP/network/disk/native replacement/cleanup typed 오류
 - 기존 완료본 보존과 Android backup/rollback/fsync/post-verify 계약
+- Kotlin source-derived failure simulator로 rename/unlink/fsync 8개 failure point에서 검증된 old backup 또는 new completed 보존
 - 생산 전체 삭제 순서와 model deletion fail-closed
 - 실제 repository fake에서 세 SecureStore key 각각의 삭제 실패와 잔존 key
 
@@ -59,7 +65,7 @@
 ```text
 npm test -- --run
 Test Files  15 passed (15)
-Tests       128 passed (128)
+Tests       140 passed (140)
 
 npm run build
 TypeScript + Vite production build passed

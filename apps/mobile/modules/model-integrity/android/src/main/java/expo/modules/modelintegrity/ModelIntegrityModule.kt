@@ -13,6 +13,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class ModelIntegrityModule : Module() {
+  private enum class ReplacementPhase {
+    PREPARED,
+    BACKUP_RENAMED,
+    NEW_RENAMED,
+    NEW_VERIFIED,
+    COMMITTED
+  }
+
+  private class ReplacementTransaction(
+    var phase: ReplacementPhase = ReplacementPhase.PREPARED
+  )
+
   private fun modelsRoot(): File {
     val reactContext = appContext.reactContext
       ?: error("React context is unavailable")
@@ -89,6 +101,16 @@ class ModelIntegrityModule : Module() {
     syncDirectory(parent)
   }
 
+  private fun commitBackupRemoval(
+    transaction: ReplacementTransaction,
+    backup: File,
+    parent: File
+  ) {
+    require(backup.delete()) { "Could not remove replacement backup" }
+    transaction.phase = ReplacementPhase.COMMITTED
+    syncDirectory(parent)
+  }
+
   private fun replaceVerified(
     partial: File,
     completed: File,
@@ -113,42 +135,67 @@ class ModelIntegrityModule : Module() {
 
     if (backup.exists()) {
       if (!completed.exists()) {
+        verifyArtifact(backup, expectedBytes, expectedSha256)
         restoreBackup(backup, completed, parent)
       } else {
-        try {
+        val completedIsVerified = try {
           verifyArtifact(completed, expectedBytes, expectedSha256)
-          require(partial.delete()) { "Could not remove redundant partial artifact" }
-          require(backup.delete()) { "Could not remove stale backup artifact" }
-          syncDirectory(parent)
-          return
+          true
         } catch (_: Throwable) {
+          false
+        }
+        if (completedIsVerified) {
+          val recoveryTransaction = ReplacementTransaction(ReplacementPhase.NEW_VERIFIED)
+          try {
+            require(partial.delete()) { "Could not remove redundant partial artifact" }
+            commitBackupRemoval(recoveryTransaction, backup, parent)
+            return
+          } catch (error: Throwable) {
+            check(recoveryTransaction.phase == ReplacementPhase.NEW_VERIFIED ||
+              recoveryTransaction.phase == ReplacementPhase.COMMITTED
+            ) { "Stale recovery failed outside a verified replacement phase" }
+            throw error
+          }
+        } else {
+          verifyArtifact(backup, expectedBytes, expectedSha256)
           restoreBackup(backup, completed, parent)
         }
       }
     }
 
+    val hadExistingCompleted = completed.exists()
+    if (hadExistingCompleted) {
+      verifyArtifact(completed, expectedBytes, expectedSha256)
+    }
     syncFile(partial)
     syncDirectory(parent)
-    var backupCreated = false
+    val transaction = ReplacementTransaction()
     try {
-      if (completed.exists()) {
+      if (hadExistingCompleted) {
         Os.rename(completed.path, backup.path)
-        backupCreated = true
+        transaction.phase = ReplacementPhase.BACKUP_RENAMED
         syncDirectory(parent)
       }
       Os.rename(partial.path, completed.path)
+      transaction.phase = ReplacementPhase.NEW_RENAMED
       syncFile(completed)
       syncDirectory(parent)
       verifyArtifact(completed, expectedBytes, expectedSha256)
-      if (backupCreated) {
-        require(backup.delete()) { "Could not remove replacement backup" }
-        syncDirectory(parent)
+      transaction.phase = ReplacementPhase.NEW_VERIFIED
+      if (hadExistingCompleted) {
+        commitBackupRemoval(transaction, backup, parent)
+      } else {
+        transaction.phase = ReplacementPhase.COMMITTED
       }
     } catch (error: Throwable) {
-      if (backupCreated && backup.exists()) {
+      if (transaction.phase == ReplacementPhase.NEW_VERIFIED || transaction.phase == ReplacementPhase.COMMITTED) {
+        throw error
+      }
+      if (backup.exists()) {
+        verifyArtifact(backup, expectedBytes, expectedSha256)
         restoreBackup(backup, completed, parent)
-      } else if (completed.exists()) {
-        completed.delete()
+      } else if (!hadExistingCompleted && completed.exists()) {
+        Os.rename(completed.path, partial.path)
         syncDirectory(parent)
       }
       throw error

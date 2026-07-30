@@ -759,9 +759,13 @@ export function createModelStore({
   }
 
   function cleanupPartialDownloads(): Promise<void> {
+    if (installing || active) {
+      return Promise.reject(new ModelStoreError(
+        "operation_in_progress",
+        "Cannot clean partial models while an installation is active"
+      ));
+    }
     return enqueueControl(async () => {
-      const operation = await currentOrPendingInstall();
-      if (operation) await operation.terminal.promise;
       await initializeFileSystem();
       for (const model of getInstallableModels()) {
         const paths = modelPaths(fileSystem.documentDirectory, model);
