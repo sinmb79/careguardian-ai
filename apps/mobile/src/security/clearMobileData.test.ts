@@ -5,9 +5,9 @@ describe("clearMobileData", () => {
   test("uses the explicit notification, model, repository, memory deletion order", async () => {
     const events: string[] = [];
     await clearMobileData({
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => void events.push("models"),
-      deleteWorkspace: async () => void events.push("workspace"),
+      deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
       resetMemory: vi.fn(() => void events.push("memory"))
     });
     expect(events).toEqual(["notifications", "models", "workspace", "memory"]);
@@ -17,25 +17,72 @@ describe("clearMobileData", () => {
     const events: string[] = [];
     await clearMobileData({
       stopActiveInference: async () => void events.push("inference"),
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => void events.push("models"),
-      deleteWorkspace: async () => void events.push("workspace"),
+      deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
       resetMemory: () => void events.push("memory")
     });
 
     expect(events).toEqual(["inference", "notifications", "models", "workspace", "memory"]);
   });
 
-  test("does not hide a step failure or continue deleting later stores", async () => {
+  test("stops before every mutation when active inference cannot be released", async () => {
     const events: string[] = [];
-    const deleteWorkspace = vi.fn();
+    const releaseFailure = Object.assign(new Error("native context still owns the model"), {
+      code: "release_failed"
+    });
+
     await expect(clearMobileData({
-      cancelLifeNotifications: async () => void events.push("notifications"),
+      stopActiveInference: async () => { throw releaseFailure; },
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
+      removeAllModels: async () => void events.push("models"),
+      deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
+      resetMemory: () => void events.push("memory")
+    })).rejects.toBe(releaseFailure);
+
+    expect(events).toEqual([]);
+  });
+
+  test("attempts independent domains after a failure and returns typed aggregate failures", async () => {
+    const events: string[] = [];
+    const deleteAllKnownWorkspaceData = vi.fn();
+    await expect(clearMobileData({
+      cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => { throw new Error("partial cleanup failed"); },
-      deleteWorkspace,
+      deleteAllKnownWorkspaceData,
       resetMemory: vi.fn(() => void events.push("memory"))
-    })).rejects.toThrow("partial cleanup failed");
-    expect(deleteWorkspace).not.toHaveBeenCalled();
-    expect(events).toEqual(["notifications"]);
+    })).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ domain: "local-model-files" })]
+    });
+    expect(deleteAllKnownWorkspaceData).toHaveBeenCalledOnce();
+    expect(events).toEqual(["notifications", "memory"]);
+  });
+
+  test("preserves ordered domains and causes when several independent deletions fail", async () => {
+    const notificationFailure = new Error("alarm remains");
+    const workspaceFailure = new Error("encrypted record remains");
+    const resetMemory = vi.fn();
+
+    await expect(clearMobileData({
+      cancelAllScheduledNotifications: async () => { throw notificationFailure; },
+      removeAllModels: async () => undefined,
+      deleteAllKnownWorkspaceData: async () => { throw workspaceFailure; },
+      resetMemory
+    })).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [
+        expect.objectContaining({
+          domain: "scheduled-notifications",
+          cause: notificationFailure
+        }),
+        expect.objectContaining({
+          domain: "workspace-and-legacy-storage",
+          cause: workspaceFailure
+        })
+      ]
+    });
+
+    expect(resetMemory).toHaveBeenCalledOnce();
   });
 });

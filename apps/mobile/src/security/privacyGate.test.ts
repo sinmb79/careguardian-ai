@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createEmptyWorkspace } from "@life-steward/life-core";
 import {
   createPrivacyGateState,
+  getPrivacyGateRecoveryMode,
   resolveWorkspaceUnlock,
   shouldLockWorkspaceOnBackground
 } from "./privacyGate";
@@ -24,5 +25,14 @@ describe("personal workspace privacy gate", () => {
     workspace.tasks.push({ id: "task-1", title: "장보기", status: "open" });
     expect(shouldLockWorkspaceOnBackground(false, createEmptyWorkspace())).toBe(false);
     expect(shouldLockWorkspaceOnBackground(false, workspace)).toBe(true);
+  });
+
+  test("routes deletion failures to retry or mandatory restart without exposing unlock", () => {
+    expect(getPrivacyGateRecoveryMode(null)).toBeNull();
+    expect(getPrivacyGateRecoveryMode(["local-model-files"])).toBe("retry-delete");
+    expect(getPrivacyGateRecoveryMode([
+      "scheduled-notifications",
+      "active-inference"
+    ])).toBe("restart-required");
   });
 });

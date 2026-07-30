@@ -206,6 +206,35 @@ describe("mobile personal workspace repository", () => {
     await expect(harness.repository.loadWorkspace()).resolves.toEqual(fixtureWorkspace);
   });
 
+  test("full deletion erases every enumerated current and health-era namespace", async () => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    harness.legacy.set("careguardian.mobile.manual", "legacy-private-payload");
+    harness.secure.set("careguardian.mobile.context", "legacy-context");
+    harness.secure.set("careguardian.mobile.database-key", "cd".repeat(32));
+    harness.databases.add("careguardian-caremanual-encrypted.db");
+
+    await harness.repository.deleteAllKnownData();
+
+    expect(harness.rows.size).toBe(0);
+    expect(harness.secure.size).toBe(0);
+    expect(harness.legacy.size).toBe(0);
+    expect(harness.databases.size).toBe(0);
+  });
+
+  test("full deletion attempts every legacy namespace and reports a typed failure", async () => {
+    const harness = createHarness();
+    harness.secure.set("careguardian.mobile.database-key", "cd".repeat(32));
+    harness.failSecureDelete("careguardian.mobile.database-key");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "secure-store:careguardian.mobile.database-key" })]
+    });
+    expect(harness.secure.has("careguardian.mobile.database-key")).toBe(true);
+    expect(harness.databases.size).toBe(0);
+  });
+
   test("closes a database handle when encrypted setup fails before it can be returned", async () => {
     const harness = createHarness();
     harness.failNextExec();

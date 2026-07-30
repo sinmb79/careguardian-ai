@@ -1,0 +1,36 @@
+body {
+  background: #f7f2e8;
+  color: #1a2626;
+  font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  line-height: 1.7;
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  border-bottom: 2px solid #6f8a70;
+  font-size: 1.7rem;
+  padding-bottom: 8px;
+}
+
+h2 {
+  color: #506d52;
+  font-size: 1.15rem;
+  margin-top: 2rem;
+}
+
+p,
+li {
+  font-size: 0.96rem;
+}
+
+.date,
+.notice {
+  color: #526166;
+}
+
+.notice {
+  border-left: 4px solid #963a27;
+  padding-left: 12px;
+}

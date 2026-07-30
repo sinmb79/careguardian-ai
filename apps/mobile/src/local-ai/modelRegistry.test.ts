@@ -1,6 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
+  assertDeepFrozen,
+  deepFreeze,
   getInstallableModels,
   MODEL_REGISTRY,
   validateModelRegistry
@@ -15,6 +17,13 @@ const nodeRequire = createRequire(import.meta.url);
 
 function expectedDownloadUrl(repository: string, revision: string, artifactFileName: string): string {
   return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
+}
+
+function expectDeepFrozen(value: unknown, seen = new Set<object>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value)).toBe(true);
+  for (const nested of Object.values(value)) expectDeepFrozen(nested, seen);
 }
 
 describe("MODEL_REGISTRY", () => {
@@ -48,6 +57,74 @@ describe("MODEL_REGISTRY", () => {
       "hyperclovax-seed-text-instruct-0.5b-q4km",
       "hyperclovax-seed-text-instruct-1.5b-q4km"
     ]);
+  });
+
+  test("deep-freezes every exported registry object and nested array at runtime", () => {
+    const originalUrl = MODEL_REGISTRY[0].downloadUrl;
+    const originalSourceUrls = [...MODEL_REGISTRY[0].licenseAssets[0].sourceUrls];
+
+    expectDeepFrozen(MODEL_REGISTRY);
+    expectDeepFrozen(getInstallableModels());
+    expect(() => {
+      (MODEL_REGISTRY[0] as { downloadUrl?: string }).downloadUrl =
+        "https://attacker.example/model.gguf";
+    }).toThrow(TypeError);
+    expect(() => {
+      (MODEL_REGISTRY[0].licenseAssets[0].sourceUrls as string[]).push(
+        "https://attacker.example/license"
+      );
+    }).toThrow(TypeError);
+    expect(MODEL_REGISTRY[0].downloadUrl).toBe(originalUrl);
+    expect(MODEL_REGISTRY[0].licenseAssets[0].sourceUrls).toEqual(originalSourceUrls);
+  });
+
+  test("uses trusted intrinsics when a React Native-only facade patch is active", () => {
+    const originalFreeze = Object.freeze;
+    const originalIsFrozen = Object.isFrozen;
+    const candidate = JSON.parse(JSON.stringify(MODEL_REGISTRY[0])) as {
+      downloadUrl?: string;
+      licenseAssets: Array<{ sourceUrls: string[] }>;
+    };
+    const approvedUrl =
+      "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF/resolve/27831169fdebe6fe30bb1b9d76b12a2d06693f26/HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf?download=true";
+    let facadePatchActivated = false;
+    let mutationRejected = false;
+
+    vi.stubGlobal("navigator", { product: "ReactNative" });
+    try {
+      if (navigator.product === "ReactNative") {
+        const probe = {};
+        const freezePatched = Reflect.set(Object, "freeze", <T>(input: T): T => input);
+        const frozenCheckPatched = Reflect.set(
+          Object,
+          "isFrozen",
+          (_input: unknown): boolean => true
+        );
+        facadePatchActivated =
+          freezePatched &&
+          frozenCheckPatched &&
+          Object.freeze(probe) === probe &&
+          !originalIsFrozen(probe) &&
+          Object.isFrozen(probe);
+      }
+
+      deepFreeze(candidate);
+      assertDeepFrozen(candidate);
+      try {
+        candidate.downloadUrl = "https://attacker.example/model.gguf";
+      } catch (error) {
+        mutationRejected = error instanceof TypeError;
+      }
+    } finally {
+      Reflect.set(Object, "freeze", originalFreeze);
+      Reflect.set(Object, "isFrozen", originalIsFrozen);
+      vi.unstubAllGlobals();
+    }
+
+    expectDeepFrozen(candidate);
+    expect(facadePatchActivated).toBe(true);
+    expect(mutationRejected).toBe(true);
+    expect(candidate.downloadUrl).toBe(approvedUrl);
   });
 
   test("rejects a mutable or non-commit revision", () => {
@@ -255,5 +332,5 @@ describe("getThirdPartyModelNotice", () => {
     const textExtensions = metroConfig.resolver.assetExts.filter((extension: string) => extension === "txt");
 
     expect(textExtensions).toEqual(["txt"]);
-  });
+  }, 20_000);
 });

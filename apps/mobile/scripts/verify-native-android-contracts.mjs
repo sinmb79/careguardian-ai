@@ -6,11 +6,13 @@ import {
   renameSync,
   rmSync
 } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
+const expoCli = fileURLToPath(import.meta.resolve("expo/bin/cli"));
+const expoResolveAppEntryCli = fileURLToPath(
+  import.meta.resolve("expo/scripts/resolveAppEntry.js")
+);
 const mobileRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
@@ -63,7 +65,7 @@ function runNativeContracts() {
   const prebuildResult = spawnSync(
     process.execPath,
     [
-      require.resolve("expo/bin/cli"),
+      expoCli,
       "prebuild",
       "--clean",
       "--platform",
@@ -97,8 +99,7 @@ function runNativeContracts() {
   const entryResult = spawnSync(
     process.execPath,
     [
-      "-e",
-      "require('expo/scripts/resolveAppEntry')",
+      expoResolveAppEntryCli,
       mobileRoot,
       "android",
       "absolute"

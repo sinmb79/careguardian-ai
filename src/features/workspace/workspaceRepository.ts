@@ -5,6 +5,7 @@ import {
 } from "@life-steward/life-core";
 
 export const WORKSPACE_STORAGE_KEY = "life-steward.workspace.v1";
+export const LEGACY_CARE_STORAGE_KEY = "careguardian.manual";
 export const WORKSPACE_DATABASE_NAME = "life-steward-workspace";
 export const WORKSPACE_CHANGE_EVENT = "life-steward-workspace-change";
 
@@ -13,23 +14,45 @@ const WORKSPACE_RECORD_KEY = "current";
 const WORKSPACE_CHANNEL_NAME = "life-steward-workspace";
 const WORKSPACE_SOURCE_ID = `workspace-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+export const WEB_PERSISTENCE_INVENTORY = Object.freeze({
+  indexedDb: Object.freeze({
+    databaseName: WORKSPACE_DATABASE_NAME,
+    storeName: WORKSPACE_STORE_NAME,
+    userRecordKey: WORKSPACE_RECORD_KEY,
+    tombstone: Object.freeze({ type: "cleared" as const })
+  }),
+  localStorageKeys: Object.freeze([WORKSPACE_STORAGE_KEY, LEGACY_CARE_STORAGE_KEY])
+});
+
 type StoredWorkspace = {
   schemaVersion: 1;
   revision: number;
   workspace: PersonalWorkspace;
 };
 
-type InvalidWorkspace = { type: "invalid"; raw: string };
+type InvalidWorkspace = {
+  type: "invalid";
+  raw: string;
+  confirmationToken: string;
+  quarantinedValue: unknown;
+};
+type LegacyInvalidWorkspace = { type: "invalid"; raw: string };
 // A tombstone is deliberately retained after deletion.  It contains no user
 // data, but stops a legacy localStorage copy from being imported again when a
 // browser has blocked removal of that old key.
 type ClearedWorkspace = { type: "cleared" };
 type StoredRecord = StoredWorkspace | InvalidWorkspace | ClearedWorkspace;
 
+export type WorkspaceInvalidExpectation = {
+  kind: "invalid";
+  raw: string;
+  confirmationToken: string;
+};
+
 export type WorkspaceLoadResult =
   | { kind: "missing" }
   | { kind: "loaded"; workspace: PersonalWorkspace; revision: number }
-  | { kind: "invalid"; raw: string }
+  | WorkspaceInvalidExpectation
   | { kind: "unavailable" };
 
 export type WorkspaceMutationResult =
@@ -39,13 +62,32 @@ export type WorkspaceMutationResult =
   | { kind: "unavailable" }
   | { kind: "conflict" };
 
+export type WorkspaceDeletionExpectation =
+  | { kind: "revision"; revision: number }
+  | WorkspaceInvalidExpectation;
+
+type ClassifiedRecord =
+  | Exclude<WorkspaceLoadResult, { kind: "unavailable" }>
+  | { kind: "needs-quarantine"; raw: string };
+type ParsedLegacyWorkspace =
+  | Extract<WorkspaceLoadResult, { kind: "loaded" }>
+  | { kind: "invalid"; raw: string };
+
 export async function loadWorkspace(): Promise<WorkspaceLoadResult> {
   const database = await openWorkspaceDatabase();
   if (!database) return { kind: "unavailable" };
 
   try {
     const record = await readRecord(database);
-    if (record !== undefined) return toLoadResult(record);
+    if (isClearedWorkspace(record)) {
+      return eraseAppOwnedLegacyStorageAndVerify() ? { kind: "missing" } : { kind: "unavailable" };
+    }
+    if (record !== undefined) {
+      const current = classifyRecord(record);
+      return current.kind === "needs-quarantine"
+        ? await quarantineInvalidRecord(database)
+        : current;
+    }
     return await importLegacyWorkspace(database);
   } catch {
     return { kind: "unavailable" };
@@ -64,8 +106,10 @@ export async function saveWorkspace(
 
   try {
     const result = await mutateRecord<WorkspaceMutationResult>(database, (record) => {
-      const current = toLoadResult(record);
-      if (current.kind === "invalid") return { result: { kind: "invalid" } };
+      const current = classifyRecord(record);
+      if (current.kind === "invalid" || current.kind === "needs-quarantine") {
+        return { result: { kind: "invalid" } };
+      }
       const revision = current.kind === "loaded" ? current.revision : 0;
       if (revision !== expectedRevision) return { result: { kind: "conflict" } };
       const nextRevision = revision + 1;
@@ -82,7 +126,7 @@ export async function saveWorkspace(
 
 export async function initializeWorkspace(
   workspace: PersonalWorkspace,
-  expectedInvalidRaw: string
+  expectation: WorkspaceInvalidExpectation
 ): Promise<WorkspaceMutationResult> {
   if (!isValidWorkspace(workspace)) return { kind: "invalid" };
   const database = await openWorkspaceDatabase();
@@ -90,9 +134,9 @@ export async function initializeWorkspace(
 
   try {
     const result = await mutateRecord<WorkspaceMutationResult>(database, (record) => {
-      const current = toLoadResult(record);
-      if (current.kind !== "invalid") return { result: { kind: "conflict" } };
-      if (current.raw !== expectedInvalidRaw) return { result: { kind: "conflict" } };
+      if (!isInvalidWorkspace(record) || !matchesInvalidExpectation(record, expectation)) {
+        return { result: { kind: "conflict" } };
+      }
       return { result: { kind: "saved", revision: 1 }, record: { schemaVersion: 1, revision: 1, workspace } };
     });
     if (result.kind === "saved") {
@@ -107,19 +151,32 @@ export async function initializeWorkspace(
   }
 }
 
-export async function clearWorkspace(expectedRevision: number): Promise<WorkspaceMutationResult> {
+export async function clearWorkspace(
+  expectation: WorkspaceDeletionExpectation
+): Promise<WorkspaceMutationResult> {
   const database = await openWorkspaceDatabase();
   if (!database) return { kind: "unavailable" };
 
   try {
     const result = await mutateRecord<WorkspaceMutationResult>(database, (record) => {
-      const current = toLoadResult(record);
-      if (current.kind === "invalid") return { result: { kind: "invalid" } };
-      const revision = current.kind === "loaded" ? current.revision : 0;
-      if (revision !== expectedRevision) return { result: { kind: "conflict" } };
+      if (expectation.kind === "invalid") {
+        if (!isInvalidWorkspace(record) || !matchesInvalidExpectation(record, expectation)) {
+          return { result: { kind: "conflict" } };
+        }
+      } else {
+        const current = classifyRecord(record);
+        if (current.kind === "invalid" || current.kind === "needs-quarantine") {
+          return { result: { kind: "conflict" } };
+        }
+        const revision = current.kind === "loaded" ? current.revision : 0;
+        if (revision !== expectation.revision) return { result: { kind: "conflict" } };
+      }
       return { result: { kind: "cleared" }, record: { type: "cleared" } };
     });
-    if (result.kind === "cleared") publishWorkspaceChange();
+    if (result.kind === "cleared") {
+      if (!eraseAppOwnedLegacyStorageAndVerify()) return { kind: "unavailable" };
+      publishWorkspaceChange();
+    }
     return result;
   } catch {
     return { kind: "unavailable" };
@@ -158,14 +215,24 @@ async function importLegacyWorkspace(database: IDBDatabase): Promise<WorkspaceLo
   const parsed = parseLegacyRaw(raw.raw);
   try {
     const result = await mutateRecord<WorkspaceLoadResult>(database, (record) => {
-      if (record !== undefined) return { result: toLoadResult(record) };
+      if (record !== undefined) {
+        const current = classifyRecord(record);
+        if (current.kind !== "needs-quarantine") return { result: current };
+        const invalid = createInvalidWorkspace(record, current.raw);
+        return invalid
+          ? { result: toInvalidLoadResult(invalid), record: invalid }
+          : { result: { kind: "unavailable" } };
+      }
       if (parsed.kind === "loaded") {
         return {
           result: parsed,
           record: { schemaVersion: 1, revision: parsed.revision, workspace: parsed.workspace }
         };
       }
-      return { result: parsed, record: { type: "invalid", raw: parsed.raw } };
+      const invalid = createInvalidWorkspace(raw.raw, parsed.raw);
+      return invalid
+        ? { result: toInvalidLoadResult(invalid), record: invalid }
+        : { result: { kind: "unavailable" } };
     });
     if (result.kind === "loaded" || result.kind === "invalid") removeLegacyWorkspace();
     return result;
@@ -174,7 +241,7 @@ async function importLegacyWorkspace(database: IDBDatabase): Promise<WorkspaceLo
   }
 }
 
-function parseLegacyRaw(raw: string): Extract<WorkspaceLoadResult, { kind: "loaded" } | { kind: "invalid" }> {
+function parseLegacyRaw(raw: string): ParsedLegacyWorkspace {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (isStoredWorkspace(parsed)) return { kind: "loaded", workspace: parsed.workspace, revision: parsed.revision };
@@ -198,6 +265,16 @@ function removeLegacyWorkspace(): void {
     window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
   } catch {
     // IndexedDB is already authoritative; a blocked legacy cleanup must not erase the durable record.
+  }
+}
+
+function eraseAppOwnedLegacyStorageAndVerify(): boolean {
+  try {
+    const storage = window.localStorage;
+    for (const key of WEB_PERSISTENCE_INVENTORY.localStorageKeys) storage.removeItem(key);
+    return WEB_PERSISTENCE_INVENTORY.localStorageKeys.every((key) => storage.getItem(key) === null);
+  } catch {
+    return false;
   }
 }
 
@@ -234,6 +311,17 @@ function readRecord(database: IDBDatabase): Promise<unknown> {
   });
 }
 
+function quarantineInvalidRecord(database: IDBDatabase): Promise<WorkspaceLoadResult> {
+  return mutateRecord<WorkspaceLoadResult>(database, (record) => {
+    const current = classifyRecord(record);
+    if (current.kind !== "needs-quarantine") return { result: current };
+    const invalid = createInvalidWorkspace(record, current.raw);
+    return invalid
+      ? { result: toInvalidLoadResult(invalid), record: invalid }
+      : { result: { kind: "unavailable" } };
+  });
+}
+
 function mutateRecord<T>(
   database: IDBDatabase,
   mutation: (record: unknown) => { result: T; record?: StoredRecord; remove?: boolean }
@@ -262,12 +350,15 @@ function mutateRecord<T>(
   });
 }
 
-function toLoadResult(record: unknown): WorkspaceLoadResult {
+function classifyRecord(record: unknown): ClassifiedRecord {
   if (record === undefined) return { kind: "missing" };
   if (isClearedWorkspace(record)) return { kind: "missing" };
   if (isStoredWorkspace(record)) return { kind: "loaded", workspace: record.workspace, revision: record.revision };
-  if (isInvalidWorkspace(record)) return { kind: "invalid", raw: record.raw };
-  return { kind: "invalid", raw: serializeRecord(record) };
+  if (isInvalidWorkspace(record)) return toInvalidLoadResult(record);
+  return {
+    kind: "needs-quarantine",
+    raw: isLegacyInvalidWorkspace(record) ? record.raw : serializeRecord(record)
+  };
 }
 
 function publishWorkspaceChange(): void {
@@ -288,7 +379,30 @@ function isStoredWorkspace(input: unknown): input is StoredWorkspace {
 }
 
 function isInvalidWorkspace(input: unknown): input is InvalidWorkspace {
-  return isPlainObject(input) && input.type === "invalid" && typeof input.raw === "string" && Object.keys(input).every((key) => key === "type" || key === "raw");
+  return (
+    isPlainObject(input) &&
+    input.type === "invalid" &&
+    typeof input.raw === "string" &&
+    typeof input.confirmationToken === "string" &&
+    /^[a-f0-9]{32}$/.test(input.confirmationToken) &&
+    Object.prototype.hasOwnProperty.call(input, "quarantinedValue") &&
+    Object.keys(input).every(
+      (key) =>
+        key === "type" ||
+        key === "raw" ||
+        key === "confirmationToken" ||
+        key === "quarantinedValue"
+    )
+  );
+}
+
+function isLegacyInvalidWorkspace(input: unknown): input is LegacyInvalidWorkspace {
+  return (
+    isPlainObject(input) &&
+    input.type === "invalid" &&
+    typeof input.raw === "string" &&
+    Object.keys(input).every((key) => key === "type" || key === "raw")
+  );
 }
 
 function isClearedWorkspace(input: unknown): input is ClearedWorkspace {
@@ -310,8 +424,44 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function serializeRecord(value: unknown): string {
   try {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" ? serialized : "[unreadable IndexedDB record]";
   } catch {
     return "[unreadable IndexedDB record]";
   }
+}
+
+function createInvalidWorkspace(value: unknown, raw: string): InvalidWorkspace | null {
+  const confirmationToken = createConfirmationToken();
+  return confirmationToken
+    ? { type: "invalid", raw, confirmationToken, quarantinedValue: value }
+    : null;
+}
+
+function createConfirmationToken(): string | null {
+  try {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return null;
+  }
+}
+
+function toInvalidLoadResult(record: InvalidWorkspace): WorkspaceInvalidExpectation {
+  return {
+    kind: "invalid",
+    raw: record.raw,
+    confirmationToken: record.confirmationToken
+  };
+}
+
+function matchesInvalidExpectation(
+  record: InvalidWorkspace,
+  expectation: WorkspaceInvalidExpectation
+): boolean {
+  return (
+    record.raw === expectation.raw &&
+    record.confirmationToken === expectation.confirmationToken
+  );
 }

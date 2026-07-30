@@ -10,6 +10,7 @@ const notificationApi = vi.hoisted(() => ({
   getPermissionsAsync: vi.fn(),
   requestPermissionsAsync: vi.fn(),
   getAllScheduledNotificationsAsync: vi.fn(),
+  cancelAllScheduledNotificationsAsync: vi.fn(),
   cancelScheduledNotificationAsync: vi.fn(),
   scheduleNotificationAsync: vi.fn()
 }));
@@ -20,6 +21,7 @@ vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 import {
   buildLifeNotification,
   cancelAllLifeNotifications,
+  cancelAllScheduledNotificationsForFullDeletion,
   cancelPreviousTestNotifications,
   syncLifeNotifications
 } from "./lifeNotifications";
@@ -76,6 +78,23 @@ describe("life notifications", () => {
 
     await expect(cancelPreviousTestNotifications()).resolves.toBeUndefined();
     expect(notificationApi.cancelScheduledNotificationAsync).toHaveBeenCalledWith("careguardian-medication-0");
+  });
+
+  test("full deletion cancels and verifies every scheduled notification, including legacy identifiers", async () => {
+    notificationApi.getAllScheduledNotificationsAsync
+      .mockReset()
+      .mockResolvedValueOnce([]);
+
+    await expect(cancelAllScheduledNotificationsForFullDeletion()).resolves.toBeUndefined();
+    expect(notificationApi.cancelAllScheduledNotificationsAsync).toHaveBeenCalledOnce();
+  });
+
+  test("full deletion fails closed when any scheduled notification remains", async () => {
+    notificationApi.getAllScheduledNotificationsAsync
+      .mockReset()
+      .mockResolvedValueOnce([{ identifier: "legacy-unrelated-notification" }]);
+
+    await expect(cancelAllScheduledNotificationsForFullDeletion()).rejects.toThrow("verification failed");
   });
 
   test("cancels every newly scheduled notification when scheduling stops midway", async () => {

@@ -230,13 +230,36 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("이 브라우저의 개인 작업공간을 삭제했습니다.")).toBeInTheDocument());
   });
 
+  test("deletes an invalid raw workspace with the exact record the user confirmed", async () => {
+    const user = userEvent.setup();
+    const raw = '{"schemaVersion":999,"private":"delete-me"}';
+    const confirmationToken = "a".repeat(32);
+    const clearWorkspace = vi.fn(async () => ({ kind: "cleared" as const }));
+    const repository: LifeAppRepository = {
+      loadWorkspace: async () => ({ kind: "invalid", raw, confirmationToken }),
+      saveWorkspace: async () => ({ kind: "unavailable" }),
+      initializeWorkspace: async () => ({ kind: "unavailable" }),
+      clearWorkspace,
+      subscribeWorkspaceChanges: () => () => undefined
+    };
+    render(<App repository={repository} />);
+    await screen.findByRole("button", { name: "새 작업공간으로 초기화" });
+
+    await user.click(screen.getByRole("button", { name: "이 브라우저의 작업공간 삭제" }));
+    await user.click(screen.getByRole("button", { name: "삭제 확인" }));
+
+    expect(clearWorkspace).toHaveBeenCalledWith({ kind: "invalid", raw, confirmationToken });
+    await screen.findByText("이 브라우저의 개인 작업공간을 삭제했습니다.");
+  });
+
   test("runs initialization only once while its confirmation is pending", async () => {
     const user = userEvent.setup();
     const raw = "{broken";
+    const confirmationToken = "b".repeat(32);
     const pendingInitialize = deferred<{ kind: "saved"; revision: number }>();
     const initializeWorkspace = vi.fn(() => pendingInitialize.promise);
     const repository: LifeAppRepository = {
-      loadWorkspace: async () => ({ kind: "invalid", raw }),
+      loadWorkspace: async () => ({ kind: "invalid", raw, confirmationToken }),
       saveWorkspace: async () => ({ kind: "unavailable" }),
       initializeWorkspace,
       clearWorkspace: async () => ({ kind: "unavailable" }),
@@ -260,7 +283,7 @@ describe("App", () => {
     await waitForReady();
     expect(screen.getByLabelText("작업공간 이름")).toHaveValue("보관된 계획");
 
-    await clearWorkspace(1);
+    await clearWorkspace({ kind: "revision", revision: 1 });
     window.dispatchEvent(new Event(WORKSPACE_CHANGE_EVENT));
 
     await waitFor(() => expect(screen.getByLabelText("작업공간 이름")).toHaveValue("개인 생활"));
@@ -275,7 +298,7 @@ describe("App", () => {
     await user.clear(screen.getByLabelText("작업공간 이름"));
     await user.type(screen.getByLabelText("작업공간 이름"), "내 미저장 계획");
 
-    await clearWorkspace(1);
+    await clearWorkspace({ kind: "revision", revision: 1 });
     window.dispatchEvent(new Event(WORKSPACE_CHANGE_EVENT));
 
     await screen.findByText("다른 탭에서 작업공간이 변경되었습니다. 저장하기 전에 최신 데이터를 확인해 주세요.");

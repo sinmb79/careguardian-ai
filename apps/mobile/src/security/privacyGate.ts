@@ -1,7 +1,21 @@
 import type { PersonalWorkspace } from "@life-steward/life-core";
 import type { AuthenticationResult } from "./localAuthentication";
+import type { MobileDeletionDomain } from "./clearMobileData";
 
 export type PrivacyGateState = "locked" | "unlocked";
+export type PrivacyGateRecoveryMode =
+  | "retry-delete"
+  | "restart-required"
+  | null;
+
+export function getPrivacyGateRecoveryMode(
+  failedDomains: readonly MobileDeletionDomain[] | null
+): PrivacyGateRecoveryMode {
+  if (!failedDomains) return null;
+  return failedDomains.includes("active-inference")
+    ? "restart-required"
+    : "retry-delete";
+}
 
 export function createPrivacyGateState(hasStoredWorkspace: boolean): PrivacyGateState {
   return hasStoredWorkspace ? "locked" : "unlocked";

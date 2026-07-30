@@ -7,7 +7,7 @@ import {
   type PersonalWorkspace
 } from "@life-steward/life-core";
 import {
-  cancelAllLifeNotifications,
+  cancelAllScheduledNotificationsForFullDeletion,
   cancelPreviousTestNotifications,
   syncLifeNotifications
 } from "../notifications/lifeNotifications";
@@ -18,15 +18,19 @@ import {
   type PrivacyGateState
 } from "../security/privacyGate";
 import {
+  deleteAllKnownMobileData,
   deletePreviousTestData,
-  deleteWorkspace,
   hasPreviousTestData,
   loadWorkspace,
   saveWorkspace
 } from "../storage/mobileWorkspaceRepository";
 import { removeAllModels } from "../local-ai/modelStore";
 import { stopAndReleaseLocalModel } from "../local-ai/llamaRuntime";
-import { clearMobileData } from "../security/clearMobileData";
+import {
+  clearMobileData,
+  getMobileDeletionFailedDomains,
+  type MobileDeletionDomain
+} from "../security/clearMobileData";
 
 export type LifeWorkspaceSection = "today" | "lists" | "extensions" | "local-ai" | "settings";
 type OperationKind = "save" | "delete" | "unlock" | "previous-delete" | null;
@@ -40,6 +44,10 @@ export type LifeWorkspaceSnapshot = {
   isDeleting: boolean;
   isAuthenticating: boolean;
   privacyGate: PrivacyGateState;
+  deletionFailure: {
+    failedDomains: MobileDeletionDomain[];
+    message: string;
+  } | null;
   statusMessage: string;
   section: LifeWorkspaceSection;
 };
@@ -67,10 +75,10 @@ export type LifeWorkspaceControllerDependencies = {
   deletePreviousTestData?(): Promise<void>;
   save(workspace: PersonalWorkspace): Promise<void>;
   stopActiveInference?(): Promise<void>;
-  deleteWorkspace(): Promise<void>;
+  deleteAllKnownWorkspaceData(): Promise<void>;
   removeAllModels(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
-  cancelNotifications(): Promise<void>;
+  cancelAllScheduledNotifications(): Promise<void>;
   cancelPreviousTestNotifications?(): Promise<void>;
   authenticate?(): Promise<AuthenticationResult>;
 };
@@ -89,9 +97,18 @@ function initialSnapshot(): LifeWorkspaceSnapshot {
   return {
     workspace: createEmptyWorkspace(), hasStoredWorkspace: false, previousTestData: false,
     isLoaded: false, isSaving: false, isDeleting: false, isAuthenticating: false,
-    privacyGate: "unlocked", statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
+    privacyGate: "unlocked", deletionFailure: null,
+    statusMessage: "개인 생활 작업공간을 준비하고 있습니다.", section: "today"
   };
 }
+
+const DELETION_DOMAIN_LABELS: Record<MobileDeletionDomain, string> = {
+  "active-inference": "실행 중인 로컬 AI",
+  "scheduled-notifications": "예약된 알림",
+  "local-model-files": "로컬 모델 파일",
+  "workspace-and-legacy-storage": "작업공간 및 이전 저장소",
+  "in-memory-state": "메모리 상태"
+};
 
 export function createLifeWorkspaceController(dependencies: LifeWorkspaceControllerDependencies) {
   let current = initialSnapshot();
@@ -182,17 +199,22 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       const id = start("delete");
       if (id === null) throw new Error("workspace operation in progress");
       lifecycleGeneration += 1;
-      patch({ isDeleting: true, privacyGate: "locked" });
+      patch({ isDeleting: true, privacyGate: "locked", deletionFailure: null });
       try {
         await clearMobileData({
           stopActiveInference: dependencies.stopActiveInference,
-          cancelLifeNotifications: dependencies.cancelNotifications,
+          cancelAllScheduledNotifications: dependencies.cancelAllScheduledNotifications,
           removeAllModels: dependencies.removeAllModels,
-          deleteWorkspace: dependencies.deleteWorkspace,
+          deleteAllKnownWorkspaceData: dependencies.deleteAllKnownWorkspaceData,
           resetMemory: () => patch({
-            workspace: createEmptyWorkspace(), hasStoredWorkspace: false, privacyGate: "unlocked",
-            statusMessage: "이 기기의 개인 생활 작업공간과 알림을 삭제했습니다."
+            workspace: createEmptyWorkspace(), privacyGate: "locked"
           })
+        });
+        patch({
+          hasStoredWorkspace: false,
+          privacyGate: "unlocked",
+          deletionFailure: null,
+          statusMessage: "이 기기의 모든 로컬 데이터를 삭제했습니다."
         });
       } catch (error) {
         const code =
@@ -200,12 +222,29 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
             ? String(error.code)
             : "";
         if (code === "release_failed" || code === "runtime_faulted") {
+          const failedDomains: MobileDeletionDomain[] = ["active-inference"];
+          const message =
+            "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요.";
           patch({
             privacyGate: "locked",
-            statusMessage:
-              "로컬 AI 컨텍스트 해제를 확인하지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어 주세요."
+            deletionFailure: { failedDomains, message },
+            statusMessage: message
           });
+          throw error;
         }
+        const failedDomains = getMobileDeletionFailedDomains(error);
+        const failedLabels = failedDomains.map((domain) => DELETION_DOMAIN_LABELS[domain]);
+        const message = failedLabels.length > 0
+          ? `모든 데이터 삭제를 완료하지 못했습니다. 실패 영역: ${failedLabels.join(", ")}. 남은 데이터를 확인한 뒤 다시 시도해 주세요.`
+          : "모든 데이터 삭제를 완료하지 못했습니다. 남은 데이터를 확인한 뒤 다시 시도해 주세요.";
+        patch({
+          hasStoredWorkspace: failedDomains.length > 0
+            ? failedDomains.includes("workspace-and-legacy-storage")
+            : current.hasStoredWorkspace,
+          privacyGate: "locked",
+          deletionFailure: { failedDomains, message },
+          statusMessage: message
+        });
         throw error;
       } finally {
         finish("delete", id, { isDeleting: false });
@@ -259,8 +298,8 @@ export function useLifeWorkspace(): LifeWorkspaceState {
     controllerRef.current = createLifeWorkspaceController({
       load: loadWorkspace, hasPreviousTestData, deletePreviousTestData, save: saveWorkspace,
       stopActiveInference: () => stopAndReleaseLocalModel("full-data-delete"),
-      deleteWorkspace, removeAllModels, syncNotifications: syncLifeNotifications,
-      cancelNotifications: cancelAllLifeNotifications,
+      deleteAllKnownWorkspaceData: deleteAllKnownMobileData, removeAllModels, syncNotifications: syncLifeNotifications,
+      cancelAllScheduledNotifications: cancelAllScheduledNotificationsForFullDeletion,
       cancelPreviousTestNotifications, authenticate: authenticateForSensitiveAccess
     });
   }

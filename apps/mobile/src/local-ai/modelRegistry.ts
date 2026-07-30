@@ -1,3 +1,11 @@
+import modelRegistryData from "./model-registry.json";
+
+// Capture trusted intrinsics before this module performs any registry work.
+// Runtime-specific mutation of the global Object facade cannot weaken these bindings.
+const nativeObjectFreeze = Object.freeze.bind(Object);
+const nativeObjectIsFrozen = Object.isFrozen.bind(Object);
+const nativeObjectValues = Object.values.bind(Object);
+
 export type ModelAvailability = "installable" | "blocked_no_approved_gguf";
 
 export interface ModelLicenseAsset {
@@ -19,113 +27,54 @@ export interface ModelArtifact {
   minimumRamGb: number;
   appDefaultContextTokens: number;
   officialModelContextTokens: number;
-  /** Present only for supply-chain-approved, installable artifacts. */
   artifactFileName?: string;
   downloadUrl?: string;
   bytes?: number;
   sha256?: string;
 }
 
-const HYPERCLOVAX_LICENSE_ASSETS = [
-  {
-    id: "license",
-    path: "assets/model-licenses/hyperclovax-seed/LICENSE.txt",
-    sourceUrls: [
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE",
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE"
-    ]
-  },
-  {
-    id: "notice",
-    path: "assets/model-licenses/hyperclovax-seed/NOTICE.txt",
-    sourceUrls: [
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-31",
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-31"
-    ]
-  },
-  {
-    id: "prohibited-use-policy",
-    path: "assets/model-licenses/hyperclovax-seed/PROHIBITED_USE_POLICY.txt",
-    sourceUrls: [
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B/resolve/3da5046fb0195d14f2497de198136987d35fd644/LICENSE#section-23",
-      "https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B/resolve/0728a47d632019a8da5f53b663db1c175dc04115/LICENSE#section-23"
-    ]
-  }
-] as const satisfies readonly ModelLicenseAsset[];
-
-const APACHE_2_LICENSE_ASSETS = [
-  {
-    id: "license",
-    path: "assets/model-licenses/apache-2.0/LICENSE.txt",
-    sourceUrls: [
-      "https://huggingface.co/kakaocorp/kanana-1.5-2.1b-instruct-2505/resolve/7df4bc35ccd610e451809d7106e1c3cf82bfd44c/LICENSE"
-    ]
-  }
-] as const satisfies readonly ModelLicenseAsset[];
-
-export const MODEL_REGISTRY: readonly ModelArtifact[] = [
-  {
-    id: "hyperclovax-seed-text-instruct-0.5b-q4km",
-    provider: "NAVER",
-    displayName: "HyperCLOVA X SEED Text Instruct 0.5B Q4_K_M",
-    availability: "installable",
-    repository: "naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF",
-    revision: "27831169fdebe6fe30bb1b9d76b12a2d06693f26",
-    artifactFileName: "HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf",
-    downloadUrl:
-      "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-0.5B-GGUF/resolve/27831169fdebe6fe30bb1b9d76b12a2d06693f26/HyperCLOVAX-SEED-Text-Instruct-0.5B-Q4_K_M.gguf?download=true",
-    bytes: 431882784,
-    sha256: "bc6a93b452648e8e90b06dc04f81edbdce9703fa76bdf589a63cc8418699d44f",
-    licenseName: "HyperCLOVA X SEED Model License Agreement",
-    licenseAssets: HYPERCLOVAX_LICENSE_ASSETS,
-    attribution: "Powered by HyperCLOVA X",
-    minimumRamGb: 4,
-    appDefaultContextTokens: 2048,
-    officialModelContextTokens: 8192
-  },
-  {
-    id: "hyperclovax-seed-text-instruct-1.5b-q4km",
-    provider: "NAVER",
-    displayName: "HyperCLOVA X SEED Text Instruct 1.5B Q4_K_M",
-    availability: "installable",
-    repository: "naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF",
-    revision: "b9bbb68d6635a8b80263bf7165c8b908d64f28de",
-    artifactFileName: "HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M.gguf",
-    downloadUrl:
-      "https://huggingface.co/naver-ellm/HyperCLOVAX-SEED-Text-Instruct-1.5B-GGUF/resolve/b9bbb68d6635a8b80263bf7165c8b908d64f28de/HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M.gguf?download=true",
-    bytes: 1006572160,
-    sha256: "6e0841f886f55411327d4659308f2408424f0ac55a2d32f60a49f470c71381a6",
-    licenseName: "HyperCLOVA X SEED Model License Agreement",
-    licenseAssets: HYPERCLOVAX_LICENSE_ASSETS,
-    attribution: "Powered by HyperCLOVA X",
-    minimumRamGb: 6,
-    appDefaultContextTokens: 4096,
-    officialModelContextTokens: 131072
-  },
-  {
-    id: "kanana-1.5-2.1b-instruct",
-    provider: "Kakao",
-    displayName: "Kanana 1.5 2.1B Instruct",
-    availability: "blocked_no_approved_gguf",
-    repository: "kakaocorp/kanana-1.5-2.1b-instruct-2505",
-    revision: "7df4bc35ccd610e451809d7106e1c3cf82bfd44c",
-    licenseName: "Apache License 2.0",
-    licenseAssets: APACHE_2_LICENSE_ASSETS,
-    attribution: "Kanana 1.5 by Kakao",
-    minimumRamGb: 6,
-    appDefaultContextTokens: 4096,
-    officialModelContextTokens: 32768
-  }
+const BASE_MODEL_KEYS = [
+  "appDefaultContextTokens",
+  "attribution",
+  "availability",
+  "displayName",
+  "id",
+  "licenseAssets",
+  "licenseName",
+  "minimumRamGb",
+  "officialModelContextTokens",
+  "provider",
+  "repository",
+  "revision"
 ] as const;
+const INSTALLABLE_MODEL_KEYS = [
+  ...BASE_MODEL_KEYS,
+  "artifactFileName",
+  "bytes",
+  "downloadUrl",
+  "sha256"
+] as const;
+const LICENSE_ASSET_KEYS = ["id", "path", "sourceUrls"] as const;
+const INSTALLABLE_DOWNLOAD_URL =
+  /^https:\/\/huggingface\.co\/([^/?#]+\/[^/?#]+)\/resolve\/([a-f0-9]{40})\/([^/?#]+\.gguf)\?download=true$/;
+const LICENSE_SOURCE_URL =
+  /^https:\/\/huggingface\.co\/[^/?#]+\/[^/?#]+\/resolve\/[a-f0-9]{40}\/LICENSE(?:#section-\d+)?$/;
 
-function getExpectedDownloadUrl(repository: string, revision: string, artifactFileName: string): string {
-  return `https://huggingface.co/${repository}/resolve/${revision}/${artifactFileName}?download=true`;
+function isPlainObject(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+function hasExactKeys(input: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(input).sort().join("\0") === [...keys].sort().join("\0");
+}
+
+function isPositiveInteger(input: unknown): input is number {
+  return typeof input === "number" && Number.isSafeInteger(input) && input > 0;
 }
 
 function hasSafeRepository(repository: string): boolean {
   const segments = repository.split("/");
   const safeSegment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$/;
-
   return segments.length === 2 && segments.every((segment) => safeSegment.test(segment));
 }
 
@@ -145,102 +94,142 @@ function hasSafeModelId(modelId: string): boolean {
   );
 }
 
-function hasExactImmutableDownloadUrl(
-  downloadUrl: string | undefined,
-  repository: string,
-  revision: string,
-  artifactFileName: string
-): boolean {
-  if (!downloadUrl) return false;
-
-  try {
-    const url = new URL(downloadUrl);
-    const expectedPathname = `/${repository}/resolve/${revision}/${artifactFileName}`;
-    const expectedUrl = getExpectedDownloadUrl(repository, revision, artifactFileName);
-
-    return (
-      url.origin === "https://huggingface.co" &&
-      url.pathname === expectedPathname &&
-      url.search === "?download=true" &&
-      url.searchParams.size === 1 &&
-      url.searchParams.get("download") === "true" &&
-      url.hash === "" &&
-      url.href === expectedUrl
-    );
-  } catch {
-    return false;
+function validateLicenseAssets(modelId: string, input: unknown): asserts input is readonly ModelLicenseAsset[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error(`${modelId}: attribution and license assets are required`);
+  }
+  const seen = new Set<string>();
+  for (const asset of input) {
+    if (!isPlainObject(asset) || !hasExactKeys(asset, LICENSE_ASSET_KEYS)) {
+      throw new Error(`${modelId}: license asset schema is not exact`);
+    }
+    if (
+      !["license", "notice", "prohibited-use-policy"].includes(String(asset.id)) ||
+      seen.has(String(asset.id)) ||
+      typeof asset.path !== "string" ||
+      !/^assets\/model-licenses\/[A-Za-z0-9._/-]+\.txt$/.test(asset.path) ||
+      !Array.isArray(asset.sourceUrls) ||
+      asset.sourceUrls.length === 0 ||
+      !asset.sourceUrls.every((url) => typeof url === "string" && LICENSE_SOURCE_URL.test(url))
+    ) {
+      throw new Error(`${modelId}: license asset values are unsafe`);
+    }
+    seen.add(String(asset.id));
   }
 }
 
-/** Throws when an artifact is unsafe to present as an installable download. */
-export function validateModelRegistry(registry: readonly ModelArtifact[]): void {
+/** Validates exact runtime shape before any registry entry can be consumed. */
+export function validateModelRegistry(registry: unknown): asserts registry is readonly ModelArtifact[] {
+  if (!Array.isArray(registry)) throw new Error("model registry must be an array");
   const seenIds = new Set<string>();
 
-  for (const model of registry) {
-    if (!hasSafeModelId(model.id)) {
-      throw new Error(`${model.id}: model ID must be one safe lowercase ASCII path segment`);
+  for (const candidate of registry) {
+    if (!isPlainObject(candidate)) throw new Error("model registry entries must be objects");
+    const availability = candidate.availability;
+    if (
+      availability === "blocked_no_approved_gguf" &&
+      ["artifactFileName", "bytes", "downloadUrl", "sha256"].some((key) => key in candidate)
+    ) {
+      throw new Error(`${String(candidate.id)}: blocked model cannot expose an unapproved download artifact`);
     }
-    if (seenIds.has(model.id)) {
-      throw new Error(`${model.id}: duplicate model ID is not allowed`);
-    }
-    seenIds.add(model.id);
-    if (!hasSafeRepository(model.repository)) {
-      throw new Error(`${model.id}: repository must use owner/repository format`);
-    }
-    if (!/^[a-f0-9]{40}$/.test(model.revision)) {
-      throw new Error(`${model.id}: revision must be a 40-character lowercase commit SHA`);
-    }
-    if (!Number.isInteger(model.minimumRamGb) || model.minimumRamGb <= 0) {
-      throw new Error(`${model.id}: a positive minimum RAM value is required`);
+    const expectedKeys = availability === "installable" ? INSTALLABLE_MODEL_KEYS : BASE_MODEL_KEYS;
+    if (!hasExactKeys(candidate, expectedKeys)) {
+      throw new Error(`${String(candidate.id)}: model schema keys are not exact`);
     }
     if (
-      !Number.isInteger(model.appDefaultContextTokens) ||
-      !Number.isInteger(model.officialModelContextTokens) ||
-      model.appDefaultContextTokens <= 0 ||
-      model.officialModelContextTokens <= 0
+      typeof candidate.id !== "string" ||
+      typeof candidate.displayName !== "string" ||
+      typeof candidate.repository !== "string" ||
+      typeof candidate.revision !== "string" ||
+      typeof candidate.licenseName !== "string" ||
+      typeof candidate.attribution !== "string"
     ) {
-      throw new Error(`${model.id}: app and official context values are required`);
+      throw new Error("model registry string fields are required");
     }
-    if (model.appDefaultContextTokens > model.officialModelContextTokens) {
-      throw new Error(`${model.id}: app default context cannot exceed official context`);
+    if (!hasSafeModelId(candidate.id)) {
+      throw new Error(`${candidate.id}: model ID must be one safe lowercase ASCII path segment`);
     }
-    if (!model.attribution || model.licenseAssets.length === 0) {
-      throw new Error(`${model.id}: attribution and license assets are required`);
+    if (seenIds.has(candidate.id)) throw new Error(`${candidate.id}: duplicate model ID is not allowed`);
+    seenIds.add(candidate.id);
+    if (candidate.provider !== "NAVER" && candidate.provider !== "Kakao") {
+      throw new Error(`${candidate.id}: provider is not approved`);
     }
-    if (model.availability === "installable") {
-      if (!model.artifactFileName || !hasSafeArtifactFileName(model.artifactFileName)) {
-        throw new Error(`${model.id}: installable artifact must be a single GGUF file name`);
-      }
-      if (!hasExactImmutableDownloadUrl(
-        model.downloadUrl,
-        model.repository,
-        model.revision,
-        model.artifactFileName
-      )) {
-        throw new Error(`${model.id}: installable download URL must exactly match repository, revision, and file`);
-      }
-      const bytes = model.bytes;
-      if (typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes <= 0) {
-        throw new Error(`${model.id}: installable artifact file name and byte size are required`);
-      }
-      if (!model.sha256 || !/^[a-f0-9]{64}$/.test(model.sha256)) {
-        throw new Error(`${model.id}: installable SHA-256 must be 64 lowercase hex characters`);
-      }
-      continue;
+    if (availability !== "installable" && availability !== "blocked_no_approved_gguf") {
+      throw new Error(`${candidate.id}: availability is not approved`);
+    }
+    if (!hasSafeRepository(candidate.repository)) {
+      throw new Error(`${candidate.id}: repository must use owner/repository format`);
+    }
+    if (!/^[a-f0-9]{40}$/.test(candidate.revision)) {
+      throw new Error(`${candidate.id}: revision must be a 40-character lowercase commit SHA`);
     }
     if (
-      model.downloadUrl !== undefined ||
-      model.artifactFileName !== undefined ||
-      model.bytes !== undefined ||
-      model.sha256 !== undefined
+      !isPositiveInteger(candidate.minimumRamGb) ||
+      !isPositiveInteger(candidate.appDefaultContextTokens) ||
+      !isPositiveInteger(candidate.officialModelContextTokens)
     ) {
-      throw new Error(`${model.id}: blocked model cannot expose an unapproved download artifact`);
+      throw new Error(`${candidate.id}: positive RAM and context values are required`);
+    }
+    if (candidate.appDefaultContextTokens > candidate.officialModelContextTokens) {
+      throw new Error(`${candidate.id}: app default context cannot exceed official context`);
+    }
+    if (!candidate.attribution) throw new Error(`${candidate.id}: attribution is required`);
+    validateLicenseAssets(candidate.id, candidate.licenseAssets);
+
+    if (availability === "installable") {
+      if (
+        typeof candidate.artifactFileName !== "string" ||
+        !hasSafeArtifactFileName(candidate.artifactFileName)
+      ) {
+        throw new Error(`${candidate.id}: installable artifact must be a single GGUF file name`);
+      }
+      if (typeof candidate.downloadUrl !== "string") {
+        throw new Error(`${candidate.id}: installable download URL is required`);
+      }
+      const match = INSTALLABLE_DOWNLOAD_URL.exec(candidate.downloadUrl);
+      if (
+        !match ||
+        match[1] !== candidate.repository ||
+        match[2] !== candidate.revision ||
+        match[3] !== candidate.artifactFileName
+      ) {
+        throw new Error(`${candidate.id}: installable download URL must exactly match repository, revision, and file`);
+      }
+      if (!isPositiveInteger(candidate.bytes)) {
+        throw new Error(`${candidate.id}: installable byte size must be a positive safe integer`);
+      }
+      if (typeof candidate.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(candidate.sha256)) {
+        throw new Error(`${candidate.id}: installable SHA-256 must be 64 lowercase hex characters`);
+      }
     }
   }
 }
 
-validateModelRegistry(MODEL_REGISTRY);
+export function deepFreeze<T>(input: T): T {
+  if (typeof input === "object" && input !== null && !nativeObjectIsFrozen(input)) {
+    for (const value of nativeObjectValues(input)) deepFreeze(value);
+    nativeObjectFreeze(input);
+  }
+  return input;
+}
+
+export function assertDeepFrozen(input: unknown, seen = new Set<object>()): void {
+  if (typeof input !== "object" || input === null || seen.has(input)) return;
+  if (!nativeObjectIsFrozen(input)) throw new Error("model registry must be deeply frozen");
+  seen.add(input);
+  for (const value of nativeObjectValues(input)) assertDeepFrozen(value, seen);
+}
+
+const validatedRegistryData: unknown = modelRegistryData;
+validateModelRegistry(validatedRegistryData);
+
+export const MODEL_REGISTRY: readonly ModelArtifact[] = deepFreeze(validatedRegistryData);
+assertDeepFrozen(MODEL_REGISTRY);
+const INSTALLABLE_MODELS: readonly ModelArtifact[] = nativeObjectFreeze(
+  MODEL_REGISTRY.filter((model) => model.availability === "installable")
+);
+assertDeepFrozen(INSTALLABLE_MODELS);
 
 export function getInstallableModels(): readonly ModelArtifact[] {
-  return MODEL_REGISTRY.filter((model) => model.availability === "installable");
+  return INSTALLABLE_MODELS;
 }
