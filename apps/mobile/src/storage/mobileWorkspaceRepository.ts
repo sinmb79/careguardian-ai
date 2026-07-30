@@ -21,11 +21,17 @@ function secureRandomBytes(length: number): Promise<Uint8Array> {
   return crypto.getRandomBytesAsync(length);
 }
 
+function databaseFileUri(directory: string, name: string): string {
+  const normalizedDirectory = directory.replace(/\/+$/, "");
+  if (normalizedDirectory.startsWith("file:///")) return `${normalizedDirectory}/${name}`;
+  if (normalizedDirectory.startsWith("/")) return `file://${normalizedDirectory}/${name}`;
+  throw new Error("unsupported SQLite database directory");
+}
+
 async function databaseFileExists(name: string): Promise<boolean> {
   const directory = SQLite.defaultDatabaseDirectory as string | null;
   if (!directory) return false;
-  const separator = directory.endsWith("/") ? "" : "/";
-  return (await FileSystem.getInfoAsync(`${directory}${separator}${name}`)).exists;
+  return (await FileSystem.getInfoAsync(databaseFileUri(directory, name))).exists;
 }
 
 export interface MobileWorkspaceDatabase {
