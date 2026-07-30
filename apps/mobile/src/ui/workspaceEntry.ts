@@ -12,6 +12,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 export type WorkspaceEntryDependencies = {
   now(): string;
+  nowDate?(): Date;
   createId(prefix: "task-" | "list-", attempt: number): string;
 };
 
@@ -43,7 +44,8 @@ export function addWorkspaceTask(
   if (dueDate && !localNineAmForDate(dueDate)) {
     return { ok: false, error: "알림 날짜는 YYYY-MM-DD 형식의 실제 날짜로 입력해 주세요." };
   }
-  if (dueDate && localNineAmForDate(dueDate)!.getTime() <= new Date(dependencies.now()).getTime()) {
+  const now = dependencies.nowDate?.() ?? new Date(dependencies.now());
+  if (dueDate && localNineAmForDate(dueDate)!.getTime() <= now.getTime()) {
     return { ok: false, error: "알림 날짜는 기기 시간 기준 미래로 선택해 주세요." };
   }
   return addEntry(workspace, inputTitle, "task-", workspace.tasks, dependencies, (id, title) => ({
@@ -69,6 +71,7 @@ export function addWorkspaceList(
 export function createMobileWorkspaceEntryDependencies(): WorkspaceEntryDependencies {
   return {
     now: () => new Date().toISOString(),
+    nowDate: () => new Date(),
     createId: (prefix, attempt) => `${prefix}${Date.now().toString(36)}-${attempt}`
   };
 }
