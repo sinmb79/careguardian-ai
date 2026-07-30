@@ -24,7 +24,24 @@ vi.mock("../security/localAuthentication", () => ({
 vi.mock("../local-ai/modelStore", () => ({
   removeAllModels: async () => undefined
 }));
-import { createLifeWorkspaceController } from "./useLifeWorkspace";
+import {
+  createLifeWorkspaceController as createControllerWithRequiredRelease,
+  type LifeWorkspaceControllerDependencies
+} from "./useLifeWorkspace";
+
+const releaseInference = async () => undefined;
+type TestControllerDependencies =
+  Omit<LifeWorkspaceControllerDependencies, "stopActiveInference"> &
+  Partial<Pick<LifeWorkspaceControllerDependencies, "stopActiveInference">>;
+
+function createLifeWorkspaceController(
+  dependencies: TestControllerDependencies
+) {
+  return createControllerWithRequiredRelease({
+    stopActiveInference: releaseInference,
+    ...dependencies
+  });
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

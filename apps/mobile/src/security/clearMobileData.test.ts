@@ -5,6 +5,7 @@ describe("clearMobileData", () => {
   test("uses the explicit notification, model, repository, memory deletion order", async () => {
     const events: string[] = [];
     await clearMobileData({
+      stopActiveInference: async () => undefined,
       cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => void events.push("models"),
       deleteAllKnownWorkspaceData: async () => void events.push("workspace"),
@@ -47,6 +48,7 @@ describe("clearMobileData", () => {
     const events: string[] = [];
     const deleteAllKnownWorkspaceData = vi.fn();
     await expect(clearMobileData({
+      stopActiveInference: async () => undefined,
       cancelAllScheduledNotifications: async () => void events.push("notifications"),
       removeAllModels: async () => { throw new Error("partial cleanup failed"); },
       deleteAllKnownWorkspaceData,
@@ -65,6 +67,7 @@ describe("clearMobileData", () => {
     const resetMemory = vi.fn();
 
     await expect(clearMobileData({
+      stopActiveInference: async () => undefined,
       cancelAllScheduledNotifications: async () => { throw notificationFailure; },
       removeAllModels: async () => undefined,
       deleteAllKnownWorkspaceData: async () => { throw workspaceFailure; },

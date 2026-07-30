@@ -74,7 +74,7 @@ export type LifeWorkspaceControllerDependencies = {
   hasPreviousTestData(): Promise<boolean>;
   deletePreviousTestData?(): Promise<void>;
   save(workspace: PersonalWorkspace): Promise<void>;
-  stopActiveInference?(): Promise<void>;
+  stopActiveInference(): Promise<void>;
   deleteAllKnownWorkspaceData(): Promise<void>;
   removeAllModels(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
