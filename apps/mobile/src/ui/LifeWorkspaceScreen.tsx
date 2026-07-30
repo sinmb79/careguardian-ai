@@ -1,9 +1,11 @@
 import type { PersonalWorkspace } from "@life-steward/life-core";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { LifeWorkspaceSection } from "../state/useLifeWorkspace";
 import { ExtensionBuilderScreen } from "./ExtensionBuilderScreen";
 import { LocalAiScreen } from "./LocalAiScreen";
 import { observeDeleteAll } from "./deletionUi";
+import { addWorkspaceList, addWorkspaceTask, createMobileWorkspaceEntryDependencies } from "./workspaceEntry";
 
 const entries: Array<{ id: LifeWorkspaceSection; label: string }> = [
   { id: "today", label: "오늘" }, { id: "lists", label: "목록" }, { id: "extensions", label: "기능 만들기" },
@@ -35,6 +37,8 @@ export function LifeWorkspaceScreen(props: Props) {
     {props.statusMessage ? <View style={styles.status}><Text style={styles.statusText}>{props.statusMessage}</Text></View> : null}
     {props.section === "today" ? <View style={styles.card}><Text style={styles.cardTitle}>오늘</Text>{props.workspace.tasks.filter((task) => task.status === "open").length ? props.workspace.tasks.filter((task) => task.status === "open").map((task) => <Text key={task.id} style={styles.item}>• {task.title}{task.dueDate ? ` · ${task.dueDate}` : ""}</Text>) : <Text style={styles.body}>아직 열린 생활 작업이 없습니다.</Text>}</View> : null}
     {props.section === "lists" ? <View style={styles.card}><Text style={styles.cardTitle}>목록</Text>{props.workspace.lists.length ? props.workspace.lists.map((list) => <Text key={list.id} style={styles.item}>• {list.title}</Text>) : <Text style={styles.body}>개인 목록을 만들면 여기에 표시됩니다.</Text>}</View> : null}
+    {props.section === "today" ? <WorkspaceEntryForm mode="task" workspace={props.workspace} onChange={props.onChange} /> : null}
+    {props.section === "lists" ? <WorkspaceEntryForm mode="list" workspace={props.workspace} onChange={props.onChange} /> : null}
     {props.section === "extensions" ? <ExtensionBuilderScreen onCreate={addExtension} /> : null}
     {props.section === "local-ai" ? <LocalAiScreen workspace={props.workspace} onChange={props.onChange} /> : null}
     {props.section === "settings" ? <View style={styles.card}><Text style={styles.cardTitle}>설정</Text><Text style={styles.body}>모든 데이터는 이 기기에서만 삭제할 수 있습니다.</Text><Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("이 기기의 모든 데이터 삭제", "진행 중인 로컬 AI를 중단하고 모델·부분 다운로드·생활 작업·일반 알림을 이 기기에서 삭제합니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => observeDeleteAll(props.onDeleteAll) }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable></View> : null}
@@ -42,9 +46,37 @@ export function LifeWorkspaceScreen(props: Props) {
   </View>;
 }
 
+type WorkspaceEntryFormProps = {
+  mode: "task" | "list";
+  workspace: PersonalWorkspace;
+  onChange(workspace: PersonalWorkspace): void;
+};
+
+function WorkspaceEntryForm({ mode, workspace, onChange }: WorkspaceEntryFormProps) {
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const isTask = mode === "task";
+  const add = () => {
+    const result = isTask
+      ? addWorkspaceTask(workspace, title, createMobileWorkspaceEntryDependencies())
+      : addWorkspaceList(workspace, title, createMobileWorkspaceEntryDependencies());
+    if (!result.ok) return setError(result.error);
+    onChange(result.workspace);
+    setTitle("");
+    setError("");
+  };
+  const label = isTask ? "New task" : "New personal list";
+  return <View style={styles.entryForm}>
+    <Text style={styles.entryLabel}>{label}</Text>
+    <TextInput value={title} onChangeText={(value) => { setTitle(value); setError(""); }} placeholder={isTask ? "What needs doing?" : "List name"} accessibilityLabel={`${label} title`} style={styles.entryInput} maxLength={501} />
+    <Pressable accessibilityRole="button" accessibilityLabel={`Add ${isTask ? "task" : "personal list"}`} style={styles.entryButton} onPress={add}><Text style={styles.entryButtonText}>{isTask ? "Add task" : "Add list"}</Text></Pressable>
+    {error ? <Text accessibilityLiveRegion="polite" style={styles.entryError}>{error}</Text> : null}
+  </View>;
+}
+
 const styles = StyleSheet.create({
   container: { gap: 16 }, hero: { gap: 8, padding: 22, borderRadius: 28, backgroundColor: "#183138" }, kicker: { color: "#cde0d7", fontSize: 12, fontWeight: "800", letterSpacing: 1.4 }, heading: { color: "#fffdf7", fontSize: 30, fontWeight: "800" }, heroBody: { color: "#d8e4df", fontSize: 16, lineHeight: 24 },
   navigation: { gap: 8 }, tab: { minHeight: 44, paddingHorizontal: 16, justifyContent: "center", borderRadius: 999, backgroundColor: "#e5ece9" }, tabSelected: { backgroundColor: "#6f8a70" }, tabText: { color: "#264049", fontWeight: "700" }, tabTextSelected: { color: "#fff" },
   status: { padding: 13, borderRadius: 14, backgroundColor: "#e8f0e9" }, statusText: { color: "#3a4e54", textAlign: "center" }, warning: { gap: 8, padding: 18, borderRadius: 18, backgroundColor: "#fff4dd", borderWidth: 1, borderColor: "#d49433" }, warningTitle: { fontSize: 18, fontWeight: "800", color: "#533500" }, warningBody: { color: "#654d27", lineHeight: 22 }, warningButton: { minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#7b4a00" }, warningButtonText: { color: "#fff", fontWeight: "800" },
-  card: { gap: 10, padding: 20, borderRadius: 20, backgroundColor: "#fffdf7" }, cardTitle: { fontSize: 22, fontWeight: "800", color: "#1a2626" }, body: { color: "#526166", fontSize: 16, lineHeight: 23 }, item: { color: "#26383d", fontSize: 17, lineHeight: 28 }, saveButton: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "#c4684f" }, saveText: { color: "#fff", fontSize: 17, fontWeight: "800" }, deleteButton: { minHeight: 52, justifyContent: "center", alignItems: "center", borderRadius: 14, backgroundColor: "#9c3d32" }, deleteButtonText: { color: "#fff", fontWeight: "800" }, disabled: { opacity: 0.55 }
+  card: { gap: 10, padding: 20, borderRadius: 20, backgroundColor: "#fffdf7" }, cardTitle: { fontSize: 22, fontWeight: "800", color: "#1a2626" }, body: { color: "#526166", fontSize: 16, lineHeight: 23 }, item: { color: "#26383d", fontSize: 17, lineHeight: 28 }, entryForm: { gap: 8, padding: 14, borderRadius: 14, backgroundColor: "#edf3ef" }, entryLabel: { color: "#26383d", fontWeight: "700" }, entryInput: { minHeight: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: "#9baea5", borderRadius: 10, color: "#1a2626", backgroundColor: "#fff" }, entryButton: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 10, backgroundColor: "#416d59" }, entryButtonText: { color: "#fff", fontWeight: "800" }, entryError: { color: "#9c3d32", fontWeight: "600" }, saveButton: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 999, backgroundColor: "#c4684f" }, saveText: { color: "#fff", fontSize: 17, fontWeight: "800" }, deleteButton: { minHeight: 52, justifyContent: "center", alignItems: "center", borderRadius: 14, backgroundColor: "#9c3d32" }, deleteButtonText: { color: "#fff", fontWeight: "800" }, disabled: { opacity: 0.55 }
 });
