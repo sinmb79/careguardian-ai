@@ -4,6 +4,7 @@ import {
   type LifeTask,
   type PersonalWorkspace
 } from "@life-steward/life-core";
+import { localNineAmForDate } from "../reminders/localReminderTime";
 
 const MAX_TITLE_LENGTH = 500;
 const MAX_ID_ATTEMPTS = 101;
@@ -22,11 +23,34 @@ export function addWorkspaceTask(
   workspace: PersonalWorkspace,
   inputTitle: string,
   dependencies: WorkspaceEntryDependencies
+): WorkspaceEntryResult;
+export function addWorkspaceTask(
+  workspace: PersonalWorkspace,
+  inputTitle: string,
+  inputDueDate: string,
+  dependencies: WorkspaceEntryDependencies
+): WorkspaceEntryResult;
+export function addWorkspaceTask(
+  workspace: PersonalWorkspace,
+  inputTitle: string,
+  inputDueDateOrDependencies: string | WorkspaceEntryDependencies,
+  maybeDependencies?: WorkspaceEntryDependencies
 ): WorkspaceEntryResult {
+  const inputDueDate = typeof inputDueDateOrDependencies === "string" ? inputDueDateOrDependencies : "";
+  const dependencies = typeof inputDueDateOrDependencies === "string" ? maybeDependencies : inputDueDateOrDependencies;
+  if (!dependencies) throw new Error("workspace entry dependencies are required");
+  const dueDate = inputDueDate.trim();
+  if (dueDate && !localNineAmForDate(dueDate)) {
+    return { ok: false, error: "알림 날짜는 YYYY-MM-DD 형식의 실제 날짜로 입력해 주세요." };
+  }
+  if (dueDate && localNineAmForDate(dueDate)!.getTime() <= new Date(dependencies.now()).getTime()) {
+    return { ok: false, error: "알림 날짜는 기기 시간 기준 미래로 선택해 주세요." };
+  }
   return addEntry(workspace, inputTitle, "task-", workspace.tasks, dependencies, (id, title) => ({
     id,
     title,
-    status: "open"
+    status: "open",
+    ...(dueDate ? { dueDate } : {})
   }));
 }
 

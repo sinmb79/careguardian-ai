@@ -74,21 +74,24 @@ type WorkspaceEntryFormProps = {
 
 function WorkspaceEntryForm({ mode, workspace, onChange }: WorkspaceEntryFormProps) {
   const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState("");
   const isTask = mode === "task";
   const add = () => {
     const result = isTask
-      ? addWorkspaceTask(workspace, title, createMobileWorkspaceEntryDependencies())
+      ? addWorkspaceTask(workspace, title, dueDate, createMobileWorkspaceEntryDependencies())
       : addWorkspaceList(workspace, title, createMobileWorkspaceEntryDependencies());
     if (!result.ok) return setError(result.error);
     onChange(result.workspace);
     setTitle("");
+    setDueDate("");
     setError("");
   };
   const label = isTask ? "새 작업" : "새 개인 목록";
   return <View style={styles.entryForm}>
     <Text style={styles.entryLabel}>{label}</Text>
     <TextInput value={title} onChangeText={(value) => { setTitle(value); setError(""); }} placeholder={isTask ? "무엇을 해야 하나요?" : "목록 이름"} accessibilityLabel={`${label} 제목`} style={styles.entryInput} maxLength={501} />
+    {isTask ? <TextInput value={dueDate} onChangeText={(value) => { setDueDate(value); setError(""); }} placeholder="YYYY-MM-DD" accessibilityLabel="알림 날짜 (선택, 오전 9시)" accessibilityHint="선택한 날짜의 기기 현지 시간 오전 9시에 알립니다." style={styles.entryInput} maxLength={10} autoCapitalize="none" /> : null}
     <Pressable accessibilityRole="button" accessibilityLabel={`새 ${isTask ? "작업" : "개인 목록"} 추가`} style={styles.entryButton} onPress={add}><Text style={styles.entryButtonText}>{isTask ? "작업 추가" : "목록 추가"}</Text></Pressable>
     {error ? <Text accessibilityLiveRegion="polite" style={styles.entryError}>{error}</Text> : null}
   </View>;

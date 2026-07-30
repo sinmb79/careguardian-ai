@@ -73,6 +73,26 @@ describe("life workspace state", () => {
     expect(events).toEqual(["save", "notifications"]);
   });
 
+  test("passes a newly stored due date to notification synchronization after saving", async () => {
+    const syncNotifications = vi.fn(async () => 1);
+    const workspace = {
+      ...fixtureWorkspace,
+      tasks: [{ ...fixtureWorkspace.tasks[0], dueDate: "2026-08-01" }]
+    };
+    const controller = createLifeWorkspaceController({
+      load: async () => null,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      deleteAllKnownWorkspaceData: async () => undefined,
+      removeAllModels: async () => undefined,
+      syncNotifications,
+      cancelAllScheduledNotifications: async () => undefined
+    });
+
+    await expect(controller.save(workspace)).resolves.toMatchObject({ kind: "saved", notificationCount: 1 });
+    expect(syncNotifications).toHaveBeenCalledWith([{ ...fixtureWorkspace.tasks[0], dueDate: "2026-08-01" }]);
+  });
+
   test("does not save an invalid extension and leaves storage untouched", async () => {
     const save = vi.fn();
     const controller = createLifeWorkspaceController({

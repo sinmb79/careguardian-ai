@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import type { LifeTask } from "@life-steward/life-core";
+import { isFutureLocalReminder, localNineAmForDate } from "../reminders/localReminderTime";
 
 const CHANNEL_ID = "life-steward-tasks-v1";
 const IDENTIFIER_PREFIX = "life-steward-task-";
@@ -27,8 +28,7 @@ export type LifeNotificationRequest = {
 
 function dateForTask(task: LifeTask): Date | null {
   if (task.status !== "open" || !task.dueDate) return null;
-  const date = new Date(`${task.dueDate}T09:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return localNineAmForDate(task.dueDate);
 }
 
 export function buildLifeNotification(task: LifeTask): LifeNotificationRequest {
@@ -106,8 +106,10 @@ export async function cancelAllScheduledNotificationsForFullDeletion(): Promise<
   }
 }
 
-export async function syncLifeNotifications(tasks: LifeTask[]): Promise<number> {
+export async function syncLifeNotifications(tasks: LifeTask[], now: () => Date = () => new Date()): Promise<number> {
+  const currentTime = now();
   const requests = tasks.flatMap((task) => {
+    if (!task.dueDate || !isFutureLocalReminder(task.dueDate, currentTime)) return [];
     try {
       return [buildLifeNotification(task)];
     } catch {

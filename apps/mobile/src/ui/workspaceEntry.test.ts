@@ -19,6 +19,13 @@ describe("workspace entry", () => {
     expect(source).toContain('placeholder={isTask ? "무엇을 해야 하나요?" : "목록 이름"}');
     expect(source).toContain('accessibilityLabel={`${label} 제목`}');
     expect(source).toContain('accessibilityLabel={`새 ${isTask ? "작업" : "개인 목록"} 추가`}');
+    expect(source).toContain('알림 날짜 (선택, 오전 9시)');
+    expect(source).toContain('placeholder="YYYY-MM-DD"');
+    expect(source).toContain('accessibilityLabel="알림 날짜 (선택, 오전 9시)"');
+    expect(source).toContain('accessibilityHint="선택한 날짜의 기기 현지 시간 오전 9시에 알립니다."');
+    expect(source).toContain('isTask ? <TextInput');
+    expect(source).toContain('setDueDate("");');
+    expect(source).toContain('? addWorkspaceTask(workspace, title, dueDate, createMobileWorkspaceEntryDependencies())');
   });
 
   test("adds an open task with a deterministic id and timestamp", () => {
@@ -34,6 +41,42 @@ describe("workspace entry", () => {
         tasks: [...fixtureWorkspace.tasks, { id: "task-buy-flowers", title: "Buy flowers", status: "open" }]
       })
     });
+  });
+
+  test("stores a trimmed future local reminder date on a new task", () => {
+    const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", " 2026-08-01 ", {
+      now: () => now,
+      createId: () => "task-buy-flowers"
+    });
+
+    expect(result.ok && result.workspace.tasks.at(-1)).toEqual({
+      id: "task-buy-flowers", title: "Buy flowers", status: "open", dueDate: "2026-08-01"
+    });
+  });
+
+  test.each(["2026-2-01", "2026-02-30", "2026-13-01", "2026-00-01"])(
+    "rejects an invalid reminder date without mutating the workspace: %s",
+    (dueDate) => {
+      const before = structuredClone(fixtureWorkspace);
+      const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", dueDate, {
+        now: () => now,
+        createId: () => "task-buy-flowers"
+      });
+
+      expect(result).toEqual({ ok: false, error: "알림 날짜는 YYYY-MM-DD 형식의 실제 날짜로 입력해 주세요." });
+      expect(fixtureWorkspace).toEqual(before);
+    }
+  );
+
+  test("rejects a reminder at or before the fixed device-local 9 AM without mutating", () => {
+    const before = structuredClone(fixtureWorkspace);
+    const result = addWorkspaceTask(fixtureWorkspace, "Buy flowers", "2026-07-31", {
+      now: () => "2026-07-31T09:00:00+09:00",
+      createId: () => "task-buy-flowers"
+    });
+
+    expect(result).toEqual({ ok: false, error: "알림 날짜는 기기 시간 기준 미래로 선택해 주세요." });
+    expect(fixtureWorkspace).toEqual(before);
   });
 
   test("adds a list with no records", () => {

@@ -29,6 +29,8 @@ import {
 describe("life notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    notificationApi.getAllScheduledNotificationsAsync.mockReset();
+    notificationApi.scheduleNotificationAsync.mockReset();
     notificationApi.getPermissionsAsync.mockResolvedValue({ granted: true });
     notificationApi.getAllScheduledNotificationsAsync
       .mockResolvedValueOnce([])
@@ -46,7 +48,7 @@ describe("life notifications", () => {
   });
 
   test("synchronizes only open tasks with due dates and verifies reservation", async () => {
-    await expect(syncLifeNotifications(fixtureWorkspace.tasks)).resolves.toBe(1);
+    await expect(syncLifeNotifications(fixtureWorkspace.tasks, () => new Date(2026, 6, 30, 10, 0, 0))).resolves.toBe(1);
 
     expect(notificationApi.setNotificationChannelAsync).toHaveBeenCalledWith(
       "life-steward-tasks-v1",
@@ -58,6 +60,25 @@ describe("life notifications", () => {
         trigger: expect.objectContaining({ type: "date" })
       })
     );
+  });
+
+  test("does not attempt a native reservation for a past local 9 AM trigger", async () => {
+    const pastTask = { ...fixtureWorkspace.tasks[0], dueDate: "2026-07-30" };
+
+    await expect(syncLifeNotifications([pastTask], () => new Date(2026, 6, 31, 10, 0, 0))).resolves.toBe(0);
+
+    expect(notificationApi.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(notificationApi.getPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  test("schedules a future local 9 AM trigger with an injected clock", async () => {
+    const futureTask = { ...fixtureWorkspace.tasks[0], dueDate: "2026-08-01" };
+
+    await expect(syncLifeNotifications([futureTask], () => new Date(2026, 6, 31, 10, 0, 0))).resolves.toBe(1);
+
+    expect(notificationApi.scheduleNotificationAsync).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: expect.objectContaining({ date: new Date(2026, 7, 1, 9, 0, 0) })
+    }));
   });
 
   test("cancels and verifies all private life notifications", async () => {
