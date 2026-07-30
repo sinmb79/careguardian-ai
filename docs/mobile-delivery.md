@@ -62,7 +62,7 @@ Task 10에서 새 AAB의 package, versionName, versionCode, target SDK, 64비트
 | 파일 | 크기 | 용도 |
 |---|---:|---|
 | `feature-graphic.png` | 1024×500 | 무문자 feature graphic |
-| `phone-screenshot-{1-4}.png` | 1081×2402 | phone 스크린샷 4장 |
+| `phone-screenshot-{1-4}.png` | 1080×1920 | phone 스크린샷 4장 |
 | `tablet7-screenshot-{1-2}.png` | 900×1536 | 7-inch tablet 2장 |
 | `tablet10-screenshot-{1-2}.png` | 1600×2560 | 10-inch tablet 2장 |
 
