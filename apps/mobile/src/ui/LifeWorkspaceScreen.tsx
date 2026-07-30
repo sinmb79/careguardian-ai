@@ -2,6 +2,7 @@ import type { PersonalWorkspace } from "@life-steward/life-core";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LifeWorkspaceSection } from "../state/useLifeWorkspace";
 import { ExtensionBuilderScreen } from "./ExtensionBuilderScreen";
+import { LocalAiScreen } from "./LocalAiScreen";
 
 const entries: Array<{ id: LifeWorkspaceSection; label: string }> = [
   { id: "today", label: "오늘" }, { id: "lists", label: "목록" }, { id: "extensions", label: "기능 만들기" },
@@ -34,8 +35,8 @@ export function LifeWorkspaceScreen(props: Props) {
     {props.section === "today" ? <View style={styles.card}><Text style={styles.cardTitle}>오늘</Text>{props.workspace.tasks.filter((task) => task.status === "open").length ? props.workspace.tasks.filter((task) => task.status === "open").map((task) => <Text key={task.id} style={styles.item}>• {task.title}{task.dueDate ? ` · ${task.dueDate}` : ""}</Text>) : <Text style={styles.body}>아직 열린 생활 작업이 없습니다.</Text>}</View> : null}
     {props.section === "lists" ? <View style={styles.card}><Text style={styles.cardTitle}>목록</Text>{props.workspace.lists.length ? props.workspace.lists.map((list) => <Text key={list.id} style={styles.item}>• {list.title}</Text>) : <Text style={styles.body}>개인 목록을 만들면 여기에 표시됩니다.</Text>}</View> : null}
     {props.section === "extensions" ? <ExtensionBuilderScreen onCreate={addExtension} /> : null}
-    {props.section === "local-ai" ? <View style={styles.card}><Text style={styles.cardTitle}>로컬 AI</Text><Text style={styles.body}>로컬 AI 기능은 이 기기 안에서만 개인 작업공간을 도울 수 있도록 준비 중입니다.</Text></View> : null}
-    {props.section === "settings" ? <View style={styles.card}><Text style={styles.cardTitle}>설정</Text><Text style={styles.body}>모든 데이터는 이 기기에서만 삭제할 수 있습니다.</Text><Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("개인 작업공간 삭제", "이 기기의 모든 생활 작업과 일반 알림을 삭제합니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => void props.onDeleteAll() }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable></View> : null}
+    {props.section === "local-ai" ? <LocalAiScreen workspace={props.workspace} onChange={props.onChange} /> : null}
+    {props.section === "settings" ? <View style={styles.card}><Text style={styles.cardTitle}>설정</Text><Text style={styles.body}>모든 데이터는 이 기기에서만 삭제할 수 있습니다.</Text><Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("이 기기의 모든 데이터 삭제", "진행 중인 로컬 AI를 중단하고 모델·부분 다운로드·생활 작업·일반 알림을 이 기기에서 삭제합니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => void props.onDeleteAll() }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable></View> : null}
     <Pressable disabled={props.isSaving || props.isDeleting} accessibilityRole="button" style={[styles.saveButton, (props.isSaving || props.isDeleting) && styles.disabled]} onPress={() => void props.onSave()}><Text style={styles.saveText}>{props.isSaving ? "저장 중…" : "변경 사항 저장"}</Text></Pressable>
   </View>;
 }

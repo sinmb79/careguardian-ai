@@ -25,6 +25,7 @@ import {
   saveWorkspace
 } from "../storage/mobileWorkspaceRepository";
 import { removeAllModels } from "../local-ai/modelStore";
+import { stopAndReleaseLocalModel } from "../local-ai/llamaRuntime";
 import { clearMobileData } from "../security/clearMobileData";
 
 export type LifeWorkspaceSection = "today" | "lists" | "extensions" | "local-ai" | "settings";
@@ -65,6 +66,7 @@ export type LifeWorkspaceControllerDependencies = {
   hasPreviousTestData(): Promise<boolean>;
   deletePreviousTestData?(): Promise<void>;
   save(workspace: PersonalWorkspace): Promise<void>;
+  stopActiveInference?(): Promise<void>;
   deleteWorkspace(): Promise<void>;
   removeAllModels(): Promise<void>;
   syncNotifications(tasks: PersonalWorkspace["tasks"]): Promise<number>;
@@ -183,6 +185,7 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       patch({ isDeleting: true, privacyGate: "locked" });
       try {
         await clearMobileData({
+          stopActiveInference: dependencies.stopActiveInference,
           cancelLifeNotifications: dependencies.cancelNotifications,
           removeAllModels: dependencies.removeAllModels,
           deleteWorkspace: dependencies.deleteWorkspace,
@@ -242,6 +245,7 @@ export function useLifeWorkspace(): LifeWorkspaceState {
   if (!controllerRef.current) {
     controllerRef.current = createLifeWorkspaceController({
       load: loadWorkspace, hasPreviousTestData, deletePreviousTestData, save: saveWorkspace,
+      stopActiveInference: () => stopAndReleaseLocalModel("full-data-delete"),
       deleteWorkspace, removeAllModels, syncNotifications: syncLifeNotifications,
       cancelNotifications: cancelAllLifeNotifications,
       cancelPreviousTestNotifications, authenticate: authenticateForSensitiveAccess

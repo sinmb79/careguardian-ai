@@ -230,6 +230,25 @@ describe("life workspace state", () => {
     });
   });
 
+  test("stops and releases active inference before every production full-delete mutation", async () => {
+    const events: string[] = [];
+    const controller = createLifeWorkspaceController({
+      load: async () => fixtureWorkspace,
+      hasPreviousTestData: async () => false,
+      save: async () => undefined,
+      stopActiveInference: async () => void events.push("inference"),
+      deleteWorkspace: async () => void events.push("workspace"),
+      removeAllModels: async () => void events.push("models"),
+      syncNotifications: async () => 0,
+      cancelNotifications: async () => void events.push("notifications")
+    });
+    await controller.load();
+
+    await controller.deleteAll();
+
+    expect(events).toEqual(["inference", "notifications", "models", "workspace"]);
+  });
+
   test("keeps memory and repository data intact when model deletion fails", async () => {
     const deleteWorkspace = vi.fn();
     const controller = createLifeWorkspaceController({

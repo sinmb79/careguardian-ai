@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "developmentClient": true,
       "distribution": "internal",
       "env": {
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"

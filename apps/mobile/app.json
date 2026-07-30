@@ -65,7 +65,16 @@
       ],
       "expo-notifications",
       "expo-font",
-      "./plugins/with-local-only-notifications"
+      "./plugins/with-local-only-notifications",
+      [
+        "llama.rn",
+        {
+          "enableEntitlements": false,
+          "forceCxx20": false,
+          "enableOpenCLAndHexagon": false,
+          "enableOpenCL": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

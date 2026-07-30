@@ -8,6 +8,7 @@ export type { DownloadState, InstalledModel } from "./modelDownloadState";
 
 export type ModelStoreErrorCode =
   | "registry_not_allowlisted"
+  | "model_not_installed"
   | "install_in_progress"
   | "operation_in_progress"
   | "resume_state_invalid"
@@ -101,6 +102,15 @@ export interface DownloadModelCallbacks {
 }
 
 export type PausedModelDownload = ModelResumeRecord;
+
+export type ModelInstallationStatus =
+  | { kind: "notInstalled"; modelId: string }
+  | { kind: "ready"; installed: InstalledModel }
+  | {
+      kind: "invalid";
+      modelId: string;
+      code: "size_mismatch" | "sha256_mismatch" | "verification_failed" | "native_bridge_unavailable";
+    };
 
 type InstallIntent = "run" | "pause" | "cancel";
 
@@ -799,6 +809,130 @@ export function createModelStore({
     });
   }
 
+  function assertInspectionAvailable(): void {
+    if (installing || active) {
+      throw new ModelStoreError(
+        "operation_in_progress",
+        "Cannot inspect installed models while an installation is active"
+      );
+    }
+  }
+
+  async function inspectModel(
+    model: InstallableModel,
+    paths: ModelPaths
+  ): Promise<ModelInstallationStatus> {
+    await assertPaths(paths);
+    const info = await fileSystem.getFileInfo(paths.completedUri);
+    if (!info.exists) return { kind: "notInstalled", modelId: model.id };
+    if (info.size !== model.bytes) {
+      return { kind: "invalid", modelId: model.id, code: "size_mismatch" };
+    }
+    try {
+      if (!(await verifyFileSha256(paths.completedUri, model.sha256))) {
+        return { kind: "invalid", modelId: model.id, code: "sha256_mismatch" };
+      }
+    } catch (error) {
+      const storeError = asStoreError(
+        error,
+        "verification_failed",
+        `Could not verify installed model ${model.id}`
+      );
+      return {
+        kind: "invalid",
+        modelId: model.id,
+        code:
+          storeError.code === "native_bridge_unavailable"
+            ? "native_bridge_unavailable"
+            : "verification_failed"
+      };
+    }
+    return {
+      kind: "ready",
+      installed: {
+        modelId: model.id,
+        revision: model.revision,
+        uri: paths.completedUri,
+        bytes: model.bytes,
+        sha256: model.sha256
+      }
+    };
+  }
+
+  function inspectInstalledModels(): Promise<readonly ModelInstallationStatus[]> {
+    try {
+      assertInspectionAvailable();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return enqueueControl(async () => {
+      await initializeFileSystem();
+      const statuses: ModelInstallationStatus[] = [];
+      for (const candidate of getInstallableModels()) {
+        const model = approvedModel(candidate);
+        const paths = modelPaths(fileSystem.documentDirectory, model);
+        statuses.push(await inspectModel(model, paths));
+      }
+      return statuses;
+    });
+  }
+
+  function verifyInstalledModelForRuntime(
+    installed: InstalledModel
+  ): Promise<InstallableModel> {
+    try {
+      assertInspectionAvailable();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return enqueueControl(async () => {
+      const candidate = getInstallableModels().find(
+        (entry) => entry.id === installed.modelId
+      );
+      if (!candidate) {
+        throw new ModelStoreError(
+          "registry_not_allowlisted",
+          `${installed.modelId}: installed model is not allowlisted`
+        );
+      }
+      const model = approvedModel(candidate);
+      await initializeFileSystem();
+      const paths = modelPaths(fileSystem.documentDirectory, model);
+      if (
+        installed.revision !== model.revision ||
+        installed.uri !== paths.completedUri ||
+        installed.bytes !== model.bytes ||
+        installed.sha256 !== model.sha256
+      ) {
+        throw new ModelStoreError(
+          "registry_not_allowlisted",
+          `${installed.modelId}: installed model identity or private URI is invalid`
+        );
+      }
+      await assertPaths(paths);
+      const info = await fileSystem.getFileInfo(paths.completedUri);
+      if (!info.exists) {
+        throw new ModelStoreError(
+          "model_not_installed",
+          `${installed.modelId}: completed model file is not installed`
+        );
+      }
+      if (info.size !== model.bytes) {
+        throw new ModelStoreError(
+          "size_mismatch",
+          `${installed.modelId}: installed model size does not match the registry`
+        );
+      }
+      if (!(await verifyFileSha256(paths.completedUri, model.sha256))) {
+        throw new ModelStoreError(
+          "sha256_mismatch",
+          `${installed.modelId}: installed model SHA-256 does not match the registry`
+        );
+      }
+      return model;
+    });
+  }
+
   return {
     downloadModel,
     verifyFileSha256,
@@ -806,7 +940,9 @@ export function createModelStore({
     cancelActiveDownload,
     removeModel,
     removeAllModels,
-    cleanupPartialDownloads
+    cleanupPartialDownloads,
+    inspectInstalledModels,
+    verifyInstalledModelForRuntime
   };
 }
 
@@ -888,3 +1024,6 @@ export const cancelActiveDownload = defaultStore.cancelActiveDownload;
 export const removeModel = defaultStore.removeModel;
 export const removeAllModels = defaultStore.removeAllModels;
 export const cleanupPartialDownloads = defaultStore.cleanupPartialDownloads;
+export const inspectInstalledModels = defaultStore.inspectInstalledModels;
+export const verifyInstalledModelForRuntime =
+  defaultStore.verifyInstalledModelForRuntime;
