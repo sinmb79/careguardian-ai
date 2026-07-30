@@ -74,7 +74,8 @@
           "enableOpenCLAndHexagon": false,
           "enableOpenCL": false
         }
-      ]
+      ],
+      "./plugins/with-cpu-only-llama"
     ],
     "extra": {
       "eas": {

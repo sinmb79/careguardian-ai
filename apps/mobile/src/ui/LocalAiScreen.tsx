@@ -8,6 +8,7 @@ import {
   View
 } from "react-native";
 import type { ModelArtifact } from "../local-ai/modelRegistry";
+import { hasRequiredMemory } from "../local-ai/llamaRuntime";
 import type {
   DownloadState,
   InstalledModel,
@@ -132,6 +133,11 @@ export function LocalAiScreen({
               downloadState={assistant.downloadStates[model.id]}
               accepted={assistant.acceptedLicenseModelIds.has(model.id)}
               environmentSupported={assistant.environmentSupport === "supported"}
+              memorySupported={hasRequiredMemory(
+                model,
+                assistant.environmentTotalMemoryBytes
+              )}
+              interactionDisabled={assistant.isGenerating}
               activeDownloadModelId={assistant.activeDownloadModelId}
               activeSessionModelId={assistant.session?.modelId ?? null}
               onToggleAcceptance={() =>
@@ -161,6 +167,7 @@ export function LocalAiScreen({
               key={action.id}
               accessibilityRole="radio"
               accessibilityState={{ selected: assistant.action === action.id }}
+              disabled={assistant.isGenerating}
               style={[
                 styles.actionCard,
                 assistant.action === action.id && styles.actionCardSelected
@@ -287,6 +294,8 @@ type ModelCardProps = {
   downloadState?: DownloadState;
   accepted: boolean;
   environmentSupported: boolean;
+  memorySupported: boolean;
+  interactionDisabled: boolean;
   activeDownloadModelId: string | null;
   activeSessionModelId: string | null;
   onToggleAcceptance(): void;
@@ -306,6 +315,8 @@ function ModelCard(props: ModelCardProps) {
     downloadState,
     accepted,
     environmentSupported,
+    memorySupported,
+    interactionDisabled,
     activeDownloadModelId,
     activeSessionModelId
   } = props;
@@ -350,6 +361,8 @@ function ModelCard(props: ModelCardProps) {
       <Pressable
         accessibilityRole="button"
         style={styles.detailsButton}
+        disabled={interactionDisabled}
+        accessibilityState={{ disabled: interactionDisabled }}
         onPress={props.onOpenDetails}
       >
         <Text style={styles.detailsButtonText}>라이선스·출처·무결성 정보</Text>
@@ -383,16 +396,37 @@ function ModelCard(props: ModelCardProps) {
             </Text>
           </Pressable>
           <Pressable
-            disabled={!accepted || !environmentSupported}
-            accessibilityState={{ disabled: !accepted || !environmentSupported }}
+            disabled={
+              !accepted ||
+              !environmentSupported ||
+              !memorySupported ||
+              interactionDisabled
+            }
+            accessibilityState={{
+              disabled:
+                !accepted ||
+                !environmentSupported ||
+                !memorySupported ||
+                interactionDisabled
+            }}
             style={[
               styles.installButton,
-              (!accepted || !environmentSupported) && styles.disabled
+              (!accepted ||
+                !environmentSupported ||
+                !memorySupported ||
+                interactionDisabled) &&
+                styles.disabled
             ]}
             onPress={props.onInstall}
           >
             <Text style={styles.installButtonText}>모델 다운로드 및 검증</Text>
           </Pressable>
+          {!memorySupported ? (
+            <Text style={styles.errorText}>
+              확인 가능한 기기 RAM이 이 모델의 최소 {model.minimumRamGb}GB보다
+              부족하여 설치와 실행을 차단했습니다.
+            </Text>
+          ) : null}
         </>
       ) : null}
 
@@ -402,10 +436,18 @@ function ModelCard(props: ModelCardProps) {
             내려받는 중{progress === null ? "" : ` · ${progress}%`}
           </Text>
           <View style={styles.buttonRow}>
-            <Pressable style={styles.secondaryButton} onPress={props.onPause}>
+            <Pressable
+              disabled={interactionDisabled}
+              style={[styles.secondaryButton, interactionDisabled && styles.disabled]}
+              onPress={props.onPause}
+            >
               <Text style={styles.secondaryButtonText}>일시정지</Text>
             </Pressable>
-            <Pressable style={styles.problemButton} onPress={props.onCancel}>
+            <Pressable
+              disabled={interactionDisabled}
+              style={[styles.problemButton, interactionDisabled && styles.disabled]}
+              onPress={props.onCancel}
+            >
               <Text style={styles.problemButtonText}>취소 및 부분 파일 삭제</Text>
             </Pressable>
           </View>
@@ -418,10 +460,21 @@ function ModelCard(props: ModelCardProps) {
             일시정지 · {downloadState.bytesWritten.toLocaleString()} bytes
           </Text>
           <View style={styles.buttonRow}>
-            <Pressable style={styles.installButton} onPress={props.onResume}>
+            <Pressable
+              disabled={interactionDisabled || !memorySupported}
+              style={[
+                styles.installButton,
+                (interactionDisabled || !memorySupported) && styles.disabled
+              ]}
+              onPress={props.onResume}
+            >
               <Text style={styles.installButtonText}>이어받기</Text>
             </Pressable>
-            <Pressable style={styles.problemButton} onPress={props.onCancel}>
+            <Pressable
+              disabled={interactionDisabled}
+              style={[styles.problemButton, interactionDisabled && styles.disabled]}
+              onPress={props.onCancel}
+            >
               <Text style={styles.problemButtonText}>부분 파일 삭제</Text>
             </Pressable>
           </View>
@@ -439,7 +492,11 @@ function ModelCard(props: ModelCardProps) {
           <Text style={styles.errorText}>
             설치 파일이 레지스트리와 일치하지 않아 실행을 차단했습니다.
           </Text>
-          <Pressable style={styles.problemButton} onPress={props.onDelete}>
+          <Pressable
+            disabled={interactionDisabled}
+            style={[styles.problemButton, interactionDisabled && styles.disabled]}
+            onPress={props.onDelete}
+          >
             <Text style={styles.problemButtonText}>손상된 모델 삭제</Text>
           </Pressable>
         </View>
@@ -453,16 +510,27 @@ function ModelCard(props: ModelCardProps) {
           </Text>
           <View style={styles.buttonRow}>
             <Pressable
-              disabled={activeSessionModelId === model.id}
+              disabled={
+                activeSessionModelId === model.id ||
+                !memorySupported ||
+                interactionDisabled
+              }
               style={[
                 styles.installButton,
-                activeSessionModelId === model.id && styles.disabled
+                (activeSessionModelId === model.id ||
+                  !memorySupported ||
+                  interactionDisabled) &&
+                  styles.disabled
               ]}
               onPress={() => props.onLoad(installation.installed)}
             >
               <Text style={styles.installButtonText}>모델 불러오기</Text>
             </Pressable>
-            <Pressable style={styles.problemButton} onPress={props.onDelete}>
+            <Pressable
+              disabled={interactionDisabled}
+              style={[styles.problemButton, interactionDisabled && styles.disabled]}
+              onPress={props.onDelete}
+            >
               <Text style={styles.problemButtonText}>모델 삭제</Text>
             </Pressable>
           </View>
@@ -482,6 +550,8 @@ function errorMessage(kind: LocalAiErrorKind): string {
       return "모델 크기 또는 SHA-256이 고정 레지스트리와 일치하지 않아 실행을 차단했습니다.";
     case "unsupported":
       return "이 기기의 ABI는 지원하지 않습니다. arm64-v8a 또는 x86_64 Android가 필요합니다.";
+    case "memory":
+      return "확인 가능한 기기 RAM이 선택 모델의 최소 요구량보다 부족해 설치와 실행을 차단했습니다.";
     case "runtime":
       return "기기 내 모델 컨텍스트를 시작하거나 해제하지 못했습니다. 더 작은 모델을 사용하거나 앱을 다시 열어 주세요.";
     default:

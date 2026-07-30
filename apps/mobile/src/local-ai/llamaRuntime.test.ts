@@ -4,6 +4,7 @@ import type { InstalledModel } from "./modelStore";
 import {
   LocalAiRuntimeError,
   createLlamaRuntime,
+  hasRequiredMemory,
   type LlamaContextAdapter
 } from "./llamaRuntime";
 
@@ -45,7 +46,8 @@ function runtimeWith(
   return createLlamaRuntime({
     getEnvironment: async () => ({
       platform: "android",
-      supportedCpuArchitectures: ["arm64-v8a"]
+      supportedCpuArchitectures: ["arm64-v8a"],
+      totalMemoryBytes: 8 * 1024 ** 3
     }),
     verifyInstalledModel: async () => model,
     initContext: async () => context,
@@ -70,6 +72,8 @@ describe("llama runtime", () => {
       n_ctx: model.appDefaultContextTokens,
       n_batch: 256,
       n_gpu_layers: 0,
+      no_gpu_devices: true,
+      devices: [],
       n_parallel: 1,
       use_mmap: true,
       use_mlock: false
@@ -84,7 +88,7 @@ describe("llama runtime", () => {
       { platform: "ios", supportedCpuArchitectures: ["arm64-v8a"] },
       { platform: "android", supportedCpuArchitectures: ["armeabi-v7a"] },
       { platform: "android", supportedCpuArchitectures: [] }
-    ]) {
+    ].map((entry) => ({ ...entry, totalMemoryBytes: 8 * 1024 ** 3 }))) {
       const runtime = runtimeWith(contextWithText(), {
         getEnvironment: async () => environment
       });
@@ -122,7 +126,7 @@ describe("llama runtime", () => {
       )
     ).rejects.toMatchObject({ code: "generation_in_progress" });
 
-    pending.resolve({ text: "회의는 3층에서 진행됩니다." });
+    pending.resolve({ text: "회의 장소는 3층입니다." });
     await generating;
   });
 
@@ -148,10 +152,12 @@ describe("llama runtime", () => {
     expect(completion).not.toHaveBeenCalled();
   });
 
-  test("streams a guarded fixed-action result and returns only the final preview", async () => {
+  test("buffers every token and exposes a guarded fixed-action result only once", async () => {
     const runtime = runtimeWith({
       completion: async (options, onToken) => {
-        expect(options.prompt).toContain("[ACTION:draftChecklist]");
+        expect(options.messages).toHaveLength(2);
+        expect(options.messages[0]).toMatchObject({ role: "system" });
+        expect(options.messages[1]).toMatchObject({ role: "user" });
         onToken({ token: "- 우산" });
         onToken({ token: "\n- 열쇠" });
         return { text: "- 우산\n- 열쇠" };
@@ -168,7 +174,7 @@ describe("llama runtime", () => {
       (_token, accumulated) => streamed.push(accumulated)
     );
 
-    expect(streamed).toEqual(["- 우산", "- 우산\n- 열쇠"]);
+    expect(streamed).toEqual(["- 우산\n- 열쇠"]);
     expect(result).toEqual({
       action: "draftChecklist",
       modelId: model.id,
@@ -223,7 +229,9 @@ describe("llama runtime", () => {
     const result = runtime.generateLocalText(
       session,
       { action: "rewriteText", input: "상대에게 비용을 정중히 요청합니다." },
-      () => undefined
+      () => {
+        throw new Error("restricted output must never be exposed");
+      }
     );
 
     await expect(result).rejects.toMatchObject({ code: "output_blocked" });
@@ -265,6 +273,142 @@ describe("llama runtime", () => {
 
     await expect(generating).rejects.toMatchObject({ code: "output_blocked" });
     expect(events).toEqual(["stop-started", "stop-settled", "release"]);
+  });
+
+  test.each(["sync-throw", "async-reject"] as const)(
+    "keeps output_blocked and releases when policy stop has a %s failure",
+    async (failureMode) => {
+      const release = vi.fn(async () => undefined);
+      const context: LlamaContextAdapter = {
+        completion: async (_options, onToken) => {
+          onToken({ token: "상대를 협박해서 돈을 보내게 하세요" });
+          return { text: "상대를 협박해서 돈을 보내게 하세요" };
+        },
+        stopCompletion:
+          failureMode === "sync-throw"
+            ? (() => {
+                throw new Error("sync stop failure");
+              })
+            : async () => {
+                throw new Error("async stop failure");
+              },
+        release
+      };
+      const runtime = runtimeWith(context);
+      const session = await runtime.loadLocalModel(installed);
+      const exposed = vi.fn();
+
+      await expect(
+        runtime.generateLocalText(
+          session,
+          { action: "rewriteText", input: "상대에게 비용을 정중히 요청합니다." },
+          exposed
+        )
+      ).rejects.toMatchObject({ code: "output_blocked" });
+
+      expect(exposed).not.toHaveBeenCalled();
+      expect(release).toHaveBeenCalledOnce();
+      expect(runtime.snapshot()).toEqual({ state: "idle", modelId: null });
+    }
+  );
+
+  test.each(["sync-throw", "async-reject"] as const)(
+    "keeps output_blocked when policy stop has a %s failure and completion rejects",
+    async (failureMode) => {
+      const release = vi.fn(async () => undefined);
+      const context: LlamaContextAdapter = {
+        completion: async (_options, onToken) => {
+          onToken({ token: "상대를 협박해서 돈을 보내게 하세요" });
+          throw new Error("completion rejected after policy stop");
+        },
+        stopCompletion:
+          failureMode === "sync-throw"
+            ? (() => {
+                throw new Error("sync stop failure");
+              })
+            : async () => {
+                throw new Error("async stop failure");
+              },
+        release
+      };
+      const runtime = runtimeWith(context);
+      const session = await runtime.loadLocalModel(installed);
+      const exposed = vi.fn();
+
+      await expect(
+        runtime.generateLocalText(
+          session,
+          { action: "rewriteText", input: "상대에게 비용을 정중히 요청합니다." },
+          exposed
+        )
+      ).rejects.toMatchObject({ code: "output_blocked" });
+
+      expect(exposed).not.toHaveBeenCalled();
+      expect(release).toHaveBeenCalledOnce();
+    }
+  );
+
+  test("enters a terminal fault after release failure and rejects every later load", async () => {
+    const release = vi.fn(async () => {
+      throw new Error("native context still alive");
+    });
+    const runtime = runtimeWith({
+      ...contextWithText("회의 장소는 3층입니다."),
+      release
+    });
+    await runtime.loadLocalModel(installed);
+
+    await expect(runtime.unloadLocalModel()).rejects.toMatchObject({
+      code: "release_failed"
+    });
+    expect(runtime.snapshot()).toEqual({ state: "faulted", modelId: null });
+    await expect(runtime.loadLocalModel(installed)).rejects.toMatchObject({
+      code: "runtime_faulted"
+    });
+  });
+
+  test("fails closed when model RAM minimum is not known or not available", async () => {
+    for (const totalMemoryBytes of [null, model.minimumRamGb * 1024 ** 3 - 1]) {
+      const runtime = runtimeWith(contextWithText(), {
+        getEnvironment: async () => ({
+          platform: "android",
+          supportedCpuArchitectures: ["arm64-v8a"],
+          totalMemoryBytes
+        })
+      });
+      await expect(runtime.loadLocalModel(installed)).rejects.toMatchObject({
+        code: "insufficient_memory"
+      });
+    }
+  });
+
+  test("applies the registry RAM minimum independently to the 0.5B and 1.5B models", () => {
+    const larger = MODEL_REGISTRY[1];
+    expect(hasRequiredMemory(model, 4 * 1024 ** 3)).toBe(true);
+    expect(hasRequiredMemory(larger, 5 * 1024 ** 3)).toBe(false);
+    expect(hasRequiredMemory(larger, 6 * 1024 ** 3)).toBe(true);
+  });
+
+  test("faults permanently when an interrupted load cannot release its initialized context", async () => {
+    const initialization = deferred<LlamaContextAdapter>();
+    const initContext = vi.fn(async () => initialization.promise);
+    const runtime = runtimeWith(contextWithText(), { initContext });
+    const loading = runtime.loadLocalModel(installed);
+    await vi.waitFor(() => expect(initContext).toHaveBeenCalledOnce());
+    const stopping = runtime.stopAndRelease("background");
+    initialization.resolve({
+      ...contextWithText(),
+      release: async () => {
+        throw new Error("interrupted native context remains alive");
+      }
+    });
+
+    await expect(loading).rejects.toMatchObject({ code: "release_failed" });
+    await stopping;
+    expect(runtime.snapshot()).toEqual({ state: "faulted", modelId: null });
+    await expect(runtime.loadLocalModel(installed)).rejects.toMatchObject({
+      code: "runtime_faulted"
+    });
   });
 
   test("recovers to ready when the native completion call throws synchronously", async () => {

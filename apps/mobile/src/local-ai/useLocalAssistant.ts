@@ -25,6 +25,7 @@ import type {
 import {
   generateLocalText,
   getLocalAiEnvironmentSupport,
+  hasRequiredMemory,
   loadLocalModel,
   stopAndReleaseLocalModel
 } from "./llamaRuntime";
@@ -36,6 +37,7 @@ export type LocalAiErrorKind =
   | "storage"
   | "integrity"
   | "unsupported"
+  | "memory"
   | "runtime"
   | "unknown";
 
@@ -54,6 +56,7 @@ export function classifyLocalAiError(error: unknown): LocalAiErrorKind {
     return "integrity";
   }
   if (code === "unsupported_environment") return "unsupported";
+  if (code === "insufficient_memory") return "memory";
   if (
     code === "context_initialization_failed" ||
     code === "generation_failed" ||
@@ -78,6 +81,30 @@ export async function deleteLocalModelSafely(
 ): Promise<void> {
   await stopAndRelease();
   await deleteModel(modelId);
+}
+
+export function createDownloadUnmountGuard(
+  cancelDownload: () => Promise<void>
+) {
+  let mounted = true;
+  let cleanup: Promise<void> | null = null;
+  return {
+    isMounted: () => mounted,
+    mount() {
+      mounted = true;
+    },
+    commit(callback: () => void) {
+      if (mounted) callback();
+    },
+    unmount(): Promise<void> {
+      if (!mounted) return cleanup ?? Promise.resolve();
+      mounted = false;
+      cleanup = cancelDownload().finally(() => {
+        cleanup = null;
+      });
+      return cleanup;
+    }
+  };
 }
 
 const ACTION_TITLES: Readonly<Record<AiAction, string>> = {
@@ -337,6 +364,7 @@ export interface LocalAssistantHookState extends LocalAssistantSnapshot {
   acceptedLicenseModelIds: ReadonlySet<string>;
   environmentSupport: EnvironmentSupport;
   environmentArchitectures: readonly string[];
+  environmentTotalMemoryBytes: number | null;
   activeDownloadModelId: string | null;
   errorKind: LocalAiErrorKind | null;
   actions: {
@@ -386,6 +414,13 @@ export function useLocalAssistant(
     });
   }
   const controller = controllerRef.current;
+  const lifecycleRef = useRef<ReturnType<typeof createDownloadUnmountGuard> | null>(
+    null
+  );
+  if (!lifecycleRef.current) {
+    lifecycleRef.current = createDownloadUnmountGuard(cancelActiveDownload);
+  }
+  const lifecycle = lifecycleRef.current;
   const [assistant, setAssistant] = useState<LocalAssistantSnapshot>(() =>
     controller.snapshot()
   );
@@ -406,6 +441,9 @@ export function useLocalAssistant(
   const [environmentArchitectures, setEnvironmentArchitectures] = useState<
     readonly string[]
   >([]);
+  const [environmentTotalMemoryBytes, setEnvironmentTotalMemoryBytes] = useState<
+    number | null
+  >(null);
   const [activeDownloadModelId, setActiveDownloadModelId] = useState<string | null>(
     null
   );
@@ -413,28 +451,39 @@ export function useLocalAssistant(
 
   const refreshModels = async () => {
     try {
+      await cancelActiveDownload();
       const statuses = await inspectInstalledModels();
-      setInstallationStatuses(statuses);
-      const firstInvalid = statuses.find((status) => status.kind === "invalid");
-      setErrorKind(firstInvalid ? "integrity" : null);
+      lifecycle.commit(() => {
+        setInstallationStatuses(statuses);
+        const firstInvalid = statuses.find((status) => status.kind === "invalid");
+        setErrorKind(firstInvalid ? "integrity" : null);
+      });
     } catch (error) {
-      setErrorKind(classifyLocalAiError(error));
+      lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
       throw error;
     }
   };
 
-  useEffect(() => controller.subscribe(setAssistant), [controller]);
+  useEffect(
+    () =>
+      controller.subscribe((snapshot) =>
+        lifecycle.commit(() => setAssistant(snapshot))
+      ),
+    [controller, lifecycle]
+  );
 
   useEffect(() => {
-    let active = true;
+    lifecycle.mount();
     void getLocalAiEnvironmentSupport()
       .then((support) => {
-        if (!active) return;
-        setEnvironmentSupport(support.supported ? "supported" : "unsupported");
-        setEnvironmentArchitectures(support.architectures);
+        lifecycle.commit(() => {
+          setEnvironmentSupport(support.supported ? "supported" : "unsupported");
+          setEnvironmentArchitectures(support.architectures);
+          setEnvironmentTotalMemoryBytes(support.totalMemoryBytes);
+        });
       })
       .catch(() => {
-        if (active) setEnvironmentSupport("unsupported");
+        lifecycle.commit(() => setEnvironmentSupport("unsupported"));
       });
     void refreshModels().catch(() => undefined);
 
@@ -447,14 +496,14 @@ export function useLocalAssistant(
       void controller.stopAndClear("android-blur").catch(() => undefined);
     });
     return () => {
-      active = false;
       changeSubscription.remove();
       blurSubscription.remove();
+      void lifecycle.unmount().catch(() => undefined);
       void controller.stopAndClear("screen-unmount").catch(() => undefined);
     };
     // The model inspection and lifecycle bindings are intentionally installed once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controller]);
+  }, [controller, lifecycle]);
 
   const actions = useMemo<LocalAssistantHookState["actions"]>(
     () => ({
@@ -472,27 +521,34 @@ export function useLocalAssistant(
       async installModel(model) {
         if (
           environmentSupport !== "supported" ||
+          !hasRequiredMemory(model, environmentTotalMemoryBytes) ||
           model.availability !== "installable" ||
           !acceptedLicenseModelIds.has(model.id)
         ) {
-          throw new Error(
+          const code =
             environmentSupport !== "supported"
               ? "unsupported_environment"
-              : "license_acceptance_required"
-          );
+              : !hasRequiredMemory(model, environmentTotalMemoryBytes)
+                ? "insufficient_memory"
+                : "license_acceptance_required";
+          throw Object.assign(new Error(code), { code });
         }
         setErrorKind(null);
         setActiveDownloadModelId(model.id);
         try {
           await downloadModel(model, {
             onStateChange: (next) =>
-              setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              lifecycle.commit(() =>
+                setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              )
           });
-          setPausedDownloads((current) => {
-            const next = { ...current };
-            delete next[model.id];
-            return next;
-          });
+          lifecycle.commit(() =>
+            setPausedDownloads((current) => {
+              const next = { ...current };
+              delete next[model.id];
+              return next;
+            })
+          );
           await refreshModels();
         } catch (error) {
           const code =
@@ -500,19 +556,21 @@ export function useLocalAssistant(
               ? String(error.code)
               : "";
           if (code !== "download_paused" && code !== "download_cancelled") {
-            setErrorKind(classifyLocalAiError(error));
+            lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
             throw error;
           }
         } finally {
-          setActiveDownloadModelId(null);
+          lifecycle.commit(() => setActiveDownloadModelId(null));
         }
       },
       async pauseDownload() {
         const paused = await pauseActiveDownload();
-        setPausedDownloads((current) => ({
-          ...current,
-          [paused.modelId]: paused
-        }));
+        lifecycle.commit(() =>
+          setPausedDownloads((current) => ({
+            ...current,
+            [paused.modelId]: paused
+          }))
+        );
       },
       async resumeDownload(model) {
         const resume = pausedDownloads[model.id];
@@ -523,13 +581,17 @@ export function useLocalAssistant(
           await downloadModel(model, {
             resume,
             onStateChange: (next) =>
-              setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              lifecycle.commit(() =>
+                setDownloadStates((current) => ({ ...current, [model.id]: next }))
+              )
           });
-          setPausedDownloads((current) => {
-            const next = { ...current };
-            delete next[model.id];
-            return next;
-          });
+          lifecycle.commit(() =>
+            setPausedDownloads((current) => {
+              const next = { ...current };
+              delete next[model.id];
+              return next;
+            })
+          );
           await refreshModels();
         } catch (error) {
           const code =
@@ -537,25 +599,27 @@ export function useLocalAssistant(
               ? String(error.code)
               : "";
           if (code !== "download_paused" && code !== "download_cancelled") {
-            setErrorKind(classifyLocalAiError(error));
+            lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
             throw error;
           }
         } finally {
-          setActiveDownloadModelId(null);
+          lifecycle.commit(() => setActiveDownloadModelId(null));
         }
       },
       async cancelDownload(modelId) {
         if (pausedDownloads[modelId]) await removeModel(modelId);
         else await cancelActiveDownload();
-        setPausedDownloads((current) => {
-          const next = { ...current };
-          delete next[modelId];
-          return next;
+        lifecycle.commit(() => {
+          setPausedDownloads((current) => {
+            const next = { ...current };
+            delete next[modelId];
+            return next;
+          });
+          setDownloadStates((current) => ({
+            ...current,
+            [modelId]: { kind: "notInstalled" }
+          }));
         });
-        setDownloadStates((current) => ({
-          ...current,
-          [modelId]: { kind: "notInstalled" }
-        }));
         await refreshModels();
       },
       async loadModel(installed) {
@@ -564,7 +628,7 @@ export function useLocalAssistant(
           const loadedSession = await loadLocalModel(installed);
           controller.attachSession(loadedSession);
         } catch (error) {
-          setErrorKind(classifyLocalAiError(error));
+          lifecycle.commit(() => setErrorKind(classifyLocalAiError(error)));
           throw error;
         }
       },
@@ -579,10 +643,12 @@ export function useLocalAssistant(
           removeModel,
           modelId
         );
-        setDownloadStates((current) => ({
-          ...current,
-          [modelId]: { kind: "notInstalled" }
-        }));
+        lifecycle.commit(() =>
+          setDownloadStates((current) => ({
+            ...current,
+            [modelId]: { kind: "notInstalled" }
+          }))
+        );
         await refreshModels();
       }
     }),
@@ -590,6 +656,8 @@ export function useLocalAssistant(
       acceptedLicenseModelIds,
       controller,
       environmentSupport,
+      environmentTotalMemoryBytes,
+      lifecycle,
       pausedDownloads
     ]
   );
@@ -602,6 +670,7 @@ export function useLocalAssistant(
     acceptedLicenseModelIds,
     environmentSupport,
     environmentArchitectures,
+    environmentTotalMemoryBytes,
     activeDownloadModelId,
     errorKind,
     actions

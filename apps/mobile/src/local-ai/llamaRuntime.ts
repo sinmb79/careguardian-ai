@@ -2,13 +2,17 @@ import type { AiAction } from "@life-steward/life-core";
 import type { ModelArtifact } from "./modelRegistry";
 import type { InstalledModel } from "./modelStore";
 import {
+  type AssistantChatMessage,
   AssistantPolicyError,
-  buildAssistantPrompt,
-  guardAssistantOutput
+  buildAssistantMessages,
+  guardAssistantOutput,
+  validateAssistantResult
 } from "./assistantPolicy";
 
 export type LocalAiRuntimeErrorCode =
   | "unsupported_environment"
+  | "insufficient_memory"
+  | "runtime_faulted"
   | "model_verification_failed"
   | "runtime_busy"
   | "context_initialization_failed"
@@ -34,6 +38,7 @@ export class LocalAiRuntimeError extends Error {
 export interface LocalAiRuntimeEnvironment {
   platform: string;
   supportedCpuArchitectures: readonly string[];
+  totalMemoryBytes: number | null;
 }
 
 export interface LlamaInitOptions {
@@ -41,13 +46,15 @@ export interface LlamaInitOptions {
   n_ctx: number;
   n_batch: 256;
   n_gpu_layers: 0;
+  no_gpu_devices: true;
+  devices: [];
   n_parallel: 1;
   use_mmap: true;
   use_mlock: false;
 }
 
 export interface LlamaCompletionOptions {
-  prompt: string;
+  messages: readonly AssistantChatMessage[];
   n_predict: number;
   temperature: number;
   stop: string[];
@@ -81,6 +88,7 @@ export interface GenerationResult {
 
 export type RuntimeSnapshot =
   | { state: "idle"; modelId: null }
+  | { state: "faulted"; modelId: null }
   | {
       state: "loading" | "ready" | "generating" | "stopping" | "releasing";
       modelId: string | null;
@@ -100,6 +108,7 @@ const PREDICTION_LIMITS: Readonly<Record<AiAction, number>> = {
   suggestTitle: 48,
   draftChecklist: 256
 };
+const BYTES_PER_GIBIBYTE = 1024 ** 3;
 
 function runtimeError(
   error: unknown,
@@ -120,6 +129,37 @@ function assertSupportedEnvironment(environment: LocalAiRuntimeEnvironment): voi
       "unsupported_environment",
       "로컬 AI는 Android arm64-v8a 또는 x86_64 환경에서만 사용할 수 있습니다."
     );
+  }
+}
+
+export function hasRequiredMemory(
+  model: Pick<ModelArtifact, "minimumRamGb">,
+  totalMemoryBytes: number | null
+): boolean {
+  return (
+    typeof totalMemoryBytes === "number" &&
+    Number.isFinite(totalMemoryBytes) &&
+    totalMemoryBytes >= model.minimumRamGb * BYTES_PER_GIBIBYTE
+  );
+}
+
+function assertRequiredMemory(
+  model: ModelArtifact,
+  environment: LocalAiRuntimeEnvironment
+): void {
+  if (!hasRequiredMemory(model, environment.totalMemoryBytes)) {
+    throw new LocalAiRuntimeError(
+      "insufficient_memory",
+      `이 모델은 확인 가능한 RAM ${model.minimumRamGb}GB 이상에서만 실행할 수 있습니다.`
+    );
+  }
+}
+
+function requestNativeStop(context: LlamaContextAdapter): Promise<void> {
+  try {
+    return Promise.resolve(context.stopCompletion());
+  } catch (error) {
+    return Promise.reject(error);
   }
 }
 
@@ -157,13 +197,23 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
   let lifecycleEpoch = 0;
   let generationEpoch = 0;
   let sessionSequence = 0;
+  let terminalFault: LocalAiRuntimeError | null = null;
 
   function snapshot(): RuntimeSnapshot {
-    if (state === "idle") return { state: "idle", modelId: null };
+    if (state === "idle" || state === "faulted") return { state, modelId: null };
     return { state, modelId: session?.modelId ?? null };
   }
 
   function loadLocalModel(installed: InstalledModel): Promise<LocalModelSession> {
+    if (terminalFault || state === "faulted") {
+      return Promise.reject(
+        new LocalAiRuntimeError(
+          "runtime_faulted",
+          "이전 네이티브 컨텍스트 해제를 확인하지 못했습니다. 앱 프로세스를 다시 시작해 주세요.",
+          { cause: terminalFault ?? undefined }
+        )
+      );
+    }
     if (state !== "idle" || loadPromise || shutdownPromise) {
       return Promise.reject(
         new LocalAiRuntimeError(
@@ -183,6 +233,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
       try {
         model = await dependencies.verifyInstalledModel(installed);
         assertVerifiedIdentity(installed, model);
+        assertRequiredMemory(model, environment);
       } catch (error) {
         throw runtimeError(
           error,
@@ -204,6 +255,8 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
           n_ctx: model.appDefaultContextTokens,
           n_batch: 256,
           n_gpu_layers: 0,
+          no_gpu_devices: true,
+          devices: [],
           n_parallel: 1,
           use_mmap: true,
           use_mlock: false
@@ -219,8 +272,14 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
       if (operationEpoch !== lifecycleEpoch) {
         try {
           await initialized.release();
-        } catch {
-          // The interrupted load still fails closed even if native cleanup fails.
+        } catch (error) {
+          terminalFault = new LocalAiRuntimeError(
+            "release_failed",
+            "중단된 네이티브 모델 컨텍스트를 해제하지 못했습니다.",
+            { cause: error }
+          );
+          state = "faulted";
+          throw terminalFault;
         }
         throw new LocalAiRuntimeError(
           "generation_interrupted",
@@ -244,7 +303,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
           context = null;
           session = null;
           loadedModel = null;
-          state = "idle";
+          state = terminalFault ? "faulted" : "idle";
         }
         throw runtimeError(
           error,
@@ -300,9 +359,9 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
       );
     }
 
-    let prompt: string;
+    let messages: readonly AssistantChatMessage[];
     try {
-      prompt = buildAssistantPrompt(request.action, request.input);
+      messages = buildAssistantMessages(request.action, request.input);
     } catch (error) {
       if (error instanceof AssistantPolicyError) {
         throw new LocalAiRuntimeError("input_blocked", error.message);
@@ -322,7 +381,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
     try {
       completion = generationContext.completion(
         {
-          prompt,
+          messages,
           n_predict: PREDICTION_LIMITS[request.action],
           temperature: 0.2,
           stop: [...STOP_TOKENS]
@@ -346,22 +405,19 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
             accumulated = "";
             if (!stopRequestedForPolicy) {
               stopRequestedForPolicy = true;
-              activeStopPromise = generationContext.stopCompletion();
+              activeStopPromise = requestNativeStop(generationContext).catch(
+                () => undefined
+              );
             }
             return;
           }
           accumulated = next;
-          try {
-            onToken(token, accumulated);
-          } catch {
-            // Rendering callbacks cannot change or abort the native transaction.
-          }
         }
       );
     } catch (error) {
       state = "ready";
       accumulated = "";
-      prompt = "";
+      messages = [];
       throw runtimeError(
         error,
         "generation_failed",
@@ -411,10 +467,19 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
         throw streamingBlock;
       }
 
-      const outputDecision = guardAssistantOutput(result.text);
+      const outputDecision = validateAssistantResult(
+        request.action,
+        request.input,
+        result.text
+      );
       if (!outputDecision.allowed) {
         accumulated = "";
         throw new LocalAiRuntimeError("output_blocked", outputDecision.message);
+      }
+      try {
+        onToken(result.text, result.text);
+      } catch {
+        // Rendering callbacks cannot change the validated native transaction.
       }
       return {
         action: request.action,
@@ -442,7 +507,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
         state = "ready";
       }
       accumulated = "";
-      prompt = "";
+      messages = [];
     }
   }
 
@@ -461,7 +526,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
       let stopError: unknown;
       if (releaseContext && completion) {
         try {
-          activeStopPromise ??= releaseContext.stopCompletion();
+          activeStopPromise ??= requestNativeStop(releaseContext);
           await activeStopPromise;
         } catch (error) {
           stopError = error;
@@ -479,11 +544,12 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
         }
       }
       if (releaseError || stopError) {
-        throw new LocalAiRuntimeError(
+        terminalFault = new LocalAiRuntimeError(
           "release_failed",
           "로컬 AI 컨텍스트를 완전히 해제하지 못했습니다.",
           { cause: releaseError ?? stopError }
         );
+        throw terminalFault;
       }
     })().finally(() => {
       context = null;
@@ -491,7 +557,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
       loadedModel = null;
       activeCompletion = null;
       activeStopPromise = null;
-      state = "idle";
+      state = terminalFault ? "faulted" : "idle";
       if (shutdownPromise === operation) shutdownPromise = null;
     });
 
@@ -516,13 +582,15 @@ async function getProductionEnvironment(): Promise<LocalAiRuntimeEnvironment> {
   ]);
   return {
     platform: Platform.OS,
-    supportedCpuArchitectures: Device.supportedCpuArchitectures ?? []
+    supportedCpuArchitectures: Device.supportedCpuArchitectures ?? [],
+    totalMemoryBytes: Device.totalMemory
   };
 }
 
 export async function getLocalAiEnvironmentSupport(): Promise<{
   supported: boolean;
   architectures: readonly string[];
+  totalMemoryBytes: number | null;
 }> {
   const environment = await getProductionEnvironment();
   return {
@@ -530,8 +598,10 @@ export async function getLocalAiEnvironmentSupport(): Promise<{
       environment.platform === "android" &&
       environment.supportedCpuArchitectures.some((abi) =>
         SUPPORTED_ANDROID_ABIS.has(abi)
-      ),
-    architectures: environment.supportedCpuArchitectures
+      ) &&
+      hasRequiredMemory({ minimumRamGb: 4 }, environment.totalMemoryBytes),
+    architectures: environment.supportedCpuArchitectures,
+    totalMemoryBytes: environment.totalMemoryBytes
   };
 }
 
@@ -543,7 +613,10 @@ async function initProductionContext(
   return {
     async completion(completionOptions, onToken) {
       const result = await nativeContext.completion(
-        completionOptions,
+        {
+          ...completionOptions,
+          messages: completionOptions.messages.map((message) => ({ ...message }))
+        },
         ({ token }) => onToken({ token })
       );
       return { text: result.text };

@@ -11,6 +11,7 @@
     "ios:dev": "expo run:ios",
     "prebuild": "expo prebuild",
     "doctor": "npx expo-doctor",
+    "verify:cpu-only": "node scripts/verify-cpu-only-llama.mjs",
     "web": "expo start --web"
   },
   "dependencies": {

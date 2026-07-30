@@ -11,6 +11,7 @@ import type {
 import {
   applyApprovedAssistantResult,
   classifyLocalAiError,
+  createDownloadUnmountGuard,
   createLocalAssistantController,
   deleteLocalModelSafely
 } from "./useLocalAssistant";
@@ -58,6 +59,21 @@ describe("local assistant approval flow", () => {
       "model-id"
     );
     expect(events).toEqual(["stop-release", "delete"]);
+  });
+
+  test("cancels an active download on unmount and suppresses every late state commit", async () => {
+    const cancel = vi.fn(async () => undefined);
+    const commit = vi.fn();
+    const guard = createDownloadUnmountGuard(cancel);
+
+    guard.commit(commit);
+    await guard.unmount();
+    guard.commit(commit);
+    await guard.unmount();
+
+    expect(commit).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(guard.isMounted()).toBe(false);
   });
 
   test("keeps streamed output in memory and changes no workspace until explicit approval", async () => {
