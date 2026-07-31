@@ -75,7 +75,7 @@ Samsung/Pixel 네트워크 관찰은 합성 데이터 비공개 테스트 중 �
 
 ## 스크린샷과 Play 자산
 
-`docs/screenshots/`에는 웹 PWA의 실제 렌더를 기준으로 한 아래 합성 데이터 자산을 둡니다. 이는 레이아웃·문구 검토용 **잠정 자산이며 Play 업로드 후보가 아닙니다.** 웹 화면의 “이 브라우저” 문구를 Android 앱 화면으로 오인해서는 안 됩니다.
+`docs/screenshots/`에는 합성·비민감 생활 데이터만 사용한 Android-native Play 후보 자산을 둡니다. 8개 스크린샷은 해상도, 8-bit opaque RGB, 8MB 미만, 2:1 이하 비율과 금칙어 OCR 보조 검사를 통과했으며 상세 해시와 캡처 경계는 `docs/security/android-aab-evidence-2026-07-31.md`에 기록했습니다.
 
 | 파일 | 크기 | 용도 |
 |---|---:|---|
@@ -84,15 +84,15 @@ Samsung/Pixel 네트워크 관찰은 합성 데이터 비공개 테스트 중 �
 | `tablet7-screenshot-{1-2}.png` | 900×1536 | 7-inch tablet 2장 |
 | `tablet10-screenshot-{1-2}.png` | 1600×2560 | 10-inch tablet 2장 |
 
-재생성은 `npm run build` 뒤 `npx vite preview --port 4173`와 별도 터미널의 `node scripts/capture-screenshots.mjs`로 수행합니다. 스크립트는 phone을 1080×1920 9:16, tablet을 2:1 이하, 8-bit opaque RGB, 각 8MB 이하로 검사합니다. 현재 캡처는 웹 PWA 실제 렌더입니다. **Android Expo 앱을 에뮬레이터 또는 실기기에서 재캡처해 동일 파일을 교체하기 전에는 어떤 현재 PNG도 Play에 업로드하지 않습니다.**
+Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재생성이 필요하면 production과 같은 기능·화면 소스의 격리 복제본에서 캡처 차단 hook만 일시적으로 제거하고, 합성 데이터로 Android 화면을 캡처한 뒤 위 규격·OCR·수동 시각 검토를 다시 수행합니다. 캡처용 APK나 hook 제거 코드는 커밋·배포하지 않습니다.
 
 ## 단계별 남은 게이트
 
 ### 합성 데이터 비공개 테스트 제출·운영 시작 전
 
-1. native prebuild, final AAB 생성과 정적 검사
-2. Android Expo 실제 화면으로 Play 자산 재캡처·교체 및 업로드 전 확인
-3. Play Console에서 Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety를 final AAB와 대조
+1. Play Console에서 검증된 final AAB SHA-256 `e29047be5302bb99e009bd2e1dd27d89ba246712b507f7ad084ef8623d6430c8`과 versionCode `7` 확인
+2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드
+3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety를 final AAB와 대조
 
 ### 합성 데이터 비공개 테스트 중
 

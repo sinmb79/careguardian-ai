@@ -71,7 +71,7 @@
 | 광고 | 없음 | 광고 SDK·광고 ID 사용 없음 |
 | Health apps declaration | `My app doesn't provide any health features` | 건강·피트니스 데이터 접근 없음 |
 | IARC 콘텐츠 등급 | 실제 Console 설문 답변으로 확정 | 임의 등급 금지 |
-| 스크린샷 | Android 앱 화면 재캡처본만 업로드 | 현재 웹 PWA 렌더 PNG는 검토용이며 업로드 금지 |
+| 스크린샷 | Android 앱 화면 재캡처본만 업로드 | phone 4장·7-inch 2장·10-inch 2장 검증 완료. 해시와 캡처 경계는 `docs/security/android-aab-evidence-2026-07-31.md` 참조 |
 
 ### Data safety Console 입력 기준
 

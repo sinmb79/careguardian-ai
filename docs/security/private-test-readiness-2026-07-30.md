@@ -2,7 +2,7 @@
 
 - 기준일: 2026-07-30 (Asia/Seoul)
 - 대상: `생활후견 AI` Android `1.1.0` / `versionCode 7`
-- 판정: **합성·비민감 데이터 비공개 테스트는 final AAB·정적 검사·Android-native 스크린샷·Console 대조 후 시작 가능**. Samsung/Pixel 증거 완료 전 실제 개인정보·민감정보 단계와 정식 출시는 `NO-GO`
+- 판정: **final AAB·정적 검사·Android-native 스크린샷은 완료했고, Play Console 문안·선언·Data safety 대조 후 합성·비민감 데이터 비공개 테스트를 시작할 수 있음**. Samsung/Pixel 증거 완료 전 실제 개인정보·민감정보 단계와 정식 출시는 `NO-GO`
 
 ## 현재 구현 근거
 
@@ -34,7 +34,7 @@
 | 항목 | 현재 상태 | 해소 기준 |
 |---|---|---|
 | 삭제·CSP·감사 정책 | 소스 수준 경계와 검증 게이트가 구현되어 있습니다. | final AAB 정적 검사 후 비공개 테스트 중 물리 기기에서 삭제 증거를 수집하고, 정식 출시 전 전체 증거를 재확인 |
-| 현재 스크린샷 | 실제 웹 PWA 렌더이며 잠정 검토 자산입니다. Android 앱 화면으로 제출할 수 없습니다. | Expo Android 실제 화면으로 phone 4장·tablet 4장을 재캡처해 같은 파일을 교체하는 출시 차단 게이트 |
+| Android 후보·스크린샷 | EAS production AAB `1.1.0 (7)`의 CPU-only·권한·원격 푸시 부재 검사와 universal APK 설치·실행을 통과했습니다. Android-native phone 4장·tablet 4장도 교체·검증했습니다. | `android-aab-evidence-2026-07-31.md`의 AAB SHA·스크린샷 해시와 Console 표시값을 대조하고 기존 release·자산을 교체 |
 
 ## 현재 범위와 금지 범위
 
@@ -44,8 +44,8 @@
 
 1. `npm ci`, 전체 테스트, 웹 build, mobile typecheck를 새 lockfile에서 통과
 2. Expo prebuild로 name `생활후견 AI`, version `1.1.0`, versionCode `7`, package·EAS 식별자 보존 확인
-3. final AAB의 권한, ABI, `allowBackup=false`, debug/development surface 부재 정적 검사
-4. Android Expo 실제 화면으로 phone·tablet 스크린샷 재캡처 및 현재 웹 PNG 교체
+3. final AAB의 권한, ABI, `allowBackup=false`, debug/development surface 부재 정적 검사 — **완료**
+4. Android Expo 실제 화면으로 phone·tablet 스크린샷 재캡처 및 현재 웹 PNG 교체 — **완료**
 5. Play Console의 Productivity·타깃 연령·Health apps declaration·최신 문안·자산·Data safety를 final AAB와 대조
 6. 삭제, CSP, production 의존성 위험 승인 게이트의 현재 증거와 책임자·만료일 확인
 
