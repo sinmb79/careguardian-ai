@@ -8,6 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { deflateRawSync } from "node:zlib";
 
 let verifier;
 let importError;
@@ -38,7 +39,7 @@ function crc32(buffer) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function createStoredZip(entries) {
+function createZip(entries) {
   const localParts = [];
   const centralParts = [];
   let offset = 0;
@@ -48,6 +49,9 @@ function createStoredZip(entries) {
     const flags = entry.flags ?? 0;
     const method = entry.method ?? 0;
     const declaredSize = entry.declaredSize ?? content.length;
+    const compressedContent = method === 8
+      ? deflateRawSync(content)
+      : content;
     const checksum = crc32(content);
 
     const local = Buffer.alloc(30);
@@ -56,10 +60,10 @@ function createStoredZip(entries) {
     local.writeUInt16LE(flags, 6);
     local.writeUInt16LE(method, 8);
     local.writeUInt32LE(checksum, 14);
-    local.writeUInt32LE(content.length, 18);
+    local.writeUInt32LE(compressedContent.length, 18);
     local.writeUInt32LE(declaredSize, 22);
     local.writeUInt16LE(name.length, 26);
-    localParts.push(local, name, content);
+    localParts.push(local, name, compressedContent);
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
@@ -68,12 +72,12 @@ function createStoredZip(entries) {
     central.writeUInt16LE(flags, 8);
     central.writeUInt16LE(method, 10);
     central.writeUInt32LE(checksum, 16);
-    central.writeUInt32LE(content.length, 20);
+    central.writeUInt32LE(compressedContent.length, 20);
     central.writeUInt32LE(declaredSize, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(offset, 42);
     centralParts.push(central, name);
-    offset += local.length + name.length + content.length;
+    offset += local.length + name.length + compressedContent.length;
   }
 
   const centralDirectory = Buffer.concat(centralParts);
@@ -90,7 +94,7 @@ function withZipFixture(t, entries) {
   const root = mkdtempSync(join(tmpdir(), "life-no-push-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const archive = join(root, "fixture.apk");
-  writeFileSync(archive, createStoredZip(entries));
+  writeFileSync(archive, createZip(entries));
   return archive;
 }
 
@@ -124,7 +128,7 @@ test("requires the raw AAB and universal APK as one release-binary pair", () => 
   );
 });
 
-test("fails closed on excessive archive entries or content scan bytes", () => {
+test("fails closed on excessive archive entries or declared uncompressed bytes", () => {
   assert.throws(
     () => verifier.validateArchiveInspectionBounds({
       entryCount: 100_001,
@@ -245,6 +249,76 @@ test("real ZIP inspection enforces the declared per-entry byte bound before stre
     verifier.inspectArchive(archive),
     /entry.*byte limit/i
   );
+});
+
+test("rejects a huge unscanned deflated asset by its declared size", async (t) => {
+  const archive = withZipFixture(t, [
+    {
+      name: "assets/local-model.gguf",
+      content: Buffer.from([0]),
+      declaredSize: 256 * 1024 * 1024 + 1,
+      method: 8
+    }
+  ]);
+
+  await assert.rejects(
+    verifier.inspectArchive(archive),
+    /entry.*byte limit/i
+  );
+});
+
+test("rejects aggregate declared size across unscanned deflated assets and native libraries", async (t) => {
+  const archive = withZipFixture(t, [
+    {
+      name: "assets/local-model.gguf",
+      content: Buffer.from([0]),
+      declaredSize: 256 * 1024 * 1024,
+      method: 8
+    },
+    {
+      name: "lib/arm64-v8a/liblocal-ai.so",
+      content: Buffer.from([0]),
+      declaredSize: 256 * 1024 * 1024,
+      method: 8
+    },
+    {
+      name: "assets/model-license.txt",
+      content: Buffer.from([0]),
+      declaredSize: 1,
+      method: 8
+    }
+  ]);
+
+  await assert.rejects(
+    verifier.inspectArchive(archive),
+    /total.*byte limit/i
+  );
+});
+
+test("keeps unscanned deflated asset and native-library contents metadata-only", async (t) => {
+  const manifest = Buffer.from("<manifest />");
+  const archive = withZipFixture(t, [
+    {
+      name: "AndroidManifest.xml",
+      content: manifest,
+      method: 8
+    },
+    {
+      name: "assets/local-model.gguf",
+      content: "com.google.firebase.messaging.FirebaseMessaging",
+      method: 8
+    },
+    {
+      name: "lib/arm64-v8a/liblocal-ai.so",
+      content: "com.google.android.c2dm.permission.RECEIVE",
+      method: 8
+    }
+  ]);
+
+  const inspection = await verifier.inspectArchive(archive);
+
+  assert.equal(inspection.scannedBytes, manifest.length);
+  assert.deepEqual(inspection.problems, []);
 });
 
 test("real DEX streaming rejects forbidden reflective class and Intent literals", async (t) => {

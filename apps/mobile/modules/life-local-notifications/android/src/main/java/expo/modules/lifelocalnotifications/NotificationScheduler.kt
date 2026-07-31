@@ -28,6 +28,12 @@ internal class NotificationDeletionException(
   "Local notification deletion failed: ${failures.joinToString("; ")}"
 )
 
+internal class NotificationRestoreException(
+  val failures: List<String>
+) : IllegalStateException(
+  "Local notification restore failed: ${failures.joinToString("; ")}"
+)
+
 internal class NotificationScheduler(
   private val context: Context
 ) {
@@ -128,7 +134,11 @@ internal class NotificationScheduler(
   }
 
   fun listIdentifiers(): List<String> = synchronized(LOCK) {
-    readEntries().map { it.identifier }.sorted()
+    readFutureEntriesAndPrune(
+      System.currentTimeMillis()
+    )
+      .map { it.identifier }
+      .sorted()
   }
 
   fun cancel(identifier: String) = synchronized(LOCK) {
@@ -269,19 +279,17 @@ internal class NotificationScheduler(
   }
 
   fun restoreFuture(nowMs: Long) = synchronized(LOCK) {
-    val entries = readEntries()
-    val staleKeys = mutableListOf<String>()
+    val entries = readFutureEntriesAndPrune(nowMs)
+    val failures = mutableListOf<String>()
     entries.forEach { entry ->
-      if (entry.epochMs > nowMs) {
+      try {
         scheduleAlarm(entry)
-      } else {
-        staleKeys += entryKey(entry.identifier)
+      } catch (error: Exception) {
+        failures += error::class.java.simpleName
       }
     }
-    if (staleKeys.isNotEmpty()) {
-      val editor = preferences.edit()
-      staleKeys.forEach(editor::remove)
-      if (!editor.commit()) error("Could not remove stale local reminders")
+    if (failures.isNotEmpty()) {
+      throw NotificationRestoreException(failures)
     }
   }
 
@@ -455,14 +463,36 @@ internal class NotificationScheduler(
     )
   }
 
-  private fun readEntries(): List<LedgerEntry> =
+  private fun readFutureEntriesAndPrune(nowMs: Long): List<LedgerEntry> {
+    val entries = mutableListOf<LedgerEntry>()
+    val keysToRemove = mutableListOf<String>()
     preferences.all
       .filterKeys { it.startsWith(ENTRY_PREFIX) }
-      .values
-      .map { value ->
-        require(value is String) { "Invalid local reminder ledger value" }
-        decode(value)
+      .forEach { (key, value) ->
+        val entry = if (value is String) {
+          runCatching { decode(value) }.getOrNull()
+        } else {
+          null
+        }
+        if (
+          entry == null ||
+          key != entryKey(entry.identifier) ||
+          entry.epochMs <= nowMs
+        ) {
+          keysToRemove += key
+        } else {
+          entries += entry
+        }
       }
+    if (keysToRemove.isNotEmpty()) {
+      val editor = preferences.edit()
+      keysToRemove.forEach(editor::remove)
+      if (!editor.commit()) {
+        error("Could not remove corrupt or stale local reminders")
+      }
+    }
+    return entries
+  }
 
   private fun readValidEntriesForDeletion(): List<LedgerEntry> =
     preferences.all

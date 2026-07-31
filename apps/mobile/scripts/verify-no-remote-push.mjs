@@ -6,8 +6,8 @@ import yauzl from "yauzl";
 
 const MAX_ARCHIVE_ENTRIES = 100_000;
 const MAX_ENTRY_NAME_BYTES = 4_096;
-const MAX_SCANNED_ENTRY_BYTES = 256 * 1024 * 1024;
-const MAX_TOTAL_SCANNED_BYTES = 512 * 1024 * 1024;
+const MAX_ENTRY_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 512 * 1024 * 1024;
 const STREAM_PATTERN_CARRY = 512;
 
 const FORBIDDEN_DEPENDENCIES = [
@@ -219,11 +219,13 @@ export function validateArchiveInspectionBounds({
       `archive entry count is outside the allowed range: ${entryCount}`
     );
   }
-  if (entryBytes < 0 || entryBytes > MAX_SCANNED_ENTRY_BYTES) {
-    throw new Error("archive entry exceeds the content scan byte limit");
+  if (entryBytes < 0 || entryBytes > MAX_ENTRY_UNCOMPRESSED_BYTES) {
+    throw new Error("archive entry exceeds the declared uncompressed byte limit");
   }
-  if (totalBytes < 0 || totalBytes > MAX_TOTAL_SCANNED_BYTES) {
-    throw new Error("archive exceeds the total content scan byte limit");
+  if (totalBytes < 0 || totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+    throw new Error(
+      "archive exceeds the total declared uncompressed byte limit"
+    );
   }
 }
 
@@ -297,7 +299,7 @@ function scanEntryStream(stream, { dex, problems }) {
   return new Promise((resolveStream, rejectStream) => {
     stream.on("data", (chunk) => {
       scannedBytes += chunk.length;
-      if (scannedBytes > MAX_SCANNED_ENTRY_BYTES) {
+      if (scannedBytes > MAX_ENTRY_UNCOMPRESSED_BYTES) {
         stream.destroy(
           new Error("archive entry exceeds the content scan byte limit")
         );
@@ -374,7 +376,7 @@ export async function inspectArchive(archivePath) {
     LEGACY_MIGRATION_DEX_STRINGS.map((value) => [value, 0])
   );
   let migrationPrefixCount = 0;
-  let plannedScannedBytes = 0;
+  let declaredUncompressedBytes = 0;
   let scannedBytes = 0;
   let processedEntries = 0;
 
@@ -431,21 +433,25 @@ export async function inspectArchive(archivePath) {
         "forbidden assembled artifact entry"
       );
 
+      const directory = entryName.endsWith("/");
+      if (!directory) {
+        declaredUncompressedBytes += entry.uncompressedSize;
+        try {
+          validateArchiveInspectionBounds({
+            entryCount: archive.entryCount,
+            entryBytes: entry.uncompressedSize,
+            totalBytes: declaredUncompressedBytes
+          });
+        } catch (error) {
+          fail(error);
+          return;
+        }
+      }
+
       const dex = isDexEntry(entryName);
       const scanContent = dex || shouldScanAndroidContent(entryName);
-      if (!scanContent || entryName.endsWith("/")) {
+      if (!scanContent || directory) {
         archive.readEntry();
-        return;
-      }
-      plannedScannedBytes += entry.uncompressedSize;
-      try {
-        validateArchiveInspectionBounds({
-          entryCount: archive.entryCount,
-          entryBytes: entry.uncompressedSize,
-          totalBytes: plannedScannedBytes
-        });
-      } catch (error) {
-        fail(error);
         return;
       }
 
@@ -457,7 +463,7 @@ export async function inspectArchive(archivePath) {
         scanEntryStream(stream, { dex, problems })
           .then((result) => {
             scannedBytes += result.scannedBytes;
-            if (scannedBytes > MAX_TOTAL_SCANNED_BYTES) {
+            if (scannedBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
               fail(
                 new Error("archive exceeded the total content scan byte limit")
               );

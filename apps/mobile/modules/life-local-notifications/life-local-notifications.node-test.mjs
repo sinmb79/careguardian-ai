@@ -145,7 +145,7 @@ test("separates stored-entry structure validation from future schedule validatio
     /private fun decode\(value: String\): LedgerEntry \{([\s\S]*?)\n  \}/
   )?.[1] ?? "";
   assert.doesNotMatch(decodeBody, /System\.currentTimeMillis|validateFutureEntry/);
-  assert.match(scheduler, /entry\.epochMs > nowMs[\s\S]*staleKeys/);
+  assert.match(scheduler, /entry\.epochMs <= nowMs[\s\S]*keysToRemove/);
   assert.match(scheduler, /entry\.epochMs == epochMs/);
 });
 
@@ -285,7 +285,76 @@ test("full and legacy deletion verify that delivered notifications are gone", ()
   );
 });
 
-test("boot restore contains corrupt-ledger failures without posting or logging data", () => {
+test("prunes corrupt and stale ledger keys in one durable transaction before list or restore", () => {
+  const scheduler = readFileSync(
+    resolve(
+      moduleRoot,
+      "android/src/main/java/expo/modules/lifelocalnotifications/NotificationScheduler.kt"
+    ),
+    "utf8"
+  );
+  const listBody = scheduler.match(
+    /fun listIdentifiers[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  )?.[1] ?? "";
+  const restoreBody = scheduler.match(
+    /fun restoreFuture[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  )?.[1] ?? "";
+  const futureReader = scheduler.match(
+    /private fun readFutureEntriesAndPrune[\s\S]*?(?=\n  private fun readValidEntriesForDeletion)/
+  )?.[0] ?? "";
+
+  assert.match(
+    listBody,
+    /readFutureEntriesAndPrune\(\s*System\.currentTimeMillis\(\)\s*\)/
+  );
+  assert.match(restoreBody, /val entries = readFutureEntriesAndPrune\(nowMs\)/);
+  assert.match(futureReader, /filterKeys \{ it\.startsWith\(ENTRY_PREFIX\) \}/);
+  assert.match(futureReader, /runCatching \{ decode\(value\) \}\.getOrNull\(\)/);
+  assert.match(futureReader, /key != entryKey\(entry\.identifier\)/);
+  assert.match(futureReader, /entry\.epochMs <= nowMs/);
+  assert.match(futureReader, /keysToRemove \+= key/);
+  assert.equal((futureReader.match(/\.commit\(\)/g) ?? []).length, 1);
+  assert.ok(
+    futureReader.indexOf(".commit()") <
+      futureReader.indexOf("return entries")
+  );
+  assert.ok(
+    restoreBody.indexOf("readFutureEntriesAndPrune(nowMs)") <
+      restoreBody.indexOf("scheduleAlarm(entry)")
+  );
+});
+
+test("continues future-alarm restore after individual failures and aggregates without deleting retry state", () => {
+  const scheduler = readFileSync(
+    resolve(
+      moduleRoot,
+      "android/src/main/java/expo/modules/lifelocalnotifications/NotificationScheduler.kt"
+    ),
+    "utf8"
+  );
+  const restoreBody = scheduler.match(
+    /fun restoreFuture[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  )?.[1] ?? "";
+
+  assert.match(scheduler, /class NotificationRestoreException/);
+  assert.match(restoreBody, /val failures = mutableListOf<String>\(\)/);
+  assert.match(
+    restoreBody,
+    /entries\.forEach \{ entry ->[\s\S]*?try \{[\s\S]*?scheduleAlarm\(entry\)[\s\S]*?catch \(error: Exception\)/
+  );
+  assert.match(restoreBody, /failures \+= error::class\.java\.simpleName/);
+  assert.match(
+    restoreBody,
+    /if \(failures\.isNotEmpty\(\)\) \{[\s\S]*?throw NotificationRestoreException\(failures\)/
+  );
+  assert.ok(
+    restoreBody.indexOf("scheduleAlarm(entry)") <
+      restoreBody.indexOf("throw NotificationRestoreException(failures)")
+  );
+  assert.doesNotMatch(restoreBody, /preferences\.edit|\.remove\(/);
+});
+
+test("keeps corrupt or removed alarm tokens inert and routine cancellation recoverable", () => {
   const scheduler = readFileSync(
     resolve(
       moduleRoot,
@@ -300,11 +369,16 @@ test("boot restore contains corrupt-ledger failures without posting or logging d
     ),
     "utf8"
   );
-  const restoreBody = scheduler.match(
-    /fun restoreFuture[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  const consumeBody = scheduler.match(
+    /fun consume\(identifier[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
+  )?.[1] ?? "";
+  const cancelBody = scheduler.match(
+    /fun cancel\(identifier[\s\S]*?synchronized\(LOCK\) \{([\s\S]*?)\n  \}/
   )?.[1] ?? "";
 
-  assert.match(restoreBody, /val entries = readEntries\(\)/);
+  assert.match(consumeBody, /\?: return@synchronized null/);
+  assert.match(consumeBody, /runCatching \{ decode\(stored\) \}[\s\S]*?\?: return@synchronized null/);
+  assert.doesNotMatch(cancelBody, /readEntries|readFutureEntriesAndPrune/);
   assert.match(receiver, /try \{/);
   assert.match(receiver, /catch \(_: Exception\)/);
   assert.doesNotMatch(receiver, /Log\.|print|show\(/);

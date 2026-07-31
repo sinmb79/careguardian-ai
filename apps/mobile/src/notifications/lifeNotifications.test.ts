@@ -17,6 +17,11 @@ const permissionsApi = vi.hoisted(() => ({
   request: vi.fn()
 }));
 
+const platformApi = vi.hoisted(() => ({
+  OS: "android",
+  Version: 36
+}));
+
 vi.mock("../../modules/life-local-notifications", () => ({
   createLocalNotificationChannel: nativeApi.createChannel,
   areLocalNotificationsEnabled: nativeApi.areEnabled,
@@ -29,7 +34,7 @@ vi.mock("../../modules/life-local-notifications", () => ({
 }));
 
 vi.mock("react-native", () => ({
-  Platform: { OS: "android", Version: 36 },
+  Platform: platformApi,
   PermissionsAndroid: {
     PERMISSIONS: { POST_NOTIFICATIONS: "android.permission.POST_NOTIFICATIONS" },
     RESULTS: { GRANTED: "granted" },
@@ -50,6 +55,7 @@ describe("life notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     nativeApi.available = true;
+    platformApi.OS = "android";
     nativeApi.createChannel.mockResolvedValue(undefined);
     nativeApi.areEnabled.mockResolvedValue(true);
     nativeApi.cleanupLegacy.mockResolvedValue(undefined);
@@ -167,6 +173,27 @@ describe("life notifications", () => {
 
     await expect(cancelAllScheduledNotificationsForFullDeletion()).rejects.toThrow("verification failed");
   });
+
+  test("full deletion fails closed on Android when the native module is unavailable", async () => {
+    nativeApi.available = false;
+
+    await expect(
+      cancelAllScheduledNotificationsForFullDeletion()
+    ).rejects.toThrow(/Android.*module.*unavailable/i);
+    expect(nativeApi.cancelAll).not.toHaveBeenCalled();
+  });
+
+  test.each(["ios", "web"])(
+    "full deletion is a no-op on unsupported %s",
+    async (platform) => {
+      platformApi.OS = platform;
+
+      await expect(
+        cancelAllScheduledNotificationsForFullDeletion()
+      ).resolves.toBeUndefined();
+      expect(nativeApi.cancelAll).not.toHaveBeenCalled();
+    }
+  );
 
   test("rolls back every newly scheduled identifier if a later schedule fails", async () => {
     const secondTask = { ...fixtureWorkspace.tasks[0], id: "plan-trip", dueDate: "2026-08-01" };

@@ -129,8 +129,11 @@ export async function cancelPreviousTestNotifications(): Promise<void> {
 }
 
 export async function cancelAllScheduledNotificationsForFullDeletion(): Promise<void> {
-  if (!isLifeLocalNotificationsAvailable()) return;
+  if (Platform.OS !== "android") return;
   try {
+    if (!isLifeLocalNotificationsAvailable()) {
+      throw new Error("Android local notification module is unavailable");
+    }
     await cancelAllLocalNotifications();
     const remaining = await listLocalNotificationIdentifiers();
     if (remaining.length > 0) {
