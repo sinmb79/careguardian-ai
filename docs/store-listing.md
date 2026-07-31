@@ -16,26 +16,47 @@
 
 ### 짧은 설명 (80자 이내)
 
-기기 안에서 일정·메모·체크리스트를 정리하고 나만의 기능을 만드는 개인 작업공간
+일정·메모·체크리스트를 정리하고 선택형 한국어 AI를 기기에서 실행하는 로컬 우선 작업공간
 
 ### 전체 설명
 
-생활후견 AI는 일반 생활 작업, 일정, 할 일, 메모, 체크리스트와 사용자가 만든 선언형 기능을 한 기기에서 정리하는 개인 생산성·로컬 우선 도구입니다. 의료·복약·진단·치료·응급 기능은 제공하지 않습니다.
+생활후견 AI는 일정, 할 일, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 로컬 우선 작업공간입니다.
+일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다.
 
-- 오늘과 목록: 일반 일정, 할 일, 개인 목록을 정리합니다.
-- 나만의 기능 만들기: 선언형 필드와 제한된 자동화로 생활 기능을 추가합니다. 임의 URL·코드·플러그인을 실행하지 않습니다.
-- Android 기기 내 일반 알림: 표시 제목은 일반 문구이며 data payload에는 `taskId`만 사용합니다. 일정 제목과 메모 본문은 저장하거나 payload에 넣지 않습니다. 원격 푸시 없이 기기에서 미래 날짜 오전 9시 이후 전달을 요청하며, 절전·DND·기기 정책에 따라 늦거나 표시되지 않을 수 있습니다.
-- 선택 설치 로컬 AI: 사용자가 고정된 한국어 GGUF 파일의 출처·크기·SHA-256·라이선스를 확인하고 동의하면 기기 CPU에서 기존 텍스트의 요약, 문장 다듬기, 제목 제안, 체크리스트 초안만 제공합니다. 자유 대화형 기능이 아니며 결과는 승인 전 저장되지 않습니다.
-- 로컬 저장과 삭제: 모바일은 SQLCipher와 SecureStore/Android Keystore 경계를 사용합니다. 기기 인증, 백그라운드 잠금, 화면 캡처 차단, Android 백업 차단을 적용하며, 전체 삭제는 추론·일반 알림·모델·부분 다운로드·작업공간·키·메모리 상태를 삭제합니다.
+주요 기능
+• 오늘의 작업과 개인 목록을 만들고 정리할 수 있습니다.
+• 이름을 정해 선언형 개인 기능 항목을 추가할 수 있습니다. 임의 코드·URL·플러그인은 실행하지 않습니다.
+• 사용자가 선택한 날짜의 오전 9시를 기준으로 앱이 Android 로컬 알림을 직접 예약합니다. 원격 푸시는 사용하지 않으며, 배터리 절전이나 Android 시스템 정책에 따라 알림이 정확한 시각보다 늦게 표시될 수 있습니다.
+• 현재 버전의 로컬 알림은 Android에서만 지원하며 iOS에서는 사용할 수 없습니다.
+• 알림 제목은 일반 문구로 표시되고 알림 데이터에는 작업 식별자만 포함됩니다.
 
-중요한 안내: 계정, 광고, 분석 SDK, 클라우드 AI, 원격 푸시를 사용하지 않습니다. 현재 일반 알림은 Android 전용이며 iOS 알림은 제공하지 않습니다. 연락처·위치·마이크·카메라·외부 저장소 권한도 요청하지 않습니다. 모델 설치를 사용자가 명시적으로 선택하면 고정된 Hugging Face GGUF 파일 요청이 발생할 수 있습니다. 이 요청에서 IP 주소와 일반 네트워크 메타데이터는 Hugging Face에 기록될 수 있지만, 프롬프트·출력·작업 내용은 전송하지 않습니다. 비공개 테스트에는 합성·비민감 생활 일정과 메모만 사용하세요.
+선택형 기기 내 한국어 AI
+• 사용자가 설치를 선택한 경우에만 고정된 NAVER HyperCLOVA X GGUF 모델을 Hugging Face에서 내려받습니다.
+• 다운로드 전에 출처, 파일 크기, SHA-256, 라이선스를 확인하고 동의할 수 있습니다.
+• 모델은 기기 CPU에서만 실행되며 기존 텍스트 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 지원합니다.
+• 자유 대화형 기능이 아니며 결과는 사용자가 승인하기 전까지 작업공간에 저장되지 않습니다.
+• 모델 설치를 거부하거나 삭제해도 일반 작업 기능은 계속 사용할 수 있습니다.
+
+데이터와 외부 연결
+• 계정, 광고, 분석 SDK, 클라우드 AI, 원격 푸시를 사용하지 않습니다.
+• 작업, 목록, 메모, 사용자 기능, AI 입력과 결과는 기기 안에서 처리됩니다.
+• 모델 설치를 시작하면 고정된 HTTPS 주소로 Hugging Face 파일 요청이 발생합니다. 이 과정에서 IP 주소와 일반 네트워크 메타데이터가 Hugging Face에 기록될 수 있지만, 작업 내용과 AI 입력·결과는 전송하지 않습니다.
+• 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다.
+
+보호와 삭제
+• 모바일 작업공간은 SQLCipher와 Android Keystore 경계를 사용하며 Android 백업과 화면 캡처를 차단합니다.
+• '이 기기의 모든 데이터 삭제'를 실행하면 진행 중인 AI 작업과 예약 알림을 중단하고, 설치 모델, 부분 다운로드, 작업공간과 기기 내 키를 삭제합니다.
+• Hugging Face가 독립적으로 보관할 수 있는 외부 기록은 앱의 삭제 기능으로 지울 수 없으며 해당 서비스의 정책과 삭제 요청 절차가 적용됩니다.
+• 자세한 내용은 앱 설정과 Play 등록정보에 연결된 개인정보처리방침에서 확인할 수 있습니다.
+
+비공개 테스트에서는 합성된 비민감 일정과 메모만 사용해 주세요.
 
 ### 출시 노트
 
-- 일반 생활 작업·목록·메모·사용자 기능 중심으로 전면 개편했습니다.
-- 건강·복약 기능을 제거했습니다.
-- 선택형 기기 내 한국어 문서 정리 도구를 추가했습니다.
-- 로컬 저장·전체 삭제·개인정보 고지를 강화했습니다.
+일반 생활 작업 중심으로 앱을 전면 재구성했습니다.
+• 일정·목록·메모·개인 기능을 한 기기에서 정리할 수 있습니다.
+• 앱이 직접 예약하는 Android 로컬 알림과 선택형 기기 내 한국어 AI를 추가했습니다.
+• 로컬 저장 보호, 전체 삭제, 외부 모델 다운로드 고지를 강화했습니다.
 
 ### Play Console 적용값
 
@@ -80,23 +101,49 @@ sinmb79@naver.com
 
 ## English (reference translation)
 
+### App name
+
+Life Steward AI
+
 ### Short description
 
-A local-first workspace for schedules, notes, checklists, and personal tools.
+A local-first workspace to organize schedules, notes, and checklists and run optional Korean AI on device.
 
 ### Full description
 
-Life Steward AI is a general personal-productivity, local-first tool for ordinary life tasks, schedules, tasks, notes, checklists, and user-created declarative features. It does not provide medical, medication, diagnostic, treatment, or emergency functions.
+Life Steward AI is a local-first workspace for organizing schedules, tasks, notes, checklists, and user-created personal tools on one device. It is a general personal-productivity app and does not handle health or medical functions or health data.
 
-It keeps workspace data on device. Mobile storage uses SQLCipher and a SecureStore/Android Keystore boundary, device authentication, background locking, screen-capture blocking, and disabled Android backup. Android notifications are local only, use a generic title, and contain only a task ID in their payload. They request delivery after 9 a.m. for a future date, but power-saving, DND, and device policies may delay or suppress them. Notifications are not currently available on iOS.
+Main features
+• Create and organize today's tasks and personal lists.
+• Add named, declarative personal-tool entries. The app does not run arbitrary code, URLs, or plug-ins.
+• The app directly schedules an Android local notification for 9:00 a.m. on the date selected by the user. There is no remote push, and Android power-saving or system policy may make delivery inexact or delayed.
+• Local notifications are currently supported only on Android and are unavailable on iOS.
+• A generic notification title is shown, and notification data contains only a task identifier.
 
-Optional local AI runs on device CPU after the user reviews a pinned Korean GGUF file’s source, size, SHA-256, and license. It only summarizes or rewrites existing text, suggests a title, or drafts a checklist; it is not a free-form chat feature. Results are not saved until the user approves them. Installing a model is optional and may request the pinned file from Hugging Face. The host may log IP-derived metadata and the model request, but prompts, outputs, and workspace content are not sent with that request.
+Optional on-device Korean AI
+• Only when the user chooses to install it, the app downloads a pinned NAVER HyperCLOVA X GGUF model from Hugging Face.
+• Before download, the user can review and consent to the source, file size, SHA-256, and license.
+• The model runs only on the device CPU and supports summaries of existing text, sentence polishing, title suggestions, and checklist drafts.
+• It is not a free-form chat feature, and results are not saved to the workspace until the user approves them.
+• Declining or deleting the model does not disable the general workspace features.
 
-There are no accounts, ads, analytics SDKs, cloud AI, or remote push. Use only synthetic, non-sensitive schedules and notes during closed testing.
+Data and external connections
+• There are no accounts, ads, analytics SDKs, cloud AI, or remote push.
+• Tasks, lists, notes, personal tools, AI input, and AI results are processed on device.
+• Starting model installation requests the file from a pinned Hugging Face HTTPS address. Hugging Face may log an IP address and ordinary network metadata, but workspace content, AI input, and AI results are not sent.
+• The app does not request contacts, location, microphone, camera, or external-storage permissions.
+
+Protection and deletion
+• The mobile workspace uses SQLCipher and an Android Keystore boundary, and Android backup and screen capture are blocked.
+• “Delete all data on this device” stops active AI work and scheduled notifications, then deletes the installed model, partial downloads, workspace, and on-device key.
+• External records independently retained by Hugging Face cannot be erased by the app; that service's policy and deletion-request procedure apply.
+• More information is available in the privacy policy linked from app settings and the Play listing.
+
+Use only synthetic, non-sensitive schedules and notes during closed testing.
 
 ### Release notes
 
-- Rebuilt around general life tasks, lists, notes, and user-created features.
-- Removed health and medication features.
-- Added an optional on-device Korean document-organizing tool.
-- Strengthened local storage, full deletion, and privacy disclosure.
+Rebuilt the app around ordinary personal tasks.
+• Organize schedules, lists, notes, and personal tools on one device.
+• Added app-scheduled Android local notifications and optional on-device Korean AI.
+• Strengthened local-storage protection, full deletion, and external-model download disclosure.

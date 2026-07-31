@@ -9,6 +9,7 @@ import {
 
 const root = resolve(import.meta.dirname, "..");
 const baseline = loadReleaseFiles(root);
+const storeListingFile = "docs/store-listing.md";
 const expoFileSystemDeclarationFiles = [
   "index.d.ts",
   "FileSystem.d.ts",
@@ -35,8 +36,112 @@ function mutate(file, transform) {
   return validateReleasePolicy(files);
 }
 
+function replaceLevelThreeSection(source, heading, replacement) {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sectionPattern = new RegExp(
+    `(### ${escapedHeading}\\r?\\n\\r?\\n)[\\s\\S]*?(?=\\r?\\n### |\\r?\\n## |$)`
+  );
+  assert.match(source, sectionPattern);
+  return source.replace(
+    sectionPattern,
+    (_section, prefix) => `${prefix}${replacement}\n`
+  );
+}
+
 test("accepts exact line-level policy, legacy, and network contracts", () => {
   assert.equal(validateReleasePolicy(baseline).status, "pass");
+});
+
+test("loads the Play Store listing policy artifact into the release inventory", () => {
+  assert.equal(loadReleaseFiles(root).has(storeListingFile), true);
+});
+
+test("rejects drift from the exact Korean Play Console copy", () => {
+  const report = mutate(storeListingFile, (source) =>
+    source.replace(
+      "일정·메모·체크리스트를 정리하고 선택형 한국어 AI를 기기에서 실행하는 로컬 우선 작업공간",
+      "일정·메모·체크리스트를 정리하고 선택형 한국어 AI를 기기에서 실행하는 변경된 작업공간"
+    )
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /Play Store Korean short description must exactly match/
+  );
+});
+
+test("rejects duplicate Korean Play Console section headings", () => {
+  for (const heading of [
+    "앱 이름",
+    "짧은 설명 (80자 이내)",
+    "전체 설명",
+    "출시 노트"
+  ]) {
+    const report = mutate(storeListingFile, (source) =>
+      source.replace(
+        "\n### Play Console 적용값",
+        `\n### ${heading}\n\n복제 검증용\n\n### Play Console 적용값`
+      )
+    );
+    assert.equal(report.status, "fail", heading);
+    assert.ok(
+      report.problems.some((problem) =>
+        problem.includes(
+          `Play Store Korean ${heading} heading must occur exactly once`
+        )
+      ),
+      `${heading}: ${report.problems.join("\n")}`
+    );
+  }
+});
+
+test("rejects every over-limit Korean Play Console field", () => {
+  const overLimitCases = [
+    {
+      heading: "앱 이름",
+      replacement: "가".repeat(31),
+      expected: /Play Store Korean app name exceeds 30 characters/
+    },
+    {
+      heading: "짧은 설명 (80자 이내)",
+      replacement: "가".repeat(81),
+      expected: /Play Store Korean short description exceeds 80 characters/
+    },
+    {
+      heading: "전체 설명",
+      replacement: "가".repeat(4001),
+      expected: /Play Store Korean full description exceeds 4000 characters/
+    },
+    {
+      heading: "출시 노트",
+      replacement: "가".repeat(501),
+      expected: /Play Store Korean release notes exceeds 500 characters/
+    }
+  ];
+
+  for (const { heading, replacement, expected } of overLimitCases) {
+    const report = mutate(storeListingFile, (source) =>
+      replaceLevelThreeSection(source, heading, replacement)
+    );
+    assert.equal(report.status, "fail", heading);
+    assert.match(report.problems.join("\n"), expected, heading);
+  }
+});
+
+test("rejects health terms outside the one required Korean disclaimer", () => {
+  const report = mutate(storeListingFile, (source) =>
+    source.replace(
+      "일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다.",
+      "일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다. 건강 기능 없음."
+    )
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /Play Store Korean full description contains forbidden health terms outside the exact disclaimer/
+  );
 });
 
 test("rejects EAS production builds that can mutate the pinned Android version", () => {

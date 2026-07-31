@@ -10,6 +10,55 @@ import {
 } from "./typescript-static-analysis.mjs";
 
 const RELEASE_ROOTS = ["apps/mobile/", "src/", "packages/life-core/", "public/"];
+const STORE_LISTING_FILE = "docs/store-listing.md";
+const RELEASE_POLICY_ARTIFACTS = new Set([STORE_LISTING_FILE]);
+const EXPECTED_PLAY_STORE_KO_COPY = Object.freeze({
+  appName: "생활후견 AI",
+  shortDescription:
+    "일정·메모·체크리스트를 정리하고 선택형 한국어 AI를 기기에서 실행하는 로컬 우선 작업공간",
+  fullDescription: `생활후견 AI는 일정, 할 일, 메모, 체크리스트와 사용자가 만든 개인 기능을 한 기기에서 정리하는 로컬 우선 작업공간입니다.
+일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다.
+
+주요 기능
+• 오늘의 작업과 개인 목록을 만들고 정리할 수 있습니다.
+• 이름을 정해 선언형 개인 기능 항목을 추가할 수 있습니다. 임의 코드·URL·플러그인은 실행하지 않습니다.
+• 사용자가 선택한 날짜의 오전 9시를 기준으로 앱이 Android 로컬 알림을 직접 예약합니다. 원격 푸시는 사용하지 않으며, 배터리 절전이나 Android 시스템 정책에 따라 알림이 정확한 시각보다 늦게 표시될 수 있습니다.
+• 현재 버전의 로컬 알림은 Android에서만 지원하며 iOS에서는 사용할 수 없습니다.
+• 알림 제목은 일반 문구로 표시되고 알림 데이터에는 작업 식별자만 포함됩니다.
+
+선택형 기기 내 한국어 AI
+• 사용자가 설치를 선택한 경우에만 고정된 NAVER HyperCLOVA X GGUF 모델을 Hugging Face에서 내려받습니다.
+• 다운로드 전에 출처, 파일 크기, SHA-256, 라이선스를 확인하고 동의할 수 있습니다.
+• 모델은 기기 CPU에서만 실행되며 기존 텍스트 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 지원합니다.
+• 자유 대화형 기능이 아니며 결과는 사용자가 승인하기 전까지 작업공간에 저장되지 않습니다.
+• 모델 설치를 거부하거나 삭제해도 일반 작업 기능은 계속 사용할 수 있습니다.
+
+데이터와 외부 연결
+• 계정, 광고, 분석 SDK, 클라우드 AI, 원격 푸시를 사용하지 않습니다.
+• 작업, 목록, 메모, 사용자 기능, AI 입력과 결과는 기기 안에서 처리됩니다.
+• 모델 설치를 시작하면 고정된 HTTPS 주소로 Hugging Face 파일 요청이 발생합니다. 이 과정에서 IP 주소와 일반 네트워크 메타데이터가 Hugging Face에 기록될 수 있지만, 작업 내용과 AI 입력·결과는 전송하지 않습니다.
+• 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다.
+
+보호와 삭제
+• 모바일 작업공간은 SQLCipher와 Android Keystore 경계를 사용하며 Android 백업과 화면 캡처를 차단합니다.
+• '이 기기의 모든 데이터 삭제'를 실행하면 진행 중인 AI 작업과 예약 알림을 중단하고, 설치 모델, 부분 다운로드, 작업공간과 기기 내 키를 삭제합니다.
+• Hugging Face가 독립적으로 보관할 수 있는 외부 기록은 앱의 삭제 기능으로 지울 수 없으며 해당 서비스의 정책과 삭제 요청 절차가 적용됩니다.
+• 자세한 내용은 앱 설정과 Play 등록정보에 연결된 개인정보처리방침에서 확인할 수 있습니다.
+
+비공개 테스트에서는 합성된 비민감 일정과 메모만 사용해 주세요.`,
+  releaseNotes: `일반 생활 작업 중심으로 앱을 전면 재구성했습니다.
+• 일정·목록·메모·개인 기능을 한 기기에서 정리할 수 있습니다.
+• 앱이 직접 예약하는 Android 로컬 알림과 선택형 기기 내 한국어 AI를 추가했습니다.
+• 로컬 저장 보호, 전체 삭제, 외부 모델 다운로드 고지를 강화했습니다.`
+});
+const REQUIRED_PLAY_STORE_HEALTH_DISCLAIMER =
+  "일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다.";
+const PLAY_STORE_LIMITS = Object.freeze({
+  appName: 30,
+  shortDescription: 80,
+  fullDescription: 4000,
+  releaseNotes: 500
+});
 const ANDROID_XML_ANDROID_NAMESPACE =
   "http://schemas.android.com/apk/res/android";
 const APP_PRIVACY_POLICY_URL =
@@ -464,6 +513,161 @@ const NODE_MODULE_LOADER_SPECIFIERS = new Set(["module", "node:module"]);
 
 function isReleaseFile(file) {
   return RELEASE_ROOTS.some((prefix) => file.startsWith(prefix)) || EXACT_FILES.has(file);
+}
+
+function isReleaseInventoryFile(file) {
+  return isReleaseFile(file) || RELEASE_POLICY_ARTIFACTS.has(file);
+}
+
+function extractLevelThreeMarkdownSection(markdown, heading) {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const headingIndex = lines.indexOf(`### ${heading}`);
+  if (headingIndex < 0) return undefined;
+
+  let contentStart = headingIndex + 1;
+  if (lines[contentStart] === "") contentStart += 1;
+  let contentEnd = contentStart;
+  while (
+    contentEnd < lines.length &&
+    !/^#{2,3}\s/u.test(lines[contentEnd])
+  ) {
+    contentEnd += 1;
+  }
+  return lines.slice(contentStart, contentEnd).join("\n").trim();
+}
+
+function countExactText(source, expected) {
+  if (!expected) return 0;
+  let count = 0;
+  let offset = 0;
+  while (offset <= source.length) {
+    const matchIndex = source.indexOf(expected, offset);
+    if (matchIndex < 0) break;
+    count += 1;
+    offset = matchIndex + expected.length;
+  }
+  return count;
+}
+
+function characterCount(source) {
+  return [...source].length;
+}
+
+function validatePlayStoreListing(files, problems) {
+  const markdown = files.get(STORE_LISTING_FILE);
+  if (typeof markdown !== "string") {
+    problems.push(`${STORE_LISTING_FILE}: Play Store listing policy artifact is missing`);
+    return null;
+  }
+
+  const koreanHeadings = [
+    "앱 이름",
+    "짧은 설명 (80자 이내)",
+    "전체 설명",
+    "출시 노트"
+  ];
+  const normalizedLines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const headingCounts = Object.fromEntries(
+    koreanHeadings.map((heading) => [
+      heading,
+      normalizedLines.filter((line) => line === `### ${heading}`).length
+    ])
+  );
+  for (const heading of koreanHeadings) {
+    if (headingCounts[heading] !== 1) {
+      problems.push(
+        `${STORE_LISTING_FILE}: Play Store Korean ${heading} heading must occur ` +
+          `exactly once (found ${headingCounts[heading]})`
+      );
+    }
+  }
+
+  const copy = {
+    appName: extractLevelThreeMarkdownSection(markdown, "앱 이름"),
+    shortDescription: extractLevelThreeMarkdownSection(
+      markdown,
+      "짧은 설명 (80자 이내)"
+    ),
+    fullDescription: extractLevelThreeMarkdownSection(markdown, "전체 설명"),
+    releaseNotes: extractLevelThreeMarkdownSection(markdown, "출시 노트")
+  };
+  const labels = {
+    appName: "app name",
+    shortDescription: "short description",
+    fullDescription: "full description",
+    releaseNotes: "release notes"
+  };
+  for (const field of Object.keys(copy)) {
+    if (copy[field] === undefined) {
+      problems.push(
+        `${STORE_LISTING_FILE}: Play Store Korean ${labels[field]} section is missing`
+      );
+      copy[field] = "";
+    }
+    if (copy[field] !== EXPECTED_PLAY_STORE_KO_COPY[field]) {
+      problems.push(
+        `${STORE_LISTING_FILE}: Play Store Korean ${labels[field]} must exactly match the approved copy`
+      );
+    }
+    const length = characterCount(copy[field]);
+    if (length > PLAY_STORE_LIMITS[field]) {
+      problems.push(
+        `${STORE_LISTING_FILE}: Play Store Korean ${labels[field]} exceeds ` +
+          `${PLAY_STORE_LIMITS[field]} characters (${length})`
+      );
+    }
+  }
+
+  const disclaimerCount = countExactText(
+    copy.fullDescription,
+    REQUIRED_PLAY_STORE_HEALTH_DISCLAIMER
+  );
+  if (disclaimerCount !== 1) {
+    problems.push(
+      `${STORE_LISTING_FILE}: exact Korean health disclaimer must occur once ` +
+        `(found ${disclaimerCount})`
+    );
+  }
+  const fullDescriptionOutsideDisclaimer = copy.fullDescription
+    .split(REQUIRED_PLAY_STORE_HEALTH_DISCLAIMER)
+    .join("");
+  const forbiddenHealthOutsideDisclaimerCount =
+    (fullDescriptionOutsideDisclaimer.match(/건강|의료/gu) ?? []).length;
+  if (forbiddenHealthOutsideDisclaimerCount !== 0) {
+    problems.push(
+      `${STORE_LISTING_FILE}: Play Store Korean full description contains forbidden ` +
+        `health terms outside the exact disclaimer ` +
+        `(${forbiddenHealthOutsideDisclaimerCount})`
+    );
+  }
+  const forbiddenTreatmentTermCount =
+    (copy.fullDescription.match(/복약|진단|치료/gu) ?? []).length;
+  if (forbiddenTreatmentTermCount !== 0) {
+    problems.push(
+      `${STORE_LISTING_FILE}: Play Store Korean full description contains forbidden ` +
+        `treatment terms (${forbiddenTreatmentTermCount})`
+    );
+  }
+  const releaseNotesForbiddenTermCount =
+    (copy.releaseNotes.match(/건강|의료|복약|진단|치료/gu) ?? []).length;
+  if (releaseNotesForbiddenTermCount !== 0) {
+    problems.push(
+      `${STORE_LISTING_FILE}: Play Store Korean release notes contain forbidden ` +
+        `health or treatment terms (${releaseNotesForbiddenTermCount})`
+    );
+  }
+
+  return {
+    appNameCharacters: characterCount(copy.appName),
+    shortDescriptionCharacters: characterCount(copy.shortDescription),
+    fullDescriptionCharacters: characterCount(copy.fullDescription),
+    releaseNotesCharacters: characterCount(copy.releaseNotes),
+    exactHealthDisclaimerCount: disclaimerCount,
+    forbiddenHealthOutsideDisclaimerCount,
+    forbiddenTreatmentTermCount,
+    releaseNotesForbiddenTermCount,
+    headingCounts
+  };
 }
 
 function isSkippedAssetOrTest(file) {
@@ -1994,11 +2198,13 @@ export function validateReleasePolicy(files, options = {}) {
     problems,
     "module export contract"
   );
+  const playStoreKoreanCopy = validatePlayStoreListing(files, problems);
   validateIdentity(files, problems);
   return {
     gate: "non-medical-release",
     status: problems.length === 0 ? "pass" : "fail",
-    checkedFiles: [...files.keys()].filter(isReleaseFile).length,
+    checkedFiles: [...files.keys()].filter(isReleaseInventoryFile).length,
+    playStoreKoreanCopy,
     problems
   };
 }
@@ -2011,7 +2217,7 @@ export function loadReleaseFiles(root) {
   )
     .split("\0")
     .filter(Boolean)
-    .filter(isReleaseFile)
+    .filter(isReleaseInventoryFile)
     .filter((file) => existsSync(resolve(root, file)));
   return new Map(inventory.map((file) => [file, readFileSync(resolve(root, file), "utf8")]));
 }
