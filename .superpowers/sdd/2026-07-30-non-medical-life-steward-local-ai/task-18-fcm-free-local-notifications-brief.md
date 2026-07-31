@@ -32,6 +32,15 @@ Cloud Messaging, ShortcutBadger 표면을 남겼다. 기존의 도달 가능한 
    독립적으로 지우고 실제 잔존 여부를 확인한다.
 10. Android JS adapter는 새 모듈만 사용한다. iOS는 이번 비공개 테스트 범위에서
     기기 알림 미지원으로 명시하며 날짜 저장 자체는 유지한다.
+11. 일상 조회와 reboot 복원은 corrupt/stale ledger key를 실제 저장 key 기준의
+    단일 durable commit으로 먼저 제거한다. commit 실패 시 복원을 시작하지 않고,
+    개별 미래 alarm 복원 실패는 다음 항목을 계속한 뒤 집계하며 유효 ledger는
+    재시도를 위해 유지한다.
+12. ledger가 제거된 corrupt/stale alarm token은 receiver에서 inert하다. API 34
+    미만에서는 식별할 수 없는 PendingIntent token 자체가 남을 수 있으나 ledger
+    일치가 없어 알림을 게시하지 못한다.
+13. Android 전체 삭제에서 native module이 없으면 fail-closed하고, iOS와 기타
+    미지원 플랫폼은 no-op한다.
 
 ## 제거 계약
 
@@ -52,8 +61,10 @@ Cloud Messaging, ShortcutBadger 표면을 남겼다. 기존의 도달 가능한 
    두 로컬 모듈 Kotlin 컴파일, release Metro bundle이 하나의 네이티브 게이트에서
    성공해야 한다.
 4. `verify:no-remote-push`는 lockfile, Gradle resolved dependency report와 미래의
-   AAB·universal APK 쌍을 검사한다. ZIP은 스트리밍·크기 제한·경로 안전성 검사를
-   적용하고 DEX/패키지/매니페스트에서 금지 표면을 탐지한다.
+   AAB·universal APK 쌍을 검사한다. ZIP의 모든 비디렉터리 entry에는 declared
+   uncompressed size 기준 항목당 256 MiB·합계 512 MiB 예산과 경로 안전성 검사를
+   적용한다. 비스캔 `assets/`·`.so`는 내용을 열지 않고 metadata만 예산에 포함하며,
+   DEX/패키지/매니페스트에서 금지 표면을 탐지한다.
 5. 소스 게이트 성공만으로 최종 바이너리의 FCM 부재를 주장하지 않는다. Task 14가
    정확한 AAB와 universal APK 쌍을 만든 뒤 두 산출물을 함께 통과시켜야 한다.
 
