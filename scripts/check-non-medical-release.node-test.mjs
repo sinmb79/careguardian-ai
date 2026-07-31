@@ -138,6 +138,42 @@ test("rejects drift from the exact Korean Play Console copy", () => {
   );
 });
 
+test("rejects guaranteed 0.5B claims or removal of closed-test quality limits", () => {
+  const requiredCopy = [
+    {
+      line: "• 0.5B 모델은 기기 CPU에서만 실행되며 기존 텍스트의 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 best-effort 방식으로 시도합니다.",
+      replacement:
+        "• 모델은 기기 CPU에서만 실행되며 기존 텍스트 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 지원합니다.",
+      expected: /Play Store Korean full description must exactly match/
+    },
+    {
+      line: "• 모든 결과는 엄격한 정책·원문 근거 검증을 거치며, 통과하지 못하면 원문을 변경하지 않고 폐기되며 같은 동작을 다시 시도할 수 있습니다.",
+      replacement: "",
+      expected: /Play Store Korean full description must exactly match/
+    },
+    {
+      line: "• 비공개 테스트에서는 네 동작의 성공률과 기기별 결과 품질을 평가합니다.",
+      replacement: "",
+      expected: /Play Store Korean full description must exactly match/
+    },
+    {
+      line: "• 0.5B 로컬 AI 결과는 best-effort이며, 엄격한 검증에 통과하지 못하면 원문 변경 없이 폐기되고 다시 시도할 수 있음을 명확히 했습니다.",
+      replacement: "",
+      expected: /Play Store Korean release notes must exactly match/
+    }
+  ];
+  const source = baseline.get(storeListingFile);
+
+  for (const { line, replacement, expected } of requiredCopy) {
+    assert.ok(source.includes(line), `missing baseline copy: ${line}`);
+    const report = mutate(storeListingFile, (current) =>
+      current.replace(line, replacement)
+    );
+    assert.equal(report.status, "fail", line);
+    assert.match(report.problems.join("\n"), expected, line);
+  }
+});
+
 test("rejects duplicate Korean Play Console section headings", () => {
   for (const heading of [
     "앱 이름",

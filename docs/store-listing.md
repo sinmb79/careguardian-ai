@@ -33,7 +33,9 @@
 선택형 기기 내 한국어 AI
 • 사용자가 설치를 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 Hugging Face에서 내려받습니다.
 • 다운로드 전에 출처, 파일 크기, SHA-256, 라이선스를 확인하고 동의할 수 있습니다.
-• 모델은 기기 CPU에서만 실행되며 기존 텍스트 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 지원합니다.
+• 0.5B 모델은 기기 CPU에서만 실행되며 기존 텍스트의 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 best-effort 방식으로 시도합니다.
+• 모든 결과는 엄격한 정책·원문 근거 검증을 거치며, 통과하지 못하면 원문을 변경하지 않고 폐기되며 같은 동작을 다시 시도할 수 있습니다.
+• 비공개 테스트에서는 네 동작의 성공률과 기기별 결과 품질을 평가합니다.
 • 자유 대화형 기능이 아니며 결과는 사용자가 승인하기 전까지 작업공간에 저장되지 않습니다.
 • 모델 설치를 거부하거나 삭제해도 일반 작업 기능은 계속 사용할 수 있습니다.
 
@@ -56,6 +58,7 @@
 일반 생활 작업 중심으로 앱을 전면 재구성했습니다.
 • 일정·목록·메모·개인 기능을 한 기기에서 정리할 수 있습니다.
 • 앱이 직접 예약하는 Android 로컬 알림과 선택형 기기 내 한국어 AI를 추가했습니다.
+• 0.5B 로컬 AI 결과는 best-effort이며, 엄격한 검증에 통과하지 못하면 원문 변경 없이 폐기되고 다시 시도할 수 있음을 명확히 했습니다.
 • 로컬 저장 보호, 전체 삭제, 외부 모델 다운로드 고지를 강화했습니다.
 
 ### Play Console 적용값
@@ -123,7 +126,9 @@ Main features
 Optional on-device Korean AI
 • Only when the user chooses to install it, the app downloads one selected model from two approved, pinned NAVER HyperCLOVA X GGUF files on Hugging Face.
 • Before download, the user can review and consent to the source, file size, SHA-256, and license.
-• The model runs only on the device CPU and supports summaries of existing text, sentence polishing, title suggestions, and checklist drafts.
+• The 0.5B model runs only on the device CPU and makes best-effort attempts to summarize existing text, polish sentences, suggest titles, and draft checklists.
+• Every result must pass strict policy and source-grounding checks. If a result does not pass, the app discards it without changing the source and the user can retry the same action.
+• The closed test evaluates success rates for all four actions and result quality across devices.
 • It is not a free-form chat feature, and results are not saved to the workspace until the user approves them.
 • Declining or deleting the model does not disable the general workspace features.
 
@@ -146,4 +151,5 @@ Use only synthetic, non-sensitive schedules and notes during closed testing.
 Rebuilt the app around ordinary personal tasks.
 • Organize schedules, lists, notes, and personal tools on one device.
 • Added app-scheduled Android local notifications and optional on-device Korean AI.
+• Clarified that 0.5B local-AI results are best-effort; results that fail strict checks are discarded without changing the source and can be retried.
 • Strengthened local-storage protection, full deletion, and external-model download disclosure.
