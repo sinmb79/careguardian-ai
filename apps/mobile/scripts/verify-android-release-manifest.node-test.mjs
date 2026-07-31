@@ -97,6 +97,10 @@ function addApplicationChild(fragment) {
   );
 }
 
+function asCrLf(manifest) {
+  return manifest.replace(/\r?\n/g, "\r\n");
+}
+
 test("detects every forbidden remote-push component and registrar independently", async (t) => {
   const cases = [
     [
@@ -405,17 +409,35 @@ test("requires one restore filter with exactly the two approved actions", async 
   }
 });
 
-test("restore-filter mutation remains effective for a CRLF manifest fixture", async () => {
-  const crlfManifest = hardenedManifest.replaceAll("\n", "\r\n");
-  const mutated = crlfManifest.replace(
-    restoreReceiverClosingBoundary,
-    '      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>\n    </receiver>\n  </application>'
-  );
+test("restore-filter mutation works for LF and idempotently normalized CRLF fixtures", async (t) => {
+  const crlfManifest = asCrLf(hardenedManifest);
+  assert.equal(asCrLf(crlfManifest), crlfManifest);
 
-  assert.notEqual(mutated, crlfManifest);
-  const report = await manifestVerifier.validateReleaseManifest(mutated);
-  assert.equal(report.status, "fail");
-  assert.match(report.problems.join("\n"), /restore receiver|action set|intent-filter/i);
+  for (const [lineEnding, fixture] of [
+    ["LF", hardenedManifest],
+    ["CRLF", crlfManifest]
+  ]) {
+    await t.test(lineEnding, async () => {
+      assert.deepEqual(
+        await manifestVerifier.validateReleaseManifest(fixture),
+        {
+          gate: "android-release-manifest",
+          status: "pass",
+          problems: []
+        }
+      );
+
+      const mutated = fixture.replace(
+        restoreReceiverClosingBoundary,
+        '      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>\n    </receiver>\n  </application>'
+      );
+      assert.notEqual(mutated, fixture);
+
+      const report = await manifestVerifier.validateReleaseManifest(mutated);
+      assert.equal(report.status, "fail");
+      assert.match(report.problems.join("\n"), /restore receiver|action set|intent-filter/i);
+    });
+  }
 });
 
 test("decodes XML character references before checking forbidden permissions", async () => {
