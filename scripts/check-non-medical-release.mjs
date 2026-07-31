@@ -380,6 +380,7 @@ const POLICY_LINE_CONTRACTS = new Map([
   ["public/privacy-policy.html", [
     '  <p class="language-link"><a href="#english" lang="en">English reference translation</a></p>',
     "  <p><strong>제품 범위:</strong> 생활후견 AI는 일반 개인 생산성 앱이며 건강·의료 기능을 제공하거나 건강 데이터를 다루지 않습니다.</p>",
+    "  <p>로컬 AI 결과는 사용자 승인 전까지 기기 메모리에만 유지되며 작업공간에 저장되지 않습니다. 승인 후 현재 작업공간에 반영되고, 변경 사항 저장 버튼을 누른 경우에만 로컬 저장소에 영구 저장됩니다.</p>",
     "  <p>현재 Google Play용 Android 앱은 작업공간을 SQLCipher 데이터베이스에 저장하고 데이터베이스 키를 SecureStore와 Android Keystore 경계에 분리합니다. 앱은 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용하며 Android 백업을 비활성화합니다.</p>",
     "  <p>앱은 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다. <code>POST_NOTIFICATIONS</code>는 사용자가 일반 생활 알림을 허용할 때만 사용합니다. <code>RECEIVE_BOOT_COMPLETED</code>는 기기 재시작 또는 앱 업데이트 뒤 미래의 로컬 일정 알림을 복원하는 데만 사용합니다. 알림은 기기 안에서만 예약되고 원격 푸시를 사용하지 않습니다. 표시 제목은 일반 문구이며 data payload에는 <code>taskId</code>만 포함하고 일정 제목이나 메모 본문을 넣지 않습니다.</p>",
     "  <p>선택형 로컬 AI는 사용자가 설치를 명시적으로 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 고정 HTTPS 주소에서 내려받아 기기 CPU에서 실행합니다. 설치 전 출처, 크기, SHA-256, 라이선스를 표시하고 검증합니다. 승인된 고정 GGUF가 없는 Kakao 모델은 표시만 하며 다운로드하거나 실행할 수 없습니다. 설치를 거부해도 일반 기능은 계속 사용할 수 있습니다.</p>",
@@ -387,6 +388,7 @@ const POLICY_LINE_CONTRACTS = new Map([
     '  <section id="english" lang="en">',
     "  <p><strong>Product scope:</strong> Life Steward AI is a general personal-productivity app and does not provide health or medical features or handle health data.</p>",
     "  <p>The operator is Google Play developer <strong>22B</strong>, and the project/EAS owner is <strong>sinmb79</strong>. Contact: <a href=\"mailto:sinmb79@naver.com\">sinmb79@naver.com</a>. Life Steward AI has no accounts, ads, analytics SDKs, or off-device AI service. General tasks, lists, notes, user-created features, prompts, and outputs are processed on the user’s device.</p>",
+    "  <p>Local AI results remain only in device memory and are not saved to the workspace before user approval. After approval, a result is applied to the current workspace and is persisted to local storage only when the user selects the Save changes action.</p>",
     "  <p>The current Google Play Android app stores its workspace in SQLCipher and separates the database key through SecureStore and the Android Keystore boundary. It uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>",
     "  <p>Optional local AI downloads one selected model from two approved, pinned NAVER HyperCLOVA X GGUF files at pinned HTTPS addresses only after the user explicitly chooses installation, then runs it on device CPU. Source, size, SHA-256, and license are displayed and verified before installation. A Kakao model without an approved pinned GGUF is shown as unavailable and cannot be downloaded or run. Declining installation does not prevent use of the general features.</p>",
     "  <p>The web deletion action replaces the IndexedDB user record with a data-free tombstone and removes app-owned legacy localStorage keys. The tombstone contains no user content and only prevents re-import of old data.</p>"

@@ -100,6 +100,29 @@ test("rejects removal of public privacy scope, deletion, language, and Android c
   }
 });
 
+test("requires the AI result memory-to-save lifecycle exactly once in each policy language", () => {
+  const requiredLines = [
+    "  <p>로컬 AI 결과는 사용자 승인 전까지 기기 메모리에만 유지되며 작업공간에 저장되지 않습니다. 승인 후 현재 작업공간에 반영되고, 변경 사항 저장 버튼을 누른 경우에만 로컬 저장소에 영구 저장됩니다.</p>",
+    "  <p>Local AI results remain only in device memory and are not saved to the workspace before user approval. After approval, a result is applied to the current workspace and is persisted to local storage only when the user selects the Save changes action.</p>"
+  ];
+
+  for (const line of requiredLines) {
+    assert.ok(
+      baseline.get("public/privacy-policy.html").includes(line),
+      `missing baseline contract: ${line}`
+    );
+
+    for (const replacement of ["", `${line}\n${line}`]) {
+      const report = mutate(
+        "public/privacy-policy.html",
+        (source) => source.replace(line, replacement)
+      );
+      assert.equal(report.status, "fail", `${line} -> ${replacement}`);
+      assert.match(report.problems.join("\n"), /policy contract/);
+    }
+  }
+});
+
 test("rejects drift from the exact Korean Play Console copy", () => {
   const report = mutate(storeListingFile, (source) =>
     source.replace(

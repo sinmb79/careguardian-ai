@@ -211,6 +211,9 @@ describe("local assistant approval flow", () => {
       values: { content: "회의 요약", action: "summarize" }
     });
     expect(controller.snapshot().preview).toBe("");
+    expect(controller.snapshot().statusMessage).toBe(
+      "승인한 초안을 작업공간에 반영했습니다. 변경 사항 저장 버튼으로 확정할 수 있습니다."
+    );
   });
 
   test("refuses an invalid oversized result instead of bypassing life-core validation", () => {

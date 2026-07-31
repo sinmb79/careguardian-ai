@@ -379,7 +379,7 @@ export function createLocalAssistantController(
         preview: "",
         result: null,
         statusMessage:
-          "승인한 초안을 작업공간에 반영했습니다. 전체 저장 버튼으로 확정할 수 있습니다."
+          "승인한 초안을 작업공간에 반영했습니다. 변경 사항 저장 버튼으로 확정할 수 있습니다."
       });
       return next;
     },

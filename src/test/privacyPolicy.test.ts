@@ -8,6 +8,17 @@ const source = readFileSync(
 );
 const policy = new DOMParser().parseFromString(source, "text/html");
 const policyText = policy.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
+const storeListing = readFileSync(
+  resolve(process.cwd(), "docs/store-listing.md"),
+  "utf8"
+);
+const mobileSettings = readFileSync(
+  resolve(process.cwd(), "apps/mobile/src/ui/LifeWorkspaceScreen.tsx"),
+  "utf8"
+);
+
+const countLiteral = (value: string, literal: string) =>
+  value.split(literal).length - 1;
 
 describe("public privacy policy contract", () => {
   test("keeps Korean primary and exposes an English reference target", () => {
@@ -33,6 +44,26 @@ describe("public privacy policy contract", () => {
     );
     expect(policyText).toContain(
       "Life Steward AI is a general personal-productivity app and does not provide health or medical features or handle health data."
+    );
+  });
+
+  test("keeps the approval and full-save lifecycle aligned across policy, store, and mobile UI", () => {
+    const koreanPolicyContract =
+      "로컬 AI 결과는 사용자 승인 전까지 기기 메모리에만 유지되며 작업공간에 저장되지 않습니다. 승인 후 현재 작업공간에 반영되고, 변경 사항 저장 버튼을 누른 경우에만 로컬 저장소에 영구 저장됩니다.";
+    const englishPolicyContract =
+      "Local AI results remain only in device memory and are not saved to the workspace before user approval. After approval, a result is applied to the current workspace and is persisted to local storage only when the user selects the Save changes action.";
+
+    expect(countLiteral(source, koreanPolicyContract)).toBe(1);
+    expect(countLiteral(source, englishPolicyContract)).toBe(1);
+    expect(mobileSettings).toContain(
+      "AI 결과는 사용자가 승인한 경우에만 작업공간에 저장됩니다."
+    );
+    expect(mobileSettings).toContain("변경 사항 저장");
+    expect(storeListing).toContain(
+      "결과는 사용자가 승인하기 전까지 작업공간에 저장되지 않습니다."
+    );
+    expect(storeListing).toContain(
+      "results are not saved to the workspace until the user approves them."
     );
   });
 
