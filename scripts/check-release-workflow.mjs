@@ -28,6 +28,17 @@ const ALLOWED_REMOTE_ACTIONS = new Set([
 ]);
 const FAILURE_IGNORE_PATTERN =
   /(?:\|\|\s*(?:true|:)|;\s*(?:true|exit\s+0)|\bset\s+\+e\b|\bexit\s+0\b|\$LASTEXITCODE\s*=\s*0|\bcontinue-on-error\b)/iu;
+const REQUIRED_EAS_ARCHIVE_DIRECTORIES = [
+  "apps/mobile/android",
+  "apps/mobile/ios",
+  "apps/mobile/.expo",
+  "apps/mobile/node_modules",
+  "node_modules",
+  "dist",
+  ".git",
+  ".superpowers"
+];
+const REQUIRED_EAS_ARCHIVE_FILE_PATTERNS = ["*.apk", "*.aab", "*.log", "*.tsbuildinfo"];
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,6 +53,48 @@ function hasExactKeys(value, expectedKeys) {
     isRecord(value) &&
     Object.keys(value).sort().join("\0") === [...expectedKeys].sort().join("\0")
   );
+}
+
+function archivePatterns(source) {
+  return new Set(
+    source
+      .replaceAll("\r\n", "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+  );
+}
+
+export function validateEasIgnore(
+  easIgnoreSource,
+  gitIgnoreSource = readFileSync(resolve(import.meta.dirname, "../.gitignore"), "utf8")
+) {
+  const problems = [];
+  const patterns = archivePatterns(easIgnoreSource);
+  const gitIgnorePatterns = archivePatterns(gitIgnoreSource);
+
+  for (const pattern of gitIgnorePatterns) {
+    if (!patterns.has(pattern)) {
+      problems.push(`.easignore must retain root .gitignore rule: ${pattern}`);
+    }
+  }
+  for (const directory of REQUIRED_EAS_ARCHIVE_DIRECTORIES) {
+    for (const pattern of [directory, `${directory}/**`]) {
+      if (!patterns.has(pattern)) {
+        problems.push(`.easignore must exclude generated archive path: ${pattern}`);
+      }
+    }
+  }
+  for (const pattern of REQUIRED_EAS_ARCHIVE_FILE_PATTERNS) {
+    if (!patterns.has(pattern)) {
+      problems.push(`.easignore must exclude generated archive file pattern: ${pattern}`);
+    }
+  }
+  return {
+    gate: "eas-archive-ignore",
+    status: problems.length ? "fail" : "pass",
+    problems
+  };
 }
 
 function parseWorkflow(source, problems) {
@@ -308,6 +361,12 @@ if (resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1] ?? "")) 
     .sort();
   const source = readFileSync(resolve(workflowsDirectory, "ci.yml"), "utf8");
   const report = validateReleaseWorkflow(source, workflowFiles);
+  const easIgnoreReport = validateEasIgnore(
+    readFileSync(resolve(import.meta.dirname, "../.easignore"), "utf8"),
+    readFileSync(resolve(import.meta.dirname, "../.gitignore"), "utf8")
+  );
+  report.problems.push(...easIgnoreReport.problems);
+  report.status = report.problems.length ? "fail" : "pass";
   console.log(JSON.stringify(report, null, 2));
   if (report.problems.length) process.exitCode = 1;
 }

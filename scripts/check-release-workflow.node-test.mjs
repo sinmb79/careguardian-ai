@@ -2,12 +2,31 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { validateReleaseWorkflow } from "./check-release-workflow.mjs";
+import { validateEasIgnore, validateReleaseWorkflow } from "./check-release-workflow.mjs";
 
 const source = readFileSync(
   resolve(import.meta.dirname, "../.github/workflows/ci.yml"),
   "utf8"
 ).replaceAll("\r\n", "\n");
+
+const easIgnoreSource = readFileSync(
+  resolve(import.meta.dirname, "../.easignore"),
+  "utf8"
+).replaceAll("\r\n", "\n");
+
+test("requires a root EAS archive denylist that inherits git rules and excludes generated trees", () => {
+  assert.equal(validateEasIgnore(easIgnoreSource).status, "pass");
+});
+
+test("rejects an EAS archive policy that omits the exact generated Android directory rule", () => {
+  const mutated = easIgnoreSource.replace("apps/mobile/android\n", "");
+  assert.match(validateEasIgnore(mutated).problems.join("\n"), /apps\/mobile\/android$/m);
+});
+
+test("rejects an EAS archive policy that omits a generated Android subtree glob", () => {
+  const mutated = easIgnoreSource.replace("apps/mobile/android/**\n", "");
+  assert.match(validateEasIgnore(mutated).problems.join("\n"), /apps\/mobile\/android\/\*\*/);
+});
 
 test("accepts one exact-SHA verify-to-deploy workflow", () => {
   assert.equal(validateReleaseWorkflow(source).status, "pass");
