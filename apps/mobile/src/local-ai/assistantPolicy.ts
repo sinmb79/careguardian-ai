@@ -129,11 +129,15 @@ function compactForPolicy(text: string): string {
     .replace(/[\s\p{P}\p{S}_]+/gu, "");
 }
 
-function guardText(text: string, maximumLength: number): AssistantPolicyDecision {
+function guardText(
+  text: string,
+  maximumLength: number,
+  allowBlankPrefix = false
+): AssistantPolicyDecision {
   if (
     typeof text !== "string" ||
-    text.trim().length === 0 ||
-    text.length > maximumLength
+    text.length > maximumLength ||
+    (!allowBlankPrefix && text.trim().length === 0)
   ) {
     return {
       allowed: false,
@@ -141,6 +145,7 @@ function guardText(text: string, maximumLength: number): AssistantPolicyDecision
       message: "정리할 텍스트의 길이를 확인해 주세요."
     };
   }
+  if (allowBlankPrefix && text.trim().length === 0) return { allowed: true };
 
   const normalized = normalizeAssistantText(text);
   const compact = compactForPolicy(normalized);
@@ -201,6 +206,26 @@ export function guardAssistantOutput(text: string): AssistantPolicyDecision {
     };
   }
   return guardText(text, MAX_ASSISTANT_OUTPUT_LENGTH);
+}
+
+export function guardAssistantOutputFragment(
+  text: string
+): AssistantPolicyDecision {
+  if (
+    typeof text === "string" &&
+    Array.from(text).some(
+      (character) =>
+        /\p{Cf}/u.test(character) ||
+        (/\p{Cc}/u.test(character) && character !== "\n" && character !== "\t")
+    )
+  ) {
+    return {
+      allowed: false,
+      reasonCode: "invalid_output_shape",
+      message: "허용되지 않은 제어 문자가 있어 결과를 폐기했습니다."
+    };
+  }
+  return guardText(text, MAX_ASSISTANT_OUTPUT_LENGTH, true);
 }
 
 export interface AssistantChatMessage {

@@ -236,6 +236,74 @@ describe("llama runtime", () => {
     });
   });
 
+  test("allows a leading newline token before a valid final exact-span result", async () => {
+    const stopCompletion = vi.fn(async () => undefined);
+    const release = vi.fn(async () => undefined);
+    const exposed = vi.fn();
+    const runtime = runtimeWith({
+      completion: async (_options, onToken) => {
+        onToken({ token: "\n" });
+        onToken({ token: "회의 장소는 3층입니다." });
+        return { text: "회의 장소는 3층입니다." };
+      },
+      stopCompletion,
+      release
+    });
+    const session = await runtime.loadLocalModel(installed);
+
+    await expect(
+      runtime.generateLocalText(
+        session,
+        {
+          action: "summarize",
+          source: workspaceSource("회의 장소는 3층입니다.")
+        },
+        exposed
+      )
+    ).resolves.toMatchObject({ text: "회의 장소는 3층입니다." });
+
+    expect(stopCompletion).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    expect(exposed).toHaveBeenCalledTimes(1);
+    expect(exposed).toHaveBeenCalledWith(
+      "회의 장소는 3층입니다.",
+      "회의 장소는 3층입니다."
+    );
+  });
+
+  test.each(["meet\u200Bing", "상대를 협박해서 돈을 보내게 하세요"])(
+    "stops and releases when an unsafe output fragment arrives: %s",
+    async (unsafeToken) => {
+      const stopCompletion = vi.fn(async () => undefined);
+      const release = vi.fn(async () => undefined);
+      const exposed = vi.fn();
+      const runtime = runtimeWith({
+        completion: async (_options, onToken) => {
+          onToken({ token: unsafeToken });
+          return { text: unsafeToken };
+        },
+        stopCompletion,
+        release
+      });
+      const session = await runtime.loadLocalModel(installed);
+
+      await expect(
+        runtime.generateLocalText(
+          session,
+          {
+            action: "summarize",
+            source: workspaceSource("회의 장소는 3층입니다.")
+          },
+          exposed
+        )
+      ).rejects.toMatchObject({ code: "output_blocked" });
+
+      expect(stopCompletion).toHaveBeenCalledOnce();
+      expect(release).toHaveBeenCalledOnce();
+      expect(exposed).not.toHaveBeenCalled();
+    }
+  );
+
   test("stops, waits for completion settlement, then releases exactly once on concurrent shutdown", async () => {
     const pending = deferred<{ text: string }>();
     const events: string[] = [];

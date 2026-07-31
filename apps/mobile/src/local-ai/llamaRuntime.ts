@@ -6,7 +6,7 @@ import {
   type AssistantChatMessage,
   AssistantPolicyError,
   buildAssistantMessages,
-  guardAssistantOutput,
+  guardAssistantOutputFragment,
   validateAssistantResult
 } from "./assistantPolicy";
 
@@ -417,7 +417,7 @@ export function createLlamaRuntime(dependencies: LlamaRuntimeDependencies) {
             return;
           }
           const next = `${accumulated}${token}`;
-          const decision = guardAssistantOutput(next);
+          const decision = guardAssistantOutputFragment(next);
           if (!decision.allowed) {
             streamingBlock = new LocalAiRuntimeError(
               "output_blocked",
