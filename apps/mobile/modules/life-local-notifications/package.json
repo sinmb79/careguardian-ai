@@ -1,0 +1,10 @@
+{
+  "name": "life-local-notifications",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FCM-free Android local reminder alarms",
+  "main": "index.ts",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

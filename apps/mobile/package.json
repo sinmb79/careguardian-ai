@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -11,19 +11,24 @@
     "ios:dev": "expo run:ios",
     "prebuild": "expo prebuild",
     "doctor": "npx expo-doctor",
+    "verify:native-contracts": "node scripts/verify-native-android-contracts.mjs",
+    "verify:cpu-only": "node scripts/verify-cpu-only-llama.mjs",
     "web": "expo start --web"
   },
   "dependencies": {
-    "@careguardian/care-core": "^0.1.0",
+    "@life-steward/life-core": "file:../../packages/life-core",
     "expo": "~54.0.36",
+    "expo-asset": "~12.0.13",
     "expo-crypto": "~15.0.9",
+    "expo-device": "8.0.10",
+    "expo-file-system": "~19.0.23",
     "expo-font": "~14.0.12",
     "expo-local-authentication": "~17.0.8",
-    "expo-notifications": "~0.32.17",
     "expo-screen-capture": "~8.0.9",
     "expo-secure-store": "~15.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
+    "llama.rn": "0.12.8",
     "react": "19.1.0",
     "react-native": "0.81.5"
   },

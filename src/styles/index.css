@@ -25,7 +25,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -42,4 +43,156 @@ button,
 input,
 [role="button"] {
   min-height: 48px;
+}
+
+.workspace-page {
+  min-height: 100vh;
+  padding: 1.5rem 1rem;
+}
+
+.workspace-layout {
+  display: grid;
+  max-width: 68rem;
+  gap: 1.25rem;
+  margin: 0 auto;
+}
+
+.workspace-hero,
+.workspace-card,
+.workspace-actions {
+  border-radius: 1.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 16px 40px rgba(31, 42, 42, 0.08);
+}
+
+.workspace-hero {
+  color: #fffdf7;
+  background: #183138;
+}
+
+.workspace-hero h1,
+.workspace-card h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  line-height: 1.25;
+}
+
+.workspace-hero p:last-child,
+.workspace-card > p {
+  margin: 0.75rem 0 0;
+}
+
+.workspace-eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.workspace-hero .workspace-eyebrow {
+  color: #cde0d7;
+}
+
+.workspace-card,
+.workspace-actions {
+  background: rgba(255, 253, 247, 0.92);
+}
+
+.workspace-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.workspace-card .workspace-eyebrow {
+  color: #51686a;
+}
+
+.workspace-field {
+  display: grid;
+  gap: 0.45rem;
+  font-weight: 700;
+}
+
+.workspace-field input {
+  width: 100%;
+  border: 2px solid rgba(26, 38, 38, 0.14);
+  border-radius: 0.85rem;
+  padding: 0.7rem 0.9rem;
+  background: #fff;
+}
+
+.workspace-button,
+.workspace-clear-button {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.75rem 1.1rem;
+  color: #fff;
+  font-weight: 800;
+}
+
+.workspace-button { background: #963a27; }
+.workspace-button-secondary { background: #183138; }
+.workspace-clear-button { background: #8e3d32; }
+.workspace-cancel-button { background: #496064; }
+
+.workspace-empty,
+.workspace-message {
+  color: #496064;
+}
+
+.workspace-message {
+  margin: 0;
+  font-weight: 700;
+}
+
+.workspace-item-list,
+.workspace-stats {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.workspace-stats {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  padding-left: 0;
+}
+
+.workspace-stats p {
+  margin: 0;
+  padding: 0.8rem;
+  border-radius: 0.85rem;
+  background: #e8f0e9;
+}
+
+.workspace-stats strong {
+  font-size: 1.35rem;
+}
+
+.workspace-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspace-dirty,
+.workspace-confirmation {
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  color: #513200;
+  background: #fff0cc;
+  font-weight: 700;
+}
+
+.workspace-confirmation > div {
+  display: grid;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .workspace-page { padding: 2rem; }
+  .workspace-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-hero,
+  .workspace-actions { grid-column: 1 / -1; }
 }

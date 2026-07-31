@@ -1,71 +1,66 @@
 # Claude Code Handoff
 
-This repository uses a `web demo + Expo mobile app + shared care core` structure.
-The hardened Android `1.0.1` (`versionCode 6`) bundle and 12 related Play changes were submitted together as 13 changes on 2026-07-20, then rejected because a health/medical app must be submitted from an organization developer account.
+This repository is a `web PWA + Expo mobile app + packages/life-core` project for **생활후견 AI / Life Steward AI**. It is a general, local-first personal-productivity tool for ordinary tasks, lists, notes, and user-created declarative features.
 
-## Read First
+## Read first
 
 1. `README.md`
 2. `docs/mobile-delivery.md`
-3. `docs/2026-04-12-ux-and-playstore.md` — UX overhaul + Play Store registration summary
-4. `docs/store-listing.md` — Play Store metadata (descriptions, category, contact)
-5. `docs/google-play-organization-account-remediation-2026-07-22.md` — rejection cause and compliant recovery path
+3. `docs/store-listing.md`
+4. `public/privacy-policy.html`
+5. `docs/private-test-operations.md`
 
-## Key Paths
+Past CareGuardian material is historical only. Do not use it as evidence for the current release: `docs/2026-04-12-ux-and-playstore.md`, `docs/google-play-organization-account-remediation-2026-07-22.md`, `docs/security/private-test-readiness-2026-07-20.md`, and `CareGuardian_AI_Spec_v0.1 (1).md`.
+
+## Key paths
 
 | Path | Role |
 |---|---|
-| `packages/care-core` | Shared caregiving domain logic (web + mobile) |
+| `packages/life-core` | Shared life-workspace domain logic and restricted-use policy |
 | `apps/mobile` | Expo Android/iOS/iPad app |
 | `src` | Web PWA (Vite + React + Tailwind) |
-| `public/privacy-policy.html` | Privacy policy page (deployed on GitHub Pages) |
-| `docs/screenshots/` | Play Store screenshots and feature graphic |
-| `docs/store-listing.md` | Play Store listing text |
-| `docs/mobile-delivery.md` | Local dev, Android, iOS delivery guide |
+| `public/privacy-policy.html` | Public Korean-first privacy policy |
+| `docs/store-listing.md` | Current Play listing and Data safety entry guide |
+| `docs/mobile-delivery.md` | Local development and mobile delivery guide |
+| `docs/private-test-operations.md` | Synthetic-data closed-test operation guide |
 
-## Recommended Commands
+## Current product contract
+
+- Display name: `생활후견 AI` / `Life Steward AI`
+- Android: `1.1.0` / `versionCode 7`; package `com.sinmb.careguardianai`
+- EAS: owner `sinmb79`, slug `careguardian-ai-mobile`, project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
+- Play positioning: Productivity, 18+, no login, no ads
+- Mobile workspace: SQLCipher with SecureStore/Android Keystore boundary, device authentication, background lock, screenshot blocking, and Android backup disabled
+- Notifications: local only; generic title and `taskId`-only payload
+- Optional local AI: pinned NAVER HyperCLOVA X GGUF download over fixed HTTPS after explicit user choice, SHA-256 and size verification, CPU inference, and no result storage before user approval. Kakao has no approved pinned GGUF and must remain unavailable for download/run.
+- No network path exists except the user-initiated model installation request to Hugging Face. Prompts, outputs, and workspace content are not sent with that request.
+- Closed testing uses synthetic, non-sensitive data only. Real personal or sensitive data remains NO-GO.
+
+## Recommended commands
 
 ```powershell
 npm test -- --run
 npm run build
 npm run mobile:typecheck
-npm run mobile:android:go
+npm run release:policy-check
 ```
 
-## Current State (2026-07-22)
+`npm run mobile:android:go` is only a quick Expo Go UI check. Validate native boundaries in a development build or production AAB. Windows has no iOS simulator; use an EAS iOS build and TestFlight as a separate path.
 
-| Item | Status |
-|---|---|
-| Web PWA | Deployed on GitHub Pages |
-| Mobile app (Expo) | Hardened `1.0.1 (6)` AAB retained in the Closed Alpha changes |
-| Play Console setup | Rejected on 2026-07-20; 13 changes are pending resubmission |
-| Developer account | Personal; organization conversion required for this health/medical app |
-| Closed-test access | `22B` (1), `젤리테스터` (44), `테스터` (8) selected; listed capacity up to 53 |
-| UX accessibility overhaul | Completed (15 files, both web + mobile) |
-| Tablet 2-column layout | Completed (web sm:grid-cols-2, mobile flexWrap) |
-| App icons | Generated from SVG (1024, 512, adaptive) |
-| Feature graphic | `docs/screenshots/feature-graphic.png` (1024x500) |
-| Phone screenshots | 4 screenshots in `docs/screenshots/` |
-| Tablet screenshots | 7-inch (2) + 10-inch (2) in `docs/screenshots/` |
-| Privacy policy | Deployed; public URL returned HTTP 200 |
-| EAS project | `@sinmb79/careguardian-ai-mobile` (ID: 15b9e293-b631-4b77-8cfc-9937cd604dd4) |
-| Security gate | Synthetic data only; real personal/health/medication data remains NO-GO |
+## Remaining external gates
 
-## Warnings
+### Before synthetic closed-test submission and operation
 
-- `mobile:android:go` is for quick Expo Go UI verification only.
-- `expo-notifications` requires dev client build (`npm run mobile:android:dev`) or EAS build.
-- iOS simulator is not available on Windows; use `eas build --platform ios`.
-- Selected Play tester lists contain up to 53 listed users, but duplicates and non-participants may reduce the actual unique opt-in count. At least 12 actual opt-ins are required for 14 consecutive days.
-- The Closed Alpha release has one non-blocking deobfuscation mapping warning; code shrinking is not enabled.
-- Do not change the accurate `Medical` / `Medication and Treatment Management` declarations to bypass the organization-account requirement.
-- The account-type change is disabled until an official organization website is added and verified. Organization conversion also requires a D-U-N-S-backed organization profile.
-- After conversion completes, wait at least 72 hours before resubmitting to avoid a redundant account-type rejection.
+1. Rebuild and statically inspect a fresh final AAB for the current version and manifest/network contract.
+2. Recapture Android-native Play screenshots before any upload; the current web-rendered PNGs are review assets only.
+3. Reconcile the current listing, declarations, and Data safety answers against the final AAB, then enter them in Play Console.
 
-## Next Steps
+### During the synthetic closed test
 
-1. Confirm the legal organization, D-U-N-S number and official website to use for account conversion.
-2. Add and verify the organization website, then convert the existing personal developer account to an organization account.
-3. Wait at least 72 hours after conversion, then resubmit the 13 pending changes without weakening the Health/Medical declarations.
-4. After approval, confirm at least 12 unique testers have actually opted in and run the 14-day synthetic-data plan.
-5. Complete Samsung/Pixel real-device validation before any real-data phase; keep iOS/TestFlight separate.
+Record Samsung and Pixel physical-device evidence for lock, PIN fallback, deletion, local notifications, model installation, and network observation. Physical-device evidence is collected during this stage and is not an absolute prerequisite for submitting or starting the synthetic closed test.
+
+### Before real personal/sensitive data or general release
+
+Require the completed Samsung/Pixel evidence, resolved material findings, and the remaining release approval checks. Until then, real personal or sensitive data remains NO-GO.
+
+The 2026-07-20 organization-account rejection concerned the retired health-oriented product and is retained only as historical background; it is not a next step for this release.

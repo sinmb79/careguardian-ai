@@ -1,102 +1,50 @@
-# CareGuardian AI
+# Life Steward AI
 
-A `web + mobile` care continuity platform that turns caregiver knowledge into a reusable operating manual. The web app stays as the fast demo and backup surface, while the mobile app is now the real delivery target for phones and tablets.  
 [한국어](./README.md)
+
+Life Steward AI is a general personal-productivity, local-first tool for organizing schedules, notes, checklists, and user-created personal features on one device.
 
 ```mermaid
 flowchart LR
-  Core["packages/care-core"] --> Web["Web PWA"]
-  Core --> Mobile["Expo Mobile App"]
-  Web --> Pages["GitHub Pages"]
-  Mobile --> Android["Android phone / tablet"]
-  Mobile --> IOS["iPhone / iPad"]
-  Mobile --> EAS["EAS Build"]
+  Core["life-core validation and policy"] --> Web["Web PWA / IndexedDB"]
+  Core --> Mobile["Expo mobile / SQLCipher + SecureStore"]
+  Mobile --> Notify["Local notifications / taskId only"]
+  Mobile --> AI["Optional on-device CPU AI"]
+  Registry["Pinned Hugging Face GGUF registry"] --> AI
 ```
 
-## Snapshot
+## What it does
 
-| Item | Status | Notes |
-|---|---|---|
-| Shared care core | Done | `packages/care-core` now owns manual, schedule, reminder, and relay logic |
-| Web PWA | Done | Existing Pages demo and backup path remain intact |
-| Expo mobile app | Closed-test candidate | Android `1.0.1`, production AAB and Play closed-test preparation |
-| Android emulator verification | Done | Release APK launch and primary-screen rendering confirmed |
-| iOS delivery prep | Done | `apps/mobile/eas.json` added for EAS cloud builds |
-| Local encryption and lock | Done | SQLCipher, separated SecureStore key, device authentication, background relock, and screen-capture blocking |
-| Medication notification prep | Done | Privacy-safe daily local reminders with schedule/cancellation verification |
+- The web PWA stores its workspace only in browser IndexedDB.
+- The mobile app uses SQLCipher, SecureStore/Android Keystore separation, device authentication, background locking, and screen-capture blocking.
+- The displayed notification title is generic and the data payload contains only a task ID; note text is excluded.
+- Optional AI runs locally on the device and offers only summarizing, rewriting, title suggestions, and checklist drafts. Results require user approval before saving.
+- “Delete all local data” stops active inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, then resets memory.
 
-## Architecture
+## Privacy boundary
 
-```mermaid
-flowchart TD
-  Core["Shared Care Core"] --> WebState["Web State + Web Storage"]
-  Core --> MobileState["Mobile State + SQLCipher/SecureStore"]
-  WebState --> WebUI["Vite React PWA"]
-  MobileState --> MobileUI["Expo React Native UI"]
-  MobileState --> MobileAuth["Device authentication + privacy lock"]
-  MobileState --> MobileNotify["Privacy-safe local notifications"]
-```
+There are no accounts, ads, analytics, remote push, or contact, location, microphone, camera, or external-storage permissions. Choosing a model install makes a request for a pinned GGUF file from Hugging Face; the host may see the device IP address and ordinary network metadata. Prompts and outputs are not sent with that request.
 
-## Workspace
+The privacy policy distinguishes Hugging Face’s possible external installation-request records from on-device deletion. Closed testing uses only synthetic, non-sensitive schedules and notes.
 
-| Path | Responsibility | Notes |
-|---|---|---|
-| `src` | Existing web PWA | GitHub Pages demo remains live |
-| `apps/mobile` | Expo app | Android, iPhone, and iPad target |
-| `packages/care-core` | Shared domain | Imported by both web and mobile |
-| `docs/mobile-delivery.md` | Delivery guide | Android + iOS setup and build notes |
-| `CLAUDE.md` | Claude Code handoff | Follow-on collaboration entrypoint |
+## Validation stages
 
-## Run locally
+- **Start synthetic closed-test submission and operation:** require the final AAB for the current version, static AAB inspection, Android-native screenshots, and reconciliation of the Play Console listing, declarations, and Data safety entries. Samsung/Pixel physical-device evidence is not an absolute prerequisite for this stage.
+- **Collect during the closed test:** use synthetic data on Samsung and Pixel devices to record lock, PIN fallback, deletion, local-notification, model-installation, and network evidence.
+- **Real personal/sensitive data or general release:** remains NO-GO until the physical-device evidence and remaining release checks are complete.
 
-```bash
-npm install
-npm run dev
+## Delivery target
+
+- Display name: `생활후견 AI` / `Life Steward AI`
+- Android: `1.1.0` (`versionCode 7`)
+- Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
+- Planned Play positioning: Productivity, target age 18+, limited-scope local document helper; IARC content rating is confirmed after its questionnaire.
+
+```powershell
+npm ci
 npm test -- --run
 npm run build
 npm run mobile:typecheck
 ```
 
-## Run on Android
-
-```powershell
-$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
-$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
-$env:Path="$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\emulator;$env:JAVA_HOME\bin;$env:Path"
-npm run mobile:android:go
-```
-
-Korean: 위 명령은 Expo Go 기준의 빠른 UI 확인용입니다. 복약 알림 같은 네이티브 모듈 검증은 `npm run mobile:android:dev`로 진행합니다.  
-English: The command above is the quick Expo Go path. Validate native modules such as medication notifications with `npm run mobile:android:dev`.
-
-## Store build commands
-
-```powershell
-npx eas-cli login
-npx eas-cli build --platform android --profile production
-npx eas-cli build --platform ios --profile preview
-```
-
-Korean: 이 저장소는 이미 `@sinmb79/careguardian-ai-mobile` EAS 프로젝트와 연결돼 있습니다.  
-English: This repository is already linked to the `@sinmb79/careguardian-ai-mobile` EAS project.
-
-## Current constraints
-
-1. The current closed test permits fictional people, medicines, and contacts only. Real health or medication data remains out of scope until real-device forensic, network, and notification-matrix validation is complete.
-2. Expo Go is not a native security or notification verification target. Play candidates are built only as EAS production AABs.
-3. The iOS simulator cannot run directly on Windows.
-
-## Public links
-
-```text
-GitHub Repository: https://github.com/sinmb79/careguardian-ai/
-GitHub Pages: https://sinmb79.github.io/careguardian-ai/
-```
-
-## Reference docs
-
-1. [Mobile delivery guide](./docs/mobile-delivery.md)
-2. [Closed-test operations guide](./docs/private-test-operations.md)
-3. [Security and safety readiness audit (Korean)](./docs/security/private-test-readiness-2026-07-20.md)
-4. [Claude Code handoff](./CLAUDE.md)
-5. [Mobile design spec](./docs/superpowers/specs/2026-04-10-mobile-delivery-design.md)
+See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), and [store listing](./docs/store-listing.md).

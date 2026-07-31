@@ -1,6 +1,6 @@
 # 2026-04-12 UX Overhaul + Play Store Registration
 
-> **역사 문서:** 이 문서는 2026-04-12 당시 상태를 기록한 것으로, Health `None`, 임시 카테고리 후보 및 초기 Data safety 메모는 현재 선언이 아닙니다. 현행 값과 2026-07-20 거부 보완 상태는 `docs/store-listing.md`, `docs/mobile-delivery.md`, `docs/google-play-organization-account-remediation-2026-07-22.md`를 따르세요.
+> **역사 기록 전용 — 현재 제출 근거 아님:** 이 문서는 이전 CareGuardian 건강·복약 구현의 당시 기록입니다. 현재 `생활후견 AI 1.1.0 (7)`의 기능, Play 선언, Data safety 또는 개인정보처리방침의 근거로 사용하지 마세요. 현재 기준은 `docs/store-listing.md`, `docs/mobile-delivery.md`, `docs/private-test-operations.md`, `public/privacy-policy.html`입니다.
 
 This document summarizes the work done on April 12, 2026 to make the app user-friendly and prepare it for Android Play Store release.
 

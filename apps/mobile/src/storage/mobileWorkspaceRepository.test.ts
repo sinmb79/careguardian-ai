@@ -1,0 +1,323 @@
+import { describe, expect, test, vi } from "vitest";
+
+vi.mock("expo-sqlite/kv-store", () => ({ default: {} }));
+vi.mock("expo-secure-store", () => ({}));
+vi.mock("expo-sqlite", () => ({}));
+vi.mock("expo-crypto", () => ({}));
+vi.mock("expo-file-system/legacy", () => ({ getInfoAsync: async () => ({ exists: false }) }));
+
+import { fixtureWorkspace } from "../test/fixtureWorkspace";
+import {
+  createMobileWorkspaceRepository,
+  type MobileWorkspaceStorageDependencies
+} from "./mobileWorkspaceRepository";
+
+function createHarness() {
+  const rows = new Map<string, string>();
+  const secure = new Map<string, string>();
+  const legacy = new Map<string, string>();
+  const commands: string[] = [];
+  const databases = new Set<string>();
+  let failContextWrite = false;
+  let failNextRun = false;
+  let failNextExec = false;
+  let failSecureDeleteKey: string | null = null;
+  let closeCalls = 0;
+  let transactionSnapshot: Map<string, string> | null = null;
+  const deleteCalls: string[] = [];
+  const deleteBehaviors = new Map<string, "throws-before-removal" | "throws-not-found-before-removal" | "removes-then-throws" | "returns-with-file-remaining">();
+  const dependencies: MobileWorkspaceStorageDependencies = {
+    databaseName: "test-life-workspace.db",
+    databaseExists: async (name) => databases.has(name),
+    openDatabase: async (name) => {
+      databases.add(name);
+      return {
+      execAsync: async (sql) => {
+        commands.push(sql);
+        if (failNextExec) {
+          failNextExec = false;
+          throw new Error("setup unavailable");
+        }
+        if (sql === "BEGIN IMMEDIATE;") transactionSnapshot = new Map(rows);
+        if (sql === "ROLLBACK;" && transactionSnapshot) {
+          rows.clear();
+          transactionSnapshot.forEach((value, key) => rows.set(key, value));
+          transactionSnapshot = null;
+        }
+        if (sql === "COMMIT;") transactionSnapshot = null;
+      },
+      runAsync: async (sql, ...params) => {
+        if (failNextRun) {
+          failNextRun = false;
+          throw new Error("write unavailable");
+        }
+        if (sql.startsWith("DELETE")) rows.delete(String(params[0]));
+        else rows.set(String(params[0]), String(params[1]));
+      },
+      getFirstAsync: async <T>(_: string, key: string) => {
+        const value = rows.get(key);
+        return value === undefined ? null : ({ value } as T);
+      },
+      closeAsync: async () => { closeCalls += 1; }
+      };
+    },
+    deleteDatabase: async (name) => {
+      deleteCalls.push(name);
+      const behavior = deleteBehaviors.get(name);
+      if (behavior === "throws-before-removal") throw new Error("native database deletion unavailable");
+      if (behavior === "throws-not-found-before-removal") throw new Error("DatabaseNotFoundException");
+      if (behavior === "returns-with-file-remaining") return;
+      rows.clear();
+      databases.delete(name);
+      if (behavior === "removes-then-throws") throw new Error("native database deletion reported failure");
+    },
+    legacyStorage: {
+      getItem: async (key) => legacy.get(key) ?? null,
+      removeItem: async (key) => void legacy.delete(key)
+    },
+    secureStore: {
+      getItem: async (key) => secure.get(key) ?? null,
+      setItem: async (key, value) => {
+        if (key === "life-steward.mobile.context" && failContextWrite) {
+          failContextWrite = false;
+          throw new Error("context unavailable");
+        }
+        secure.set(key, value);
+      },
+      deleteItem: async (key) => {
+        if (key === failSecureDeleteKey) throw new Error(`secure delete failed: ${key}`);
+        secure.delete(key);
+      }
+    },
+    randomBytes: async () => new Uint8Array(32).fill(0xab)
+  };
+
+  return {
+    repository: createMobileWorkspaceRepository(dependencies),
+    rows,
+    secure,
+    legacy,
+    commands,
+    databases,
+    failContextWrite: () => { failContextWrite = true; },
+    failNextRun: () => { failNextRun = true; },
+    failNextExec: () => { failNextExec = true; },
+    failSecureDelete: (key: string) => { failSecureDeleteKey = key; },
+    deleteThrowsWhileRemaining: (name: string) => { deleteBehaviors.set(name, "throws-before-removal"); },
+    deleteThrowsNotFound: (name: string) => { deleteBehaviors.set(name, "throws-not-found-before-removal"); },
+    deleteRemovesThenThrows: (name: string) => { deleteBehaviors.set(name, "removes-then-throws"); },
+    deleteReturnsWhileRemaining: (name: string) => { deleteBehaviors.set(name, "returns-with-file-remaining"); },
+    deleteCalls,
+    getCloseCalls: () => closeCalls
+  };
+}
+
+describe("mobile personal workspace repository", () => {
+  test("stores a workspace without health-shaped fields", async () => {
+    const harness = createHarness();
+
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+
+    await expect(harness.repository.loadWorkspace()).resolves.toEqual(fixtureWorkspace);
+    expect(JSON.stringify([...harness.rows.values()])).not.toMatch(/약|복약|질환|치료/);
+  });
+
+  test("uses a dedicated encrypted database and rejects invalid workspace payloads", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.repository.saveWorkspace({ ...fixtureWorkspace, schemaVersion: 2 } as never)
+    ).rejects.toThrow("invalid personal workspace");
+
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    expect(harness.commands).toContain("PRAGMA key = \"x'" + "ab".repeat(32) + "'\";");
+  });
+
+  test("deletes only after removing the encrypted workspace and its secure key", async () => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+
+    await harness.repository.deleteWorkspace();
+
+    await expect(harness.repository.loadWorkspace()).resolves.toBeNull();
+    expect(harness.secure.size).toBe(0);
+  });
+
+  test.each([
+    "life-steward.mobile.context",
+    "life-steward.mobile.database-created",
+    "life-steward.mobile.database-key"
+  ])("attempts every repository-owned key deletion when %s fails", async (failedKey) => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    harness.failSecureDelete(failedKey);
+
+    await expect(harness.repository.deleteWorkspace()).rejects.toThrow(
+      `secure delete failed: ${failedKey}`
+    );
+
+    expect(harness.databases.has("test-life-workspace.db")).toBe(false);
+    expect(harness.rows.size).toBe(0);
+    expect([...harness.secure.keys()]).toEqual([failedKey]);
+  });
+
+  test("detects old test data without importing or converting it", async () => {
+    const harness = createHarness();
+    harness.legacy.set("careguardian.mobile.manual", "old-format-payload");
+
+    await expect(harness.repository.hasPreviousTestData()).resolves.toBe(true);
+    await expect(harness.repository.loadWorkspace()).resolves.toBeNull();
+  });
+
+  test("cleans up encrypted state when the SecureStore context write fails", async () => {
+    const harness = createHarness();
+    harness.failContextWrite();
+
+    await expect(harness.repository.saveWorkspace(fixtureWorkspace)).rejects.toThrow("context unavailable");
+    expect(harness.rows.size).toBe(0);
+    expect(harness.secure.has("life-steward.mobile.database-key")).toBe(false);
+    await expect(harness.repository.loadWorkspace()).resolves.toBeNull();
+  });
+
+  test("fails closed instead of treating an orphaned encrypted key as no workspace", async () => {
+    const harness = createHarness();
+    harness.secure.set("life-steward.mobile.database-key", "ab".repeat(32));
+
+    await expect(harness.repository.loadWorkspace()).rejects.toThrow("recovery");
+    await expect(harness.repository.hasWorkspace()).rejects.toThrow("recovery");
+  });
+
+  test("fails closed when an encrypted workspace database exists without a context marker", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+
+    await expect(harness.repository.loadWorkspace()).rejects.toThrow("recovery");
+  });
+
+  test("detects an old encrypted database even when its SecureStore marker is absent", async () => {
+    const harness = createHarness();
+    harness.databases.add("careguardian-caremanual-encrypted.db");
+
+    await expect(harness.repository.hasPreviousTestData()).resolves.toBe(true);
+    await expect(harness.repository.loadWorkspace()).resolves.toBeNull();
+  });
+
+  test("keeps the prior valid workspace when an update write fails", async () => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    const updated = { ...fixtureWorkspace, title: "수정 전용", updatedAt: "2026-07-31T00:00:00.000Z" };
+    harness.failNextRun();
+
+    await expect(harness.repository.saveWorkspace(updated)).rejects.toThrow("write unavailable");
+    await expect(harness.repository.loadWorkspace()).resolves.toEqual(fixtureWorkspace);
+  });
+
+  test("keeps the prior valid workspace when an update context write fails", async () => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    const updated = { ...fixtureWorkspace, title: "수정 전용", updatedAt: "2026-07-31T00:00:00.000Z" };
+    harness.failContextWrite();
+
+    await expect(harness.repository.saveWorkspace(updated)).rejects.toThrow("context unavailable");
+    await expect(harness.repository.loadWorkspace()).resolves.toEqual(fixtureWorkspace);
+  });
+
+  test("full deletion erases every enumerated current and health-era namespace", async () => {
+    const harness = createHarness();
+    await harness.repository.saveWorkspace(fixtureWorkspace);
+    harness.legacy.set("careguardian.mobile.manual", "legacy-private-payload");
+    harness.secure.set("careguardian.mobile.context", "legacy-context");
+    harness.secure.set("careguardian.mobile.database-key", "cd".repeat(32));
+    harness.databases.add("careguardian-caremanual-encrypted.db");
+
+    await harness.repository.deleteAllKnownData();
+
+    expect(harness.rows.size).toBe(0);
+    expect(harness.secure.size).toBe(0);
+    expect(harness.legacy.size).toBe(0);
+    expect(harness.databases.size).toBe(0);
+  });
+
+  test("full deletion attempts every legacy namespace and reports a typed failure", async () => {
+    const harness = createHarness();
+    harness.secure.set("careguardian.mobile.database-key", "cd".repeat(32));
+    harness.failSecureDelete("careguardian.mobile.database-key");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "secure-store:careguardian.mobile.database-key" })]
+    });
+    expect(harness.secure.has("careguardian.mobile.database-key")).toBe(true);
+    expect(harness.databases.size).toBe(0);
+  });
+
+  test("full deletion accepts absent current and legacy databases after native not-found errors", async () => {
+    const harness = createHarness();
+    harness.deleteThrowsNotFound("test-life-workspace.db");
+    harness.deleteThrowsNotFound("careguardian-caremanual-encrypted.db");
+
+    await expect(harness.repository.deleteAllKnownData()).resolves.toBeUndefined();
+    expect(harness.deleteCalls).toEqual([
+      "test-life-workspace.db",
+      "careguardian-caremanual-encrypted.db"
+    ]);
+  });
+
+  test("full deletion accepts a database that native deletion removed before throwing", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteRemovesThenThrows("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).resolves.toBeUndefined();
+    expect(harness.databases.has("test-life-workspace.db")).toBe(false);
+  });
+
+  test("full deletion reports the SQLite namespace when native deletion throws and the database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteThrowsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.databases.has("test-life-workspace.db")).toBe(true);
+  });
+
+  test("full deletion reports the SQLite namespace when native deletion returns and the database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.deleteReturnsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.databases.has("test-life-workspace.db")).toBe(true);
+  });
+
+  test("full deletion attempts every database namespace after a database remains", async () => {
+    const harness = createHarness();
+    harness.databases.add("test-life-workspace.db");
+    harness.databases.add("careguardian-caremanual-encrypted.db");
+    harness.deleteThrowsWhileRemaining("test-life-workspace.db");
+
+    await expect(harness.repository.deleteAllKnownData()).rejects.toMatchObject({
+      name: "AggregateError",
+      errors: [expect.objectContaining({ namespace: "sqlite:test-life-workspace.db" })]
+    });
+    expect(harness.deleteCalls).toEqual([
+      "test-life-workspace.db",
+      "careguardian-caremanual-encrypted.db"
+    ]);
+    expect(harness.databases.has("careguardian-caremanual-encrypted.db")).toBe(false);
+  });
+
+  test("closes a database handle when encrypted setup fails before it can be returned", async () => {
+    const harness = createHarness();
+    harness.failNextExec();
+
+    await expect(harness.repository.saveWorkspace(fixtureWorkspace)).rejects.toThrow("setup unavailable");
+    expect(harness.getCloseCalls()).toBe(1);
+  });
+});

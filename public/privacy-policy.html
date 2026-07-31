@@ -2,51 +2,70 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CareGuardian AI 개인정보처리방침</title>
-  <style>
-    body { font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; color: #1a2626; background: #f7f2e8; line-height: 1.7; }
-    h1 { font-size: 1.7rem; border-bottom: 2px solid #6f8a70; padding-bottom: 8px; } h2 { font-size: 1.15rem; color: #506d52; margin-top: 2rem; } p, li { font-size: .96rem; } .date, .notice { color: #526166; } .notice { border-left: 4px solid #d97f5f; padding-left: 12px; }
-  </style>
+  <title>생활후견 AI 개인정보처리방침 / Life Steward AI Privacy Policy</title>
+  <link rel="stylesheet" href="privacy-policy.css" />
 </head>
 <body>
-  <h1>CareGuardian AI 개인정보처리방침</h1>
-  <p class="date">시행일·최종 수정일: 2026-07-20</p>
-  <p class="notice"><strong>비공개 테스트 안내:</strong> 현재 테스트에는 가상의 인물·약·연락처만 입력해 주세요. 실제 건강정보, 처방정보, 긴급연락처, 생체정보는 입력하지 마세요.</p>
-  <h2>1. 서비스와 안전 한계</h2>
-  <p>CareGuardian AI는 보호자가 돌봄 일상, 의사소통 방법, 등록한 복약 정보를 정리하고 DAILY 화면에서 함께 살펴보도록 돕는 로컬 우선 보조 도구입니다. 의료기기가 아니며 진단·치료·처방·약물 상호작용·용량을 검증하지 않습니다. 알림 표시와 실제 복용 확인은 다르며, 이 앱은 복용 완료를 확인하거나 증명하지 않습니다. 응급 호출, 119 연결 또는 보호자 자동 연락 기능도 제공하지 않습니다. 응급 상황에서는 지역 응급 서비스와 의료전문가에게 직접 연락하세요.</p>
-  <h2>2. 처리하는 정보와 저장 위치</h2>
-  <p>사용자가 입력할 수 있는 정보에는 돌봄 대상의 이름, 일상, 의사소통·안정화 메모, 등록한 약 정보와 시간, 연락처가 포함될 수 있습니다.</p>
-  <ul>
-    <li><strong>모바일 앱:</strong> 비공개 테스트 후보(v1.0.1)는 CareManual을 앱 전용 SQLCipher 암호화 데이터베이스에 저장하고, 256비트 무작위 데이터베이스 키를 Android Keystore가 보호하는 SecureStore에 분리해 보관합니다. Android 백업은 비활성화되어 있습니다. 저장된 프로필은 기기 인증 성공 후에만 불러오며 앱이 백그라운드로 가면 다시 잠그고 화면 캡처를 차단합니다. 정적 네이티브 검증은 마쳤지만 다양한 실제 기기의 포렌식·네트워크 검증은 아직 진행 중이므로 비공개 테스트에서는 합성 데이터만 사용하세요.</li>
-    <li><strong>웹 PWA 데모:</strong> 브라우저 <code>localStorage</code>와 코드에 고정된 데모 passphrase를 사용합니다. 이는 실제 개인정보 보호 수단이 아니므로 실제 개인정보·건강정보 입력을 금지합니다.</li>
-    <li><strong>내보내기(relay):</strong> 보호자가 인수인계를 위해 파일을 직접 내보낼 수 있습니다. 내보낸 relay 파일은 평문일 수 있으며, 이메일·메신저·공유 폴더로 전송하면 수신자와 제3자에게 노출될 위험이 있습니다.</li>
-  </ul>
-  <h2>3. 음성·알림·네트워크</h2>
-  <ul>
-    <li><strong>음성:</strong> 비공개 테스트 모바일 앱의 음성 입력과 음성 출력은 비활성화되어 있습니다. 웹 PWA의 브라우저 SpeechRecognition 입력도 기본 비활성화되어 있습니다.</li>
-    <li><strong>모바일 알림:</strong> 등록 정보에 따라 기기 내 로컬 알림 예약을 시도할 수 있습니다. 권한, 절전 모드, 운영체제·제조사 정책, 기기 상태에 따라 알림이 지연되거나 누락될 수 있습니다. 알림만으로 복약을 관리하거나 안전을 판단하지 마세요.</li>
-    <li><strong>네트워크:</strong> 사용자 계정, 광고, 자체 분석 서버 기능을 제공하지 않습니다. 다만 배포·알림 환경에 Expo 및 FCM/Firebase 구성요소가 포함될 수 있습니다. 현재 빌드의 실제 네트워크 동작은 런타임 검증 전이므로 “어떠한 데이터도 전송되지 않는다”라고 단정하지 않습니다.</li>
-  </ul>
-  <h2>4. 보존, 삭제, 동의 철회</h2>
-  <p>모바일 앱의 “이 기기의 데이터 모두 삭제” 기능은 CareGuardian 예약 알림을 취소·재확인한 뒤 암호화 데이터베이스, 키와 앱 내 상태를 삭제합니다. 알림 취소가 확인되지 않으면 데이터 삭제를 중단하고 잠긴 상태를 유지해 다시 시도할 수 있게 합니다. 이 기능은 웹 PWA의 사이트 데이터나 사용자가 별도로 내보낸 파일까지 삭제하지 않으므로 해당 항목은 사용자가 직접 삭제해야 합니다. 테스트 참여자는 언제든 앱 사용을 중단하거나 기기 설정에서 알림 권한을 철회할 수 있습니다. 실제 개인정보가 포함되었다면 즉시 사용을 중단하고 아래 연락처로 알려 주세요.</p>
-  <h2>5. 제3자 제공과 변경</h2>
-  <p>CareGuardian AI는 이용자 데이터를 판매하지 않습니다. 사용자가 직접 relay 파일을 내보내거나 외부 앱으로 공유하는 경우, 그 전달은 사용자의 선택이며 수신·보관 환경의 위험은 별도로 적용됩니다. 본 방침은 기능 또는 검증 결과가 바뀌면 수정일과 함께 업데이트됩니다.</p>
-  <h2>6. 문의</h2>
-  <p>개인정보, 삭제, 동의 철회 또는 안전 우려 문의: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+  <h1>생활후견 AI 개인정보처리방침 / Life Steward AI Privacy Policy</h1>
+  <p class="language-link"><a href="#english" lang="en">English reference translation</a></p>
+  <p class="date">최종 수정일: 2026-07-31</p>
+  <p class="notice"><strong>비공개 테스트 안내:</strong> 생활후견 AI는 일반 생활 작업·목록·메모와 사용자가 만든 선언형 기능을 정리하는 개인 생산성 도구입니다. 비공개 테스트에는 합성·비민감 데이터만 사용하세요. 실제 개인정보·민감정보 사용과 정식 출시는 Samsung/Pixel 물리 기기 검증이 완료될 때까지 허용하지 않습니다.</p>
+  <p><strong>제품 범위:</strong> 생활후견 AI는 일반 개인 생산성 앱이며 건강·의료 기능을 제공하거나 건강 데이터를 다루지 않습니다.</p>
+
+  <h2>1. 운영자와 적용 범위</h2>
+  <p>이 방침의 운영자는 Google Play 개발자 <strong>22B</strong>이며, 프로젝트/EAS 소유자는 <strong>sinmb79</strong>입니다. 문의는 <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a>으로 보내실 수 있습니다. 생활후견 AI는 계정, 광고, 분석 SDK, 클라우드 AI를 사용하지 않습니다. 일반 작업·목록·메모·사용자 기능·프롬프트·출력은 사용자의 기기 안에서 처리합니다.</p>
+  <p>로컬 AI 결과는 사용자 승인 전까지 기기 메모리에만 유지되며 작업공간에 저장되지 않습니다. 승인 후 현재 작업공간에 반영되고, 변경 사항 저장 버튼을 누른 경우에만 로컬 저장소에 영구 저장됩니다.</p>
+
+  <h2>2. 기기 내 저장과 보호</h2>
+  <p>웹 PWA의 현재 사용자 작업공간은 브라우저 IndexedDB에 저장합니다. 이전 버전의 앱 소유 localStorage 키가 남아 있을 수 있으며 웹 삭제 기능은 이를 함께 제거합니다.</p>
+  <p>현재 Google Play용 Android 앱은 작업공간을 SQLCipher 데이터베이스에 저장하고 데이터베이스 키를 SecureStore와 Android Keystore 경계에 분리합니다. 앱은 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용하며 Android 백업을 비활성화합니다.</p>
+  <p>앱은 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다. <code>POST_NOTIFICATIONS</code>는 사용자가 일반 생활 알림을 허용할 때만 사용합니다. <code>RECEIVE_BOOT_COMPLETED</code>는 기기 재시작 또는 앱 업데이트 뒤 미래의 로컬 일정 알림을 복원하는 데만 사용합니다. 알림은 기기 안에서만 예약되고 원격 푸시를 사용하지 않습니다. 표시 제목은 일반 문구이며 data payload에는 <code>taskId</code>만 포함하고 일정 제목이나 메모 본문을 넣지 않습니다.</p>
+
+  <h2>3. 선택형 Hugging Face 모델 다운로드</h2>
+  <p>선택형 로컬 AI는 사용자가 설치를 명시적으로 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 고정 HTTPS 주소에서 내려받아 기기 CPU에서 실행합니다. 설치 전 출처, 크기, SHA-256, 라이선스를 표시하고 검증합니다. 승인된 고정 GGUF가 없는 Kakao 모델은 표시만 하며 다운로드하거나 실행할 수 없습니다. 설치를 거부해도 일반 기능은 계속 사용할 수 있습니다.</p>
+  <p><strong>수신자/외부 서비스:</strong> Hugging Face. 설치 요청을 받으면 Hugging Face는 IP 주소, IP 주소 기반의 대략적 위치, 기기 유형·모델·운영체제·브라우저/네트워크 정보, 사용자가 선택한 모델의 요청 경로와 서비스 이용 기록을 자동으로 기록할 수 있습니다. 이 정보는 파일 제공, 서비스 운영·개선·분석, 보안 및 법적 의무 이행을 위해 사용될 수 있으며 미국 등 다른 국가에서 처리되고 필요한 기간 보존될 수 있습니다.</p>
+  <p>Hugging Face의 개인정보처리방침은 <a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>에서 확인할 수 있습니다. Hugging Face의 기록 또는 권리·삭제 문의는 <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a>로 하세요. 앱 개발자는 Hugging Face의 로그에 직접 접근하지 않으며 사용자를 Hugging Face 계정으로 식별하지 않습니다. 프롬프트·AI 결과·생활 작업 내용은 Hugging Face에 보내지지 않습니다.</p>
+
+  <h2>4. 보존과 전체 삭제</h2>
+  <p>모바일의 <strong>이 기기의 모든 데이터 삭제</strong>는 실행 중인 추론을 중지하고, 현재·이전 로컬 알림을 취소하며, 설치된 모델과 부분 파일, 현재·이전 테스트 작업공간 데이터베이스, 앱 소유 로컬 저장소, 키, 메모리 상태를 삭제합니다.</p>
+  <p>웹의 <strong>이 브라우저의 작업공간 삭제</strong>는 IndexedDB의 사용자 레코드를 삭제 상태를 나타내는 비식별 tombstone으로 바꾸고 이전 버전의 앱 소유 localStorage 키를 제거합니다. tombstone에는 사용자 내용이 없으며 이전 데이터의 재유입만 막습니다.</p>
+  <p>기기 내 삭제는 되돌릴 수 없습니다.</p>
+  <p>Hugging Face가 독립적으로 보관하는 외부 기록은 앱의 삭제 기능으로 지울 수 없습니다. 해당 기록은 Hugging Face 정책과 위의 <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a> 절차에 따라 문의해야 합니다. 운영체제나 브라우저가 별도로 보관하는 항목도 각 환경의 설정에서 관리해야 합니다.</p>
+
+  <h2>5. 문의</h2>
+  <p>이 방침, 기기 내 삭제 또는 앱의 개인정보 처리에 관한 문의: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+
   <hr />
-  <h1>Privacy Policy (English)</h1>
-  <p class="date">Effective and last updated: 2026-07-20</p>
-  <p class="notice"><strong>Closed-test notice:</strong> Use fictional people, medicines, and contacts only. Do not enter real personal, health, prescription, emergency-contact, or biometric data.</p>
-  <h2>1. Purpose and safety limits</h2>
-  <p>CareGuardian AI is a local-first aid for organizing care routines, communication notes, and user-entered medication information in a DAILY view. It is not a medical device and does not diagnose, treat, prescribe, or validate medicines, doses, interactions, or adherence. A notification is not proof of taking medicine. The app does not place emergency calls, call 119, or automatically contact caregivers.</p>
-  <h2>2. Storage and export</h2>
-  <p>The v1.0.1 closed-test candidate stores the mobile CareManual in an app-specific SQLCipher database. A random 256-bit database key is stored separately in SecureStore under Android Keystore protection, and Android backup is disabled. Stored profiles are loaded only after device authentication; the app relocks in the background and blocks screen capture. Native static checks have passed, but broader real-device forensic and network validation is still in progress, so closed-test participants must use synthetic data only. The web PWA demo uses browser localStorage and a fixed demo passphrase, so real personal or health data must never be entered. A user-exported relay file may be plaintext; sharing it can expose its contents.</p>
-  <h2>3. Voice, notifications, and network</h2>
-  <p>Mobile speech input and output are disabled in the closed-test build, and browser SpeechRecognition input is disabled by default on the web. The mobile app may attempt to schedule local device notifications, which can be delayed or missed because of permissions, battery controls, OS/vendor policy, or device state. The product has no user-account, advertising, or first-party analytics feature. Expo and FCM/Firebase components may nevertheless be present in the build or notification environment. Until runtime network behavior is verified, we do not claim that no data is transmitted.</p>
-  <h2>4. Retention, deletion, and withdrawal</h2>
-  <p>The mobile “delete all data on this device” action cancels and rechecks CareGuardian reminders before deleting the encrypted database, its key, and in-app state. If reminder cancellation cannot be confirmed, data deletion stops and the app stays locked so the user can retry. This action does not delete web PWA site data or separately exported files; users must remove those items themselves. Participants may stop using the app and withdraw notification permission in device settings. Contact us if real data was entered.</p>
+  <section id="english" lang="en">
+  <h1>Life Steward AI Privacy Policy</h1>
+  <p class="date">Last updated: 2026-07-31</p>
+  <p class="notice"><strong>Closed test notice:</strong> Life Steward AI is a general personal-productivity tool for life tasks, lists, notes, and user-created declarative features. Use only synthetic, non-sensitive data during closed testing. Real personal or sensitive data and general release remain prohibited until Samsung/Pixel physical-device validation is complete.</p>
+  <p><strong>Product scope:</strong> Life Steward AI is a general personal-productivity app and does not provide health or medical features or handle health data.</p>
+
+  <h2>1. Operator and scope</h2>
+  <p>The operator is Google Play developer <strong>22B</strong>, and the project/EAS owner is <strong>sinmb79</strong>. Contact: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a>. Life Steward AI has no accounts, ads, analytics SDKs, or off-device AI service. General tasks, lists, notes, user-created features, prompts, and outputs are processed on the user’s device.</p>
+  <p>Local AI results remain only in device memory and are not saved to the workspace before user approval. After approval, a result is applied to the current workspace and is persisted to local storage only when the user selects the Save changes action.</p>
+
+  <h2>2. On-device storage and protection</h2>
+  <p>The web PWA stores its current user workspace in browser IndexedDB. App-owned legacy localStorage keys from an earlier version may remain, and the web deletion action removes them as well.</p>
+  <p>The current Google Play Android app stores its workspace in SQLCipher and separates the database key through SecureStore and the Android Keystore boundary. It uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>
+  <p>The app does not request contacts, location, microphone, camera, or external-storage permissions. <code>POST_NOTIFICATIONS</code> is used only when the user permits ordinary local reminders. <code>RECEIVE_BOOT_COMPLETED</code> is used only to restore future local schedule reminders after a device restart or app update. Notifications are scheduled on the device and do not use remote push. Their displayed titles are generic, and their data payload contains only <code>taskId</code>, never a task title or note body.</p>
+
+  <h2>3. Optional Hugging Face model download</h2>
+  <p>Optional local AI downloads one selected model from two approved, pinned NAVER HyperCLOVA X GGUF files at pinned HTTPS addresses only after the user explicitly chooses installation, then runs it on device CPU. Source, size, SHA-256, and license are displayed and verified before installation. A Kakao model without an approved pinned GGUF is shown as unavailable and cannot be downloaded or run. Declining installation does not prevent use of the general features.</p>
+  <p><strong>Recipient / external service:</strong> Hugging Face. For an installation request, Hugging Face may automatically log the IP address, approximate IP-based location, device type and model, operating system, browser and network information, the selected model request path, and service-use records. It may use this information to provide files, operate, improve, and analyze its service, and meet security and legal obligations. The information may be processed in the United States and other countries and retained for as long as necessary.</p>
+  <p>See the Hugging Face privacy policy at <a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>. For Hugging Face rights or deletion requests, contact <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a>. The app developer cannot directly access Hugging Face logs and does not identify a user through a Hugging Face account. Prompts, AI outputs, and life-task content are not sent to Hugging Face.</p>
+
+  <h2>4. Retention and deletion</h2>
+  <p>The mobile <strong>Delete all local data on this device</strong> action stops inference, cancels current and legacy local notifications, removes installed models and partial files, deletes current and prior-test workspace databases, app-owned local storage, and keys, and resets memory.</p>
+  <p>The web deletion action replaces the IndexedDB user record with a data-free tombstone and removes app-owned legacy localStorage keys. The tombstone contains no user content and only prevents re-import of old data.</p>
+  <p>On-device deletion cannot be undone.</p>
+  <p>The in-app deletion action cannot erase external records independently kept by Hugging Face for a model-installation request. Please use the Hugging Face policy and <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a> process for those records. Items retained separately by the operating system or browser are managed in that environment’s settings.</p>
+
   <h2>5. Contact</h2>
-  <p>Privacy, deletion, consent withdrawal, or safety questions: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+  <p>For questions about this policy, on-device deletion, or the app’s privacy practices: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+  </section>
 </body>
 </html>

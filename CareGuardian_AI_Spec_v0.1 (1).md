@@ -1,5 +1,7 @@
 # 돌봄후견 AI (CareGuardian AI) — Project Specification v0.1
 
+> **역사 기록 전용 — 현재 제출 근거 아님:** 이 문서는 이전 CareGuardian 건강·복약 구현의 사양입니다. 현재 `생활후견 AI 1.1.0 (7)`의 기능, Play 선언, Data safety 또는 개인정보처리방침의 근거로 사용하지 마세요. 현재 기준은 `README.md`, `docs/store-listing.md`, `docs/mobile-delivery.md`, `docs/private-test-operations.md`, `public/privacy-policy.html`입니다.
+
 > **"보호자가 남긴 후견 AI, 돌봄은 끊기지 않는다"**
 
 | Field | Value |

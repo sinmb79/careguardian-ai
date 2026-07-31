@@ -1,97 +1,65 @@
-import type { CareManual } from "@careguardian/care-core/manual";
+import type { PersonalWorkspace } from "@life-steward/life-core";
 import type { AuthenticationResult } from "./localAuthentication";
+import type { MobileDeletionDomain } from "./clearMobileData";
 
 export type PrivacyGateState = "locked" | "unlocked";
+export type PrivacyGateRecoveryMode =
+  | "retry-delete"
+  | "restart-required"
+  | null;
 
-export function createPrivacyGateState(hasStoredProfile: boolean): PrivacyGateState {
-  return hasStoredProfile ? "locked" : "unlocked";
+export function getPrivacyGateRecoveryMode(
+  failedDomains: readonly MobileDeletionDomain[] | null
+): PrivacyGateRecoveryMode {
+  if (!failedDomains) return null;
+  return failedDomains.includes("active-inference")
+    ? "restart-required"
+    : "retry-delete";
+}
+
+export function createPrivacyGateState(hasStoredWorkspace: boolean): PrivacyGateState {
+  return hasStoredWorkspace ? "locked" : "unlocked";
 }
 
 export function isSensitiveUiVisible(state: PrivacyGateState): boolean {
   return state === "unlocked";
 }
 
-export function lockedProfileStatusMessage(_subjectName?: string): string {
-  return "저장된 돌봄 프로필은 기기 인증 후 열 수 있습니다.";
+export function lockedWorkspaceStatusMessage(): string {
+  return "저장된 개인 작업공간은 기기 인증 후에 열 수 있습니다.";
 }
 
 function containsMeaningfulValue(value: unknown): boolean {
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-  if (Array.isArray(value)) {
-    return value.some(containsMeaningfulValue);
-  }
-  if (value && typeof value === "object") {
-    return Object.values(value).some(containsMeaningfulValue);
-  }
-  return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.some(containsMeaningfulValue);
+  return Boolean(value && typeof value === "object" && Object.values(value).some(containsMeaningfulValue));
 }
 
-export function shouldLockCareManualOnBackground(
-  hasStoredProfile: boolean,
-  manual: CareManual
+export function shouldLockWorkspaceOnBackground(
+  hasStoredWorkspace: boolean,
+  workspace: PersonalWorkspace
 ): boolean {
-  if (hasStoredProfile) {
-    return true;
-  }
-
-  return containsMeaningfulValue({
-    subject: manual.subject,
-    sections: manual.sections,
-    createdBy: manual.created_by,
-    relayTargets: manual.relay_targets
+  return hasStoredWorkspace || containsMeaningfulValue({
+    lists: workspace.lists, records: workspace.records, tasks: workspace.tasks,
+    reminders: workspace.reminders, extensions: workspace.extensions
   });
 }
 
-export interface SensitiveProfileUnlockDependencies {
-  hasStoredProfile: boolean;
+export interface WorkspaceUnlockDependencies {
+  hasStoredWorkspace: boolean;
   authenticate: () => Promise<AuthenticationResult>;
-  loadStoredManual: () => Promise<CareManual | null>;
+  loadStoredWorkspace: () => Promise<PersonalWorkspace | null>;
 }
 
-export type SensitiveProfileUnlockResult = AuthenticationResult & {
-  manual?: CareManual;
-};
+export type WorkspaceUnlockResult = AuthenticationResult & { workspace?: PersonalWorkspace };
 
-export async function resolveSensitiveProfileUnlock({
-  hasStoredProfile,
-  authenticate,
-  loadStoredManual
-}: SensitiveProfileUnlockDependencies): Promise<SensitiveProfileUnlockResult> {
+export async function resolveWorkspaceUnlock({
+  hasStoredWorkspace, authenticate, loadStoredWorkspace
+}: WorkspaceUnlockDependencies): Promise<WorkspaceUnlockResult> {
   const authentication = await authenticate();
-  if (!authentication.authenticated || !hasStoredProfile) {
-    return authentication;
-  }
-
-  const manual = await loadStoredManual();
-  if (!manual) {
-    return {
-      authenticated: false,
-      message: "저장된 돌봄 정보를 찾지 못했습니다. 안전을 위해 잠긴 상태를 유지합니다."
-    };
-  }
-
-  return { ...authentication, manual };
-}
-
-export function medicationConsentFingerprint(
-  medication?: CareManual["sections"]["medication"]["drugs"][number]
-): string {
-  if (!medication) {
-    return "";
-  }
-
-  return JSON.stringify([
-    medication.name.trim(),
-    medication.dosage.trim(),
-    medication.timing.trim(),
-    medication.method.trim(),
-    medication.warnings.trim(),
-    medication.photo.trim()
-  ]);
-}
-
-export function requiresMedicationConsent(medicationName: string, hasConsent: boolean): boolean {
-  return medicationName.trim().length > 0 && !hasConsent;
+  if (!authentication.authenticated || !hasStoredWorkspace) return authentication;
+  const workspace = await loadStoredWorkspace();
+  return workspace
+    ? { ...authentication, workspace }
+    : { authenticated: false, message: "저장된 개인 작업공간을 찾지 못했습니다. 안전을 위해 잠금 상태를 유지합니다." };
 }
