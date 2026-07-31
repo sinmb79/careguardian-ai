@@ -38,7 +38,7 @@ The privacy policy distinguishes Hugging Face’s possible external installation
 - Display name: `생활후견 AI` / `Life Steward AI`
 - Android: `1.1.0` (`versionCode 7`)
 - Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Planned Play positioning: Productivity, target age 18+, limited-scope local document helper; IARC content rating is confirmed after its questionnaire.
+- Thirteen Play closed-test changes were submitted for review on 2026-07-31 as a Productivity app for ages 18+, declared as non-health and positioned as a limited-scope local document helper. The current state is **under review**, not approved.
 
 ```powershell
 npm ci
@@ -47,4 +47,4 @@ npm run build
 npm run mobile:typecheck
 ```
 
-See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), and [store listing](./docs/store-listing.md).
+See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), [store listing](./docs/store-listing.md), [Android AAB evidence](./docs/security/android-aab-evidence-2026-07-31.md), and [Play submission evidence](./docs/security/google-play-closed-test-submission-2026-07-31.md).

@@ -52,7 +52,7 @@ Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알
 - 표시명: `생활후견 AI` / `Life Steward AI`
 - Android 대상 버전: `1.1.0` (`versionCode 7`)
 - 유지하는 식별자: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Play 등록은 `Productivity`, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 기준으로 준비합니다. IARC 콘텐츠 등급은 설문 후 확정합니다.
+- Play 비공개 테스트의 13개 변경사항은 `Productivity`, 타깃 연령 18세 이상, 비건강 앱, 기능 제한형 로컬 문서 정리 도구 기준으로 2026-07-31 검토 제출됐습니다. 현재 상태는 승인 완료가 아니라 **검토 중**입니다.
 
 ## 문서
 
@@ -61,3 +61,5 @@ Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알
 3. [비공개 테스트 준비도](./docs/security/private-test-readiness-2026-07-30.md)
 4. [스토어 등록 문안](./docs/store-listing.md)
 5. [개인정보처리방침](./public/privacy-policy.html)
+6. [Android AAB 검증 증거](./docs/security/android-aab-evidence-2026-07-31.md)
+7. [Google Play 비공개 테스트 제출 증거](./docs/security/google-play-closed-test-submission-2026-07-31.md)
