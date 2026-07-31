@@ -88,11 +88,12 @@ Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재�
 
 ## 단계별 남은 게이트
 
-### 합성 데이터 비공개 테스트 제출·운영 시작 전
+### 합성 데이터 비공개 테스트 제출 상태
 
-1. Play Console에서 검증된 final AAB SHA-256 `e29047be5302bb99e009bd2e1dd27d89ba246712b507f7ad084ef8623d6430c8`과 versionCode `7` 확인
-2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드
-3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety를 final AAB와 대조
+1. final AAB SHA-256 `e29047be5302bb99e009bd2e1dd27d89ba246712b507f7ad084ef8623d6430c8`과 versionCode `7` Play 업로드 — **완료**
+2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드 — **완료**
+3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety 대조와 13개 변경사항 검토 제출 — **완료**
+4. Google 검토 승인과 실제 테스터 opt-in — **외부 대기**
 
 ### 합성 데이터 비공개 테스트 중
 
