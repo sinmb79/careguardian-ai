@@ -56,6 +56,50 @@ test("loads the Play Store listing policy artifact into the release inventory", 
   assert.equal(loadReleaseFiles(root).has(storeListingFile), true);
 });
 
+test("rejects a return to singular wording for the approved two-model Play choice", () => {
+  const approvedText =
+    "• 사용자가 설치를 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 Hugging Face에서 내려받습니다.";
+  const singularText =
+    "• 사용자가 설치를 선택한 경우에만 고정된 NAVER HyperCLOVA X GGUF 모델을 Hugging Face에서 내려받습니다.";
+  const source = baseline.get(storeListingFile);
+  assert.match(source, new RegExp(approvedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const report = mutate(storeListingFile, (current) =>
+    current.replace(approvedText, singularText)
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /Play Store Korean full description must exactly match/
+  );
+});
+
+test("rejects removal of public privacy scope, deletion, language, and Android contracts", () => {
+  const requiredLines = [
+    '  <p class="language-link"><a href="#english" lang="en">English reference translation</a></p>',
+    "  <p><strong>제품 범위:</strong> 생활후견 AI는 일반 개인 생산성 앱이며 건강·의료 기능을 제공하거나 건강 데이터를 다루지 않습니다.</p>",
+    "  <p>현재 Google Play용 Android 앱은 작업공간을 SQLCipher 데이터베이스에 저장하고 데이터베이스 키를 SecureStore와 Android Keystore 경계에 분리합니다. 앱은 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용하며 Android 백업을 비활성화합니다.</p>",
+    "  <p>웹의 <strong>이 브라우저의 작업공간 삭제</strong>는 IndexedDB의 사용자 레코드를 삭제 상태를 나타내는 비식별 tombstone으로 바꾸고 이전 버전의 앱 소유 localStorage 키를 제거합니다. tombstone에는 사용자 내용이 없으며 이전 데이터의 재유입만 막습니다.</p>",
+    '  <section id="english" lang="en">',
+    "  <p><strong>Product scope:</strong> Life Steward AI is a general personal-productivity app and does not provide health or medical features or handle health data.</p>",
+    "  <p>The web deletion action replaces the IndexedDB user record with a data-free tombstone and removes app-owned legacy localStorage keys. The tombstone contains no user content and only prevents re-import of old data.</p>"
+  ];
+
+  for (const line of requiredLines) {
+    assert.ok(
+      baseline.get("public/privacy-policy.html").includes(line),
+      `missing baseline contract: ${line}`
+    );
+    const report = mutate(
+      "public/privacy-policy.html",
+      (source) => source.replace(line, "")
+    );
+    assert.equal(report.status, "fail", line);
+    assert.match(report.problems.join("\n"), /policy contract/);
+  }
+});
+
 test("rejects drift from the exact Korean Play Console copy", () => {
   const report = mutate(storeListingFile, (source) =>
     source.replace(

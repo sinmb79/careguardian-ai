@@ -1,6 +1,6 @@
 # Google Play 스토어 등록 문안 — 생활후견 AI 비공개 테스트
 
-이 문서는 `생활후견 AI 1.1.0 (7)`의 현재 Console 입력 기준입니다. 실제 Console 저장 전에는 새 AAB와 고정 Hugging Face HTTPS 요청 경로를 다시 대조합니다. IARC 등급은 실제 Console 설문 응답으로만 확정하며 이 문서는 임의 등급을 만들지 않습니다.
+이 문서는 `생활후견 AI 1.1.0 (7)`의 현재 Console 입력 기준입니다. 실제 Console 저장 전에는 새 AAB와 고정 Hugging Face HTTPS 요청 경로 2개를 다시 대조합니다. IARC 등급은 실제 Console 설문 응답으로만 확정하며 이 문서는 임의 등급을 만들지 않습니다.
 
 ## 제출·검증 단계
 
@@ -31,7 +31,7 @@
 • 알림 제목은 일반 문구로 표시되고 알림 데이터에는 작업 식별자만 포함됩니다.
 
 선택형 기기 내 한국어 AI
-• 사용자가 설치를 선택한 경우에만 고정된 NAVER HyperCLOVA X GGUF 모델을 Hugging Face에서 내려받습니다.
+• 사용자가 설치를 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 Hugging Face에서 내려받습니다.
 • 다운로드 전에 출처, 파일 크기, SHA-256, 라이선스를 확인하고 동의할 수 있습니다.
 • 모델은 기기 CPU에서만 실행되며 기존 텍스트 요약, 문장 다듬기, 제목 제안, 체크리스트 초안을 지원합니다.
 • 자유 대화형 기능이 아니며 결과는 사용자가 승인하기 전까지 작업공간에 저장되지 않습니다.
@@ -121,7 +121,7 @@ Main features
 • A generic notification title is shown, and notification data contains only a task identifier.
 
 Optional on-device Korean AI
-• Only when the user chooses to install it, the app downloads a pinned NAVER HyperCLOVA X GGUF model from Hugging Face.
+• Only when the user chooses to install it, the app downloads one selected model from two approved, pinned NAVER HyperCLOVA X GGUF files on Hugging Face.
 • Before download, the user can review and consent to the source, file size, SHA-256, and license.
 • The model runs only on the device CPU and supports summaries of existing text, sentence polishing, title suggestions, and checklist drafts.
 • It is not a free-form chat feature, and results are not saved to the workspace until the user approves them.

@@ -26,8 +26,18 @@ li {
 }
 
 .date,
+.language-link,
 .notice {
   color: #526166;
+}
+
+.language-link {
+  text-align: right;
+}
+
+.language-link a {
+  color: #315f55;
+  font-weight: 700;
 }
 
 .notice {

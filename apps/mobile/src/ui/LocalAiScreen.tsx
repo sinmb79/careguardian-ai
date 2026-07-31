@@ -460,6 +460,10 @@ function ModelCard(props: ModelCardProps) {
               프롬프트·AI 결과·생활 작업 내용은 Hugging Face에 보내지지 않습니다.
             </Text>
             <Text style={styles.consentText}>
+              앱의 전체 삭제로 Hugging Face가 독립적으로 보관하는 외부 기록은 삭제되지 않으며,
+              해당 기록의 권리·삭제 문의는 privacy@huggingface.co 절차를 따릅니다.
+            </Text>
+            <Text style={styles.consentText}>
               설치는 선택 사항이며 거부해도 일반 생활 기능은 사용 가능하고, 사용자가 명시적으로 체크하기 전에는 설치할 수 없습니다.
             </Text>
             <Pressable

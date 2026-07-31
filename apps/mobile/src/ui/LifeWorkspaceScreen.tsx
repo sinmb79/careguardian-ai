@@ -52,15 +52,15 @@ export function LifeWorkspaceScreen(props: Props) {
     {props.section === "local-ai" ? <LocalAiScreen workspace={props.workspace} onChange={props.onChange} /> : null}
     {props.section === "settings" ? <View style={styles.card}>
       <Text style={styles.cardTitle}>설정</Text>
-      <Text style={styles.body}>모든 데이터는 이 기기에서만 삭제할 수 있습니다.</Text>
+      <Text style={styles.body}>앱이 보관하는 로컬 데이터는 이 기기에서 삭제합니다. Hugging Face가 모델 설치 요청 과정에서 독립적으로 보관하는 외부 기록은 앱 삭제 대상이 아닙니다.</Text>
       <View style={styles.privacyDisclosure}>
         <Text style={styles.privacyDisclosureTitle}>개인정보처리방침</Text>
-        <Text style={styles.body}>로그인·광고·분석 SDK·외부 AI 처리 서비스를 사용하지 않습니다. 작업·목록·사용자 기능·프롬프트·결과는 이 기기에 저장됩니다.</Text>
+        <Text style={styles.body}>로그인·광고·분석 SDK·외부 AI 처리 서비스를 사용하지 않습니다. 작업·목록·사용자 기능·프롬프트·결과는 이 기기에서 처리되며, AI 결과는 사용자가 승인한 경우에만 작업공간에 저장됩니다.</Text>
         <Text style={styles.body}>모델 설치를 사용자가 선택한 경우에만 Hugging Face에 네트워크 요청이 발생합니다.</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="개인정보처리방침 열기" style={styles.privacyPolicyButton} onPress={() => void openPrivacyPolicyPage()}><Text style={styles.privacyPolicyButtonText}>개인정보처리방침 열기</Text></Pressable>
         {privacyPolicyStatus ? <Text accessibilityLiveRegion="polite" style={styles.entryError}>{privacyPolicyStatus}</Text> : null}
       </View>
-      <Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("이 기기의 모든 데이터 삭제", "진행 중인 로컬 AI를 중단하고 모델·부분 다운로드·생활 작업·일반 알림을 이 기기에서 삭제합니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => observeDeleteAll(props.onDeleteAll) }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable>
+      <Pressable disabled={props.isDeleting} style={styles.deleteButton} onPress={() => Alert.alert("이 기기의 모든 데이터 삭제", "진행 중인 로컬 AI를 중단하고 모델·부분 다운로드·생활 작업·일반 알림을 이 기기에서 삭제합니다. Hugging Face가 독립 보관하는 모델 요청 기록은 삭제되지 않습니다.", [{ text: "취소", style: "cancel" }, { text: "삭제", style: "destructive", onPress: () => observeDeleteAll(props.onDeleteAll) }])}><Text style={styles.deleteButtonText}>{props.isDeleting ? "삭제 중…" : "이 기기의 모든 데이터 삭제"}</Text></Pressable>
     </View> : null}
     <Pressable disabled={props.isSaving || props.isDeleting} accessibilityRole="button" style={[styles.saveButton, (props.isSaving || props.isDeleting) && styles.disabled]} onPress={() => void props.onSave()}><Text style={styles.saveText}>{props.isSaving ? "저장 중…" : "변경 사항 저장"}</Text></Pressable>
   </View>;

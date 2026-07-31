@@ -9,51 +9,61 @@
 </head>
 <body>
   <h1>생활후견 AI 개인정보처리방침 / Life Steward AI Privacy Policy</h1>
+  <p class="language-link"><a href="#english" lang="en">English reference translation</a></p>
   <p class="date">최종 수정일: 2026-07-31</p>
   <p class="notice"><strong>비공개 테스트 안내:</strong> 생활후견 AI는 일반 생활 작업·목록·메모와 사용자가 만든 선언형 기능을 정리하는 개인 생산성 도구입니다. 비공개 테스트에는 합성·비민감 데이터만 사용하세요. 실제 개인정보·민감정보 사용과 정식 출시는 Samsung/Pixel 물리 기기 검증이 완료될 때까지 허용하지 않습니다.</p>
+  <p><strong>제품 범위:</strong> 생활후견 AI는 일반 개인 생산성 앱이며 건강·의료 기능을 제공하거나 건강 데이터를 다루지 않습니다.</p>
 
   <h2>1. 운영자와 적용 범위</h2>
   <p>이 방침의 운영자는 Google Play 개발자 <strong>22B</strong>이며, 프로젝트/EAS 소유자는 <strong>sinmb79</strong>입니다. 문의는 <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a>으로 보내실 수 있습니다. 생활후견 AI는 계정, 광고, 분석 SDK, 클라우드 AI를 사용하지 않습니다. 일반 작업·목록·메모·사용자 기능·프롬프트·출력은 사용자의 기기 안에서 처리합니다.</p>
 
   <h2>2. 기기 내 저장과 보호</h2>
-  <p>웹 PWA 작업공간은 브라우저 IndexedDB에만 저장합니다. 모바일 앱은 작업공간을 SQLCipher 데이터베이스에 저장하고, 데이터베이스 키를 SecureStore 및 Android Keystore 경계에 분리합니다. 모바일 앱은 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용하며 Android 백업을 비활성화합니다.</p>
-  <p>앱은 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다. Android 알림 권한은 사용자가 일반 생활 알림을 받도록 허용할 때만 사용합니다. 알림은 기기 안에서만 예약되고 원격 푸시를 사용하지 않습니다. 표시 제목은 일반 문구이며 data payload에는 <code>taskId</code>만 포함하고 일정 제목이나 메모 본문을 넣지 않습니다.</p>
+  <p>웹 PWA의 현재 사용자 작업공간은 브라우저 IndexedDB에 저장합니다. 이전 버전의 앱 소유 localStorage 키가 남아 있을 수 있으며 웹 삭제 기능은 이를 함께 제거합니다.</p>
+  <p>현재 Google Play용 Android 앱은 작업공간을 SQLCipher 데이터베이스에 저장하고 데이터베이스 키를 SecureStore와 Android Keystore 경계에 분리합니다. 앱은 기기 인증, 백그라운드 잠금, 화면 캡처 차단을 사용하며 Android 백업을 비활성화합니다.</p>
+  <p>앱은 연락처, 위치, 마이크, 카메라, 외부 저장소 권한을 요청하지 않습니다. <code>POST_NOTIFICATIONS</code>는 사용자가 일반 생활 알림을 허용할 때만 사용합니다. <code>RECEIVE_BOOT_COMPLETED</code>는 기기 재시작 또는 앱 업데이트 뒤 미래의 로컬 일정 알림을 복원하는 데만 사용합니다. 알림은 기기 안에서만 예약되고 원격 푸시를 사용하지 않습니다. 표시 제목은 일반 문구이며 data payload에는 <code>taskId</code>만 포함하고 일정 제목이나 메모 본문을 넣지 않습니다.</p>
 
   <h2>3. 선택형 Hugging Face 모델 다운로드</h2>
-  <p>선택형 로컬 AI는 사용자가 설치를 명시적으로 선택한 경우에만 고정된 NAVER HyperCLOVA X GGUF 파일을 고정 HTTPS 주소에서 내려받아 기기 CPU에서 실행합니다. 설치 전 출처, 크기, SHA-256, 라이선스를 표시하고 검증합니다. 승인된 고정 GGUF가 없는 Kakao 모델은 표시만 하며 다운로드하거나 실행할 수 없습니다. 설치를 거부해도 일반 기능은 계속 사용할 수 있습니다.</p>
+  <p>선택형 로컬 AI는 사용자가 설치를 명시적으로 선택한 경우에만 승인·고정된 NAVER HyperCLOVA X GGUF 2개 중 선택한 모델 하나를 고정 HTTPS 주소에서 내려받아 기기 CPU에서 실행합니다. 설치 전 출처, 크기, SHA-256, 라이선스를 표시하고 검증합니다. 승인된 고정 GGUF가 없는 Kakao 모델은 표시만 하며 다운로드하거나 실행할 수 없습니다. 설치를 거부해도 일반 기능은 계속 사용할 수 있습니다.</p>
   <p><strong>수신자/외부 서비스:</strong> Hugging Face. 설치 요청을 받으면 Hugging Face는 IP 주소, IP 주소 기반의 대략적 위치, 기기 유형·모델·운영체제·브라우저/네트워크 정보, 사용자가 선택한 모델의 요청 경로와 서비스 이용 기록을 자동으로 기록할 수 있습니다. 이 정보는 파일 제공, 서비스 운영·개선·분석, 보안 및 법적 의무 이행을 위해 사용될 수 있으며 미국 등 다른 국가에서 처리되고 필요한 기간 보존될 수 있습니다.</p>
   <p>Hugging Face의 개인정보처리방침은 <a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>에서 확인할 수 있습니다. Hugging Face의 기록 또는 권리·삭제 문의는 <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a>로 하세요. 앱 개발자는 Hugging Face의 로그에 직접 접근하지 않으며 사용자를 Hugging Face 계정으로 식별하지 않습니다. 프롬프트·AI 결과·생활 작업 내용은 Hugging Face에 보내지지 않습니다.</p>
 
   <h2>4. 보존과 전체 삭제</h2>
-  <p>모바일의 <strong>이 기기의 모든 데이터 삭제</strong>는 실행 중인 추론을 중지하고, 로컬 알림을 취소하며, 설치된 모델과 부분 파일, SQLCipher 작업공간 데이터베이스, 키, 메모리 상태를 삭제합니다. 웹에서는 브라우저의 PWA 데이터 삭제가 해당 IndexedDB 작업공간을 지웁니다. 이 삭제는 되돌릴 수 없습니다.</p>
-  <p>Hugging Face가 모델 설치 요청과 관련하여 독립적으로 보관하는 외부 기록은 앱의 삭제 버튼으로 지울 수 없습니다. 해당 기록은 Hugging Face 정책과 위의 <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a> 절차에 따라 문의해야 합니다. 운영체제나 브라우저가 별도로 보관하는 항목도 각 환경의 설정에서 관리해야 합니다.</p>
+  <p>모바일의 <strong>이 기기의 모든 데이터 삭제</strong>는 실행 중인 추론을 중지하고, 현재·이전 로컬 알림을 취소하며, 설치된 모델과 부분 파일, 현재·이전 테스트 작업공간 데이터베이스, 앱 소유 로컬 저장소, 키, 메모리 상태를 삭제합니다.</p>
+  <p>웹의 <strong>이 브라우저의 작업공간 삭제</strong>는 IndexedDB의 사용자 레코드를 삭제 상태를 나타내는 비식별 tombstone으로 바꾸고 이전 버전의 앱 소유 localStorage 키를 제거합니다. tombstone에는 사용자 내용이 없으며 이전 데이터의 재유입만 막습니다.</p>
+  <p>기기 내 삭제는 되돌릴 수 없습니다.</p>
+  <p>Hugging Face가 독립적으로 보관하는 외부 기록은 앱의 삭제 기능으로 지울 수 없습니다. 해당 기록은 Hugging Face 정책과 위의 <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a> 절차에 따라 문의해야 합니다. 운영체제나 브라우저가 별도로 보관하는 항목도 각 환경의 설정에서 관리해야 합니다.</p>
 
   <h2>5. 문의</h2>
   <p>이 방침, 기기 내 삭제 또는 앱의 개인정보 처리에 관한 문의: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
 
   <hr />
+  <section id="english" lang="en">
   <h1>Life Steward AI Privacy Policy</h1>
   <p class="date">Last updated: 2026-07-31</p>
   <p class="notice"><strong>Closed test notice:</strong> Life Steward AI is a general personal-productivity tool for life tasks, lists, notes, and user-created declarative features. Use only synthetic, non-sensitive data during closed testing. Real personal or sensitive data and general release remain prohibited until Samsung/Pixel physical-device validation is complete.</p>
+  <p><strong>Product scope:</strong> Life Steward AI is a general personal-productivity app and does not provide health or medical features or handle health data.</p>
 
   <h2>1. Operator and scope</h2>
   <p>The operator is Google Play developer <strong>22B</strong>, and the project/EAS owner is <strong>sinmb79</strong>. Contact: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a>. Life Steward AI has no accounts, ads, analytics SDKs, or off-device AI service. General tasks, lists, notes, user-created features, prompts, and outputs are processed on the user’s device.</p>
 
   <h2>2. On-device storage and protection</h2>
-  <p>The web PWA stores its workspace only in browser IndexedDB. The mobile app stores its workspace in SQLCipher with a key separated through SecureStore and Android Keystore. It uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>
-  <p>The app does not request contacts, location, microphone, camera, or external-storage permissions. The Android notification permission is used only when the user permits ordinary local reminders. Notifications are scheduled on the device and do not use remote push. Their displayed titles are generic, and their data payload contains only <code>taskId</code>, never a task title or note body.</p>
-  <p>There are no accounts, ads, analytics SDKs, or remote push. The displayed notification title is generic and its data payload contains only a task ID. Mobile deletion stops inference, cancels local notifications, removes models and partial files, deletes the workspace and keys, and resets memory.</p>
+  <p>The web PWA stores its current user workspace in browser IndexedDB. App-owned legacy localStorage keys from an earlier version may remain, and the web deletion action removes them as well.</p>
+  <p>The current Google Play Android app stores its workspace in SQLCipher and separates the database key through SecureStore and the Android Keystore boundary. It uses device authentication, background locking, screen-capture blocking, and disabled Android backup.</p>
+  <p>The app does not request contacts, location, microphone, camera, or external-storage permissions. <code>POST_NOTIFICATIONS</code> is used only when the user permits ordinary local reminders. <code>RECEIVE_BOOT_COMPLETED</code> is used only to restore future local schedule reminders after a device restart or app update. Notifications are scheduled on the device and do not use remote push. Their displayed titles are generic, and their data payload contains only <code>taskId</code>, never a task title or note body.</p>
 
   <h2>3. Optional Hugging Face model download</h2>
-  <p>Optional local AI downloads a pinned NAVER HyperCLOVA X GGUF file from a pinned HTTPS address only after the user explicitly chooses installation, then runs it on device CPU. Source, size, SHA-256, and license are displayed and verified before installation. A Kakao model without an approved pinned GGUF is shown as unavailable and cannot be downloaded or run. Declining installation does not prevent use of the general features.</p>
+  <p>Optional local AI downloads one selected model from two approved, pinned NAVER HyperCLOVA X GGUF files at pinned HTTPS addresses only after the user explicitly chooses installation, then runs it on device CPU. Source, size, SHA-256, and license are displayed and verified before installation. A Kakao model without an approved pinned GGUF is shown as unavailable and cannot be downloaded or run. Declining installation does not prevent use of the general features.</p>
   <p><strong>Recipient / external service:</strong> Hugging Face. For an installation request, Hugging Face may automatically log the IP address, approximate IP-based location, device type and model, operating system, browser and network information, the selected model request path, and service-use records. It may use this information to provide files, operate, improve, and analyze its service, and meet security and legal obligations. The information may be processed in the United States and other countries and retained for as long as necessary.</p>
   <p>See the Hugging Face privacy policy at <a href="https://huggingface.co/privacy">https://huggingface.co/privacy</a>. For Hugging Face rights or deletion requests, contact <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a>. The app developer cannot directly access Hugging Face logs and does not identify a user through a Hugging Face account. Prompts, AI outputs, and life-task content are not sent to Hugging Face.</p>
 
   <h2>4. Retention and deletion</h2>
-  <p>The mobile <strong>Delete all local data on this device</strong> action stops inference, cancels local notifications, removes installed models and partial files, deletes the SQLCipher workspace database and keys, and resets memory. In the web PWA, deleting browser PWA data removes that IndexedDB workspace. These actions cannot be undone.</p>
+  <p>The mobile <strong>Delete all local data on this device</strong> action stops inference, cancels current and legacy local notifications, removes installed models and partial files, deletes current and prior-test workspace databases, app-owned local storage, and keys, and resets memory.</p>
+  <p>The web deletion action replaces the IndexedDB user record with a data-free tombstone and removes app-owned legacy localStorage keys. The tombstone contains no user content and only prevents re-import of old data.</p>
+  <p>On-device deletion cannot be undone.</p>
   <p>The in-app deletion action cannot erase external records independently kept by Hugging Face for a model-installation request. Please use the Hugging Face policy and <a href="mailto:privacy@huggingface.co">privacy@huggingface.co</a> process for those records. Items retained separately by the operating system or browser are managed in that environment’s settings.</p>
 
   <h2>5. Contact</h2>
   <p>For questions about this policy, on-device deletion, or the app’s privacy practices: <a href="mailto:sinmb79@naver.com">sinmb79@naver.com</a></p>
+  </section>
 </body>
 </html>
