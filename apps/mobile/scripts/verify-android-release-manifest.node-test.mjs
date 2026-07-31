@@ -30,6 +30,7 @@ const currentRemoteManifest = readFileSync(
   resolve(fixtureRoot, "current-remote.xml"),
   "utf8"
 );
+const restoreReceiverClosingBoundary = /    <\/receiver>\r?\n  <\/application>/;
 const badgePermissions = [
   "com.sec.android.provider.badge.permission.READ",
   "com.sec.android.provider.badge.permission.WRITE",
@@ -389,7 +390,7 @@ test("requires one restore filter with exactly the two approved actions", async 
       '        <action android:name="example.UNAPPROVED" />\n      </intent-filter>'
     ),
     hardenedManifest.replace(
-      "    </receiver>\n  </application>",
+      restoreReceiverClosingBoundary,
       '      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>\n    </receiver>\n  </application>'
     )
   ];
@@ -402,6 +403,19 @@ test("requires one restore filter with exactly the two approved actions", async 
       assert.match(report.problems.join("\n"), /restore receiver|action set|intent-filter/i);
     });
   }
+});
+
+test("restore-filter mutation remains effective for a CRLF manifest fixture", async () => {
+  const crlfManifest = hardenedManifest.replaceAll("\n", "\r\n");
+  const mutated = crlfManifest.replace(
+    restoreReceiverClosingBoundary,
+    '      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>\n    </receiver>\n  </application>'
+  );
+
+  assert.notEqual(mutated, crlfManifest);
+  const report = await manifestVerifier.validateReleaseManifest(mutated);
+  assert.equal(report.status, "fail");
+  assert.match(report.problems.join("\n"), /restore receiver|action set|intent-filter/i);
 });
 
 test("decodes XML character references before checking forbidden permissions", async () => {
