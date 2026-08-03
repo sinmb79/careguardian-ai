@@ -213,6 +213,32 @@ describe("life workspace state", () => {
     expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", isAuthenticating: false });
   });
 
+  test("unlocks after the device credential activity temporarily backgrounds and returns to the app", async () => {
+    const authentication = deferred<{ authenticated: boolean; message: string }>();
+    const load = vi.fn(async () => fixtureWorkspace);
+    const controller = createLifeWorkspaceController({
+      load, hasPreviousTestData: async () => false, authenticate: async () => authentication.promise,
+      save: async () => undefined, deleteAllKnownWorkspaceData: async () => undefined,
+      removeAllModels: async () => undefined,
+      syncNotifications: async () => 0, cancelAllScheduledNotifications: async () => undefined
+    });
+    await controller.load();
+
+    const unlocking = controller.unlock();
+    controller.onAppStateChange("background");
+    controller.onAppStateChange("active");
+    authentication.resolve({ authenticated: true, message: "인증되었습니다." });
+
+    await expect(unlocking).resolves.toBeUndefined();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot()).toMatchObject({
+      workspace: fixtureWorkspace,
+      privacyGate: "unlocked",
+      isAuthenticating: false,
+      statusMessage: "인증되었습니다."
+    });
+  });
+
   test("rejects delete while save is active and never deletes beneath that save", async () => {
     const pendingSave = deferred<void>();
     const deleteWorkspace = vi.fn(async () => undefined);
