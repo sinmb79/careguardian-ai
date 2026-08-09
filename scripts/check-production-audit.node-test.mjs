@@ -10,7 +10,13 @@ import {
 const acceptance = JSON.parse(
   readFileSync(resolve(import.meta.dirname, "audit-risk-acceptance.json"), "utf8")
 );
-const beforeExpiry = new Date("2026-08-01T00:00:00Z");
+const beforeExpiry = new Date(`${acceptance.reviewDate}T00:00:00Z`);
+const afterExpiry = new Date(
+  Date.parse(`${acceptance.expiresOn}T23:59:59.999Z`) + 1
+);
+const reviewAfterExpiry = new Date(
+  Date.parse(`${acceptance.expiresOn}T00:00:00Z`) + 24 * 60 * 60 * 1000
+).toISOString().slice(0, 10);
 
 function auditFixture() {
   const vulnerabilities = Object.fromEntries(
@@ -75,13 +81,13 @@ test("rejects missing, replacement, and additional advisories", () => {
 });
 
 test("rejects expired acceptance with an injected clock", () => {
-  const report = validateAuditReport(auditFixture(), acceptance, new Date("2026-08-14T00:00:00Z"));
+  const report = validateAuditReport(auditFixture(), acceptance, afterExpiry);
   assert.match(report.problems.join("\n"), /expired/);
 });
 
 test("rejects malformed or reversed review dates without throwing", () => {
   const invalidCalendarDate = { ...acceptance, reviewDate: "2026-02-30" };
-  const reversedDates = { ...acceptance, reviewDate: "2026-08-14" };
+  const reversedDates = { ...acceptance, reviewDate: reviewAfterExpiry };
   const malformedCounts = { ...acceptance, acceptedCounts: null };
 
   assert.doesNotThrow(() =>
