@@ -116,6 +116,12 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
   let lifecycleGeneration = 0;
   let operationGeneration = 0;
   let activeOperation: { kind: Exclude<OperationKind, null>; id: number } | null = null;
+  let appState = "active";
+  let authenticationPromptOperationId: number | null = null;
+  let authenticationResumeWaiter: {
+    operationId: number;
+    settle(resumed: boolean): void;
+  } | null = null;
 
   const publish = (next: LifeWorkspaceSnapshot) => {
     current = next;
@@ -135,6 +141,22 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     activeOperation = null;
     patch(next);
   };
+  const waitForAuthenticationResume = (operationId: number) => {
+    if (appState === "active") return Promise.resolve(true);
+    return new Promise<boolean>((settle) => {
+      authenticationResumeWaiter = { operationId, settle };
+    });
+  };
+  const settleAuthenticationResume = (resumed: boolean) => {
+    const waiter = authenticationResumeWaiter;
+    if (!waiter) return;
+    authenticationResumeWaiter = null;
+    waiter.settle(
+      resumed &&
+      activeOperation?.kind === "unlock" &&
+      activeOperation.id === waiter.operationId
+    );
+  };
 
   return {
     snapshot: () => current,
@@ -144,7 +166,19 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     },
     update(workspace: PersonalWorkspace) { patch({ workspace }); },
     onAppStateChange(nextState: string) {
+      appState = nextState;
+      if (nextState === "active") {
+        settleAuthenticationResume(true);
+        return;
+      }
       if (nextState !== "active") {
+        if (
+          activeOperation?.kind === "unlock" &&
+          authenticationPromptOperationId === activeOperation.id
+        ) {
+          return;
+        }
+        settleAuthenticationResume(false);
         lifecycleGeneration += 1;
         patch({ privacyGate: "locked", statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다." });
       }
@@ -256,14 +290,24 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       const generation = lifecycleGeneration;
       patch({ isAuthenticating: true });
       try {
-        const authentication = await (dependencies.authenticate?.() ?? Promise.resolve({ authenticated: false, message: "기기 인증을 확인할 수 없습니다." }));
+        authenticationPromptOperationId = id;
+        let authentication: AuthenticationResult;
+        try {
+          authentication = await (dependencies.authenticate?.() ?? Promise.resolve({ authenticated: false, message: "기기 인증을 확인할 수 없습니다." }));
+        } finally {
+          if (authenticationPromptOperationId === id) {
+            authenticationPromptOperationId = null;
+          }
+        }
         if (!isCurrent("unlock", id, generation)) return;
         if (!authentication.authenticated) {
           patch({ privacyGate: "locked", statusMessage: authentication.message });
           return;
         }
-        const workspace = await dependencies.load();
+        if (appState !== "active" && !await waitForAuthenticationResume(id)) return;
         if (!isCurrent("unlock", id, generation)) return;
+        const workspace = await dependencies.load();
+        if (!isCurrent("unlock", id, generation) || appState !== "active") return;
         if (!workspace) {
           patch({ privacyGate: "locked", statusMessage: "저장된 개인 작업공간을 찾지 못했습니다. 안전을 위해 잠금 상태를 유지합니다." });
           return;
