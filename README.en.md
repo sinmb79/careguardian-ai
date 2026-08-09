@@ -36,9 +36,9 @@ The privacy policy distinguishes Hugging Face’s possible external installation
 ## Delivery target
 
 - Display name: `생활후견 AI` / `Life Steward AI`
-- Android: `1.1.1` (`versionCode 8`)
+- Android: `1.1.2` (`versionCode 9`)
 - Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Play Alpha `1.1.0 (7)` has been available to testers since 2026-07-31. As of 2026-08-09, 12 testers have opted in and the test is on day 8. The `1.1.1 (8)` authentication-recovery update passed final AAB, native-contract, and emulator regression validation, was uploaded to Alpha, and is under Google review. The tester count and elapsed test days remained intact after submission.
+- Play Alpha `1.1.0 (7)` has been available to testers since 2026-07-31. As of 2026-08-09, 12 testers have opted in and the test is on day 8. The `1.1.1 (8)` update was withdrawn during Google review after an additional resume-then-background authentication race was found. `1.1.2 (9)` blocks that race and is the new Alpha candidate.
 
 ```powershell
 npm ci
@@ -47,4 +47,4 @@ npm run build
 npm run mobile:typecheck
 ```
 
-See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), [store listing](./docs/store-listing.md), [Android 1.1.1 (8) authentication-recovery AAB evidence](./docs/security/android-aab-evidence-2026-08-09.md), [Play Alpha 1.1.1 (8) update-submission evidence](./docs/security/google-play-closed-test-update-2026-08-09.md), [initial Android 1.1.0 (7) AAB evidence](./docs/security/android-aab-evidence-2026-07-31.md), and [initial Play submission evidence](./docs/security/google-play-closed-test-submission-2026-07-31.md).
+See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), [store listing](./docs/store-listing.md), [withdrawn Android 1.1.1 (8) AAB evidence](./docs/security/android-aab-evidence-2026-08-09.md), [withdrawn Play Alpha 1.1.1 (8) submission evidence](./docs/security/google-play-closed-test-update-2026-08-09.md), [initial Android 1.1.0 (7) AAB evidence](./docs/security/android-aab-evidence-2026-07-31.md), and [initial Play submission evidence](./docs/security/google-play-closed-test-submission-2026-07-31.md).

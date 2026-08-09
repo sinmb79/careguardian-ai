@@ -48,9 +48,9 @@ const EXPECTED_PLAY_STORE_KO_COPY = Object.freeze({
 • 자세한 내용은 앱 설정과 Play 등록정보에 연결된 개인정보처리방침에서 확인할 수 있습니다.
 
 비공개 테스트에서는 합성된 비민감 일정과 메모만 사용해 주세요.`,
-  releaseNotes: `앱 종료 후 다시 실행할 때 기기 인증을 완료해도 잠금 화면에서 넘어가지 않던 문제를 수정했습니다.
+  releaseNotes: `앱을 종료한 뒤 다시 열 때 기기 인증을 완료해도 잠금 화면에 머물던 문제를 수정했습니다.
 • 인증 성공과 앱 활성화 이벤트 순서가 달라도 안전하게 작업공간을 엽니다.
-• 인증 중 앱이 다시 비활성화되면 잠금 상태를 유지합니다.
+• 인증 화면에서 돌아온 뒤 앱이 다시 백그라운드로 가면 이전 인증 결과를 폐기하고 잠금을 유지합니다.
 • 로컬 데이터·알림·AI 및 개인정보 경계는 변경하지 않았습니다.`
 });
 const REQUIRED_PLAY_STORE_HEALTH_DISCLAIMER =
@@ -2052,8 +2052,8 @@ function validateIdentity(files, problems) {
     return;
   }
   if (app?.name !== "생활후견 AI") problems.push("app identity name is not exact");
-  if (app?.version !== "1.1.1" || mobilePackage.version !== "1.1.1") {
-    problems.push("app version is not exact 1.1.1");
+  if (app?.version !== "1.1.2" || mobilePackage.version !== "1.1.2") {
+    problems.push("app version is not exact 1.1.2");
   }
   if (
     app?.android?.package !== "com.sinmb.careguardianai" ||
@@ -2067,7 +2067,7 @@ function validateIdentity(files, problems) {
   ) {
     problems.push("EAS linkage is not exact");
   }
-  if (app?.android?.versionCode !== 8 || app?.android?.allowBackup !== false) {
+  if (app?.android?.versionCode !== 9 || app?.android?.allowBackup !== false) {
     problems.push("Android release version or backup policy is unsafe");
   }
   if (

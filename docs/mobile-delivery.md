@@ -7,7 +7,7 @@
 | 항목 | 값 |
 |---|---|
 | 표시명 | `생활후견 AI` / `Life Steward AI` |
-| Android 버전 | `1.1.1` / `versionCode 8` |
+| Android 버전 | `1.1.2` / `versionCode 9` |
 | package | `com.sinmb.careguardianai` (기존 식별자 유지) |
 | EAS slug / project ID | `careguardian-ai-mobile` / `15b9e293-b631-4b77-8cfc-9937cd604dd4` |
 | Play 위치 | Productivity, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정) |
@@ -16,7 +16,7 @@
 ```mermaid
 flowchart LR
   Source["source + tests"] --> Prebuild["Expo prebuild"]
-  Prebuild --> AAB["final AAB 1.1.1 / 8"]
+  Prebuild --> AAB["final AAB 1.1.2 / 9"]
   AAB --> Static["manifest·권한·식별자 검사"]
   Static --> Assets["Android-native screenshots"]
   Assets --> Console["Play Console 대조"]
@@ -94,13 +94,16 @@ Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재�
 2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드 — **완료**
 3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety 대조와 13개 변경사항 검토 제출 — **완료**
 4. Google 검토 승인과 실제 테스터 opt-in — **완료** (`1.1.0 (7)`, 2026-08-09 현재 12명·8일째)
-5. 앱 재실행 기기 인증 복구 수정 `1.1.1 (8)` final AAB·네이티브 계약·에뮬레이터 CT-12 검사와 Alpha 업로드·검토 제출 — **완료** ([AAB 검증](./security/android-aab-evidence-2026-08-09.md), [Play 제출](./security/google-play-closed-test-update-2026-08-09.md)); Google 검토 — **진행 중**
+5. `1.1.1 (8)` final AAB·네이티브 계약·에뮬레이터 CT-12 검사와 Alpha 제출 — **완료 후 회수** ([AAB 검증](./security/android-aab-evidence-2026-08-09.md), [Play 제출·회수](./security/google-play-closed-test-update-2026-08-09.md)); 인증 화면 복귀 뒤 재백그라운드 P1 경합 발견
+6. 위 경합을 차단한 `1.1.2 (9)` CT-13 회귀·final AAB·에뮬레이터 CT-12 검사 — **완료** ([AAB 검증](./security/android-aab-evidence-2026-08-09-v9.md))
+7. 검증된 `1.1.2 (9)`로 회수된 code 8 Alpha 초안을 교체하고 Google 검토 제출 — **진행 중**
 
 ### 합성 데이터 비공개 테스트 중
 
 1. Samsung·Pixel에서 저장·잠금·PIN fallback·삭제·로컬 AI와 알림 권한 허용/거부, 예약·취소, 앱 종료, 재부팅·업데이트, 절전·DND 상태의 일반 알림 검증
 2. 모델 다운로드를 포함한 물리 기기 네트워크 관찰과 발견사항 기록
 3. 실제 opt-in 참여자 수와 운영 일수 확인
+4. 기기 인증 UI가 열린 상태에서 Home·다른 앱으로 이동한 뒤 복귀할 때 이전 인증 결과가 자동 소비되지 않는지 확인. React Native `AppState`만으로 최초 비활성화 출처를 완전히 구분할 수 없는 잔여 provenance 한계가 있으므로, 자동 잠금 해제가 한 번이라도 관찰되면 native 경계를 구현하기 전까지 실제 데이터와 정식 출시를 차단
 
 ### 실제 개인정보·민감정보 단계 또는 정식 출시 전
 
