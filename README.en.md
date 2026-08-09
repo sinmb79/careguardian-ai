@@ -38,7 +38,7 @@ The privacy policy distinguishes Hugging Face’s possible external installation
 - Display name: `생활후견 AI` / `Life Steward AI`
 - Android: `1.1.1` (`versionCode 8`)
 - Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Play Alpha `1.1.0 (7)` has been available to testers since 2026-07-31. As of 2026-08-09, 12 testers have opted in and the test is on day 8. The `1.1.1 (8)` candidate fixes a lock screen that could remain stuck after successful device authentication on app relaunch.
+- Play Alpha `1.1.0 (7)` has been available to testers since 2026-07-31. As of 2026-08-09, 12 testers have opted in and the test is on day 8. The `1.1.1 (8)` candidate fixes a lock screen that could remain stuck after successful device authentication on app relaunch; its final AAB, native contracts, and emulator regression flow have passed and it is awaiting the Alpha upload.
 
 ```powershell
 npm ci
@@ -47,4 +47,4 @@ npm run build
 npm run mobile:typecheck
 ```
 
-See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), [store listing](./docs/store-listing.md), [Android AAB evidence](./docs/security/android-aab-evidence-2026-07-31.md), and [Play submission evidence](./docs/security/google-play-closed-test-submission-2026-07-31.md).
+See the [Korean delivery guide](./docs/mobile-delivery.md), [closed-test operations](./docs/private-test-operations.md), [readiness record](./docs/security/private-test-readiness-2026-07-30.md), [store listing](./docs/store-listing.md), [Android 1.1.1 (8) authentication-recovery AAB evidence](./docs/security/android-aab-evidence-2026-08-09.md), [initial Android 1.1.0 (7) AAB evidence](./docs/security/android-aab-evidence-2026-07-31.md), and [Play submission evidence](./docs/security/google-play-closed-test-submission-2026-07-31.md).
