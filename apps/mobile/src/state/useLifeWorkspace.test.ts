@@ -245,6 +245,34 @@ describe("life workspace state", () => {
     });
   });
 
+  test("cancels authentication when the resumed prompt backgrounds again before resolving", async () => {
+    const authentication = deferred<{ authenticated: boolean; message: string }>();
+    const load = vi.fn(async () => fixtureWorkspace);
+    const controller = createLifeWorkspaceController({
+      load, hasPreviousTestData: async () => false, authenticate: () => authentication.promise,
+      save: async () => undefined, deleteAllKnownWorkspaceData: async () => undefined,
+      removeAllModels: async () => undefined,
+      syncNotifications: async () => 0, cancelAllScheduledNotifications: async () => undefined
+    });
+    await controller.load();
+
+    const unlocking = controller.unlock();
+    controller.onAppStateChange("background");
+    controller.onAppStateChange("active");
+    controller.onAppStateChange("background");
+    authentication.resolve({ authenticated: true, message: "인증되었습니다." });
+    await Promise.resolve();
+
+    controller.onAppStateChange("active");
+    await expect(unlocking).resolves.toBeUndefined();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(controller.snapshot()).toMatchObject({
+      privacyGate: "locked",
+      isAuthenticating: false,
+      statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다."
+    });
+  });
+
   test("waits for the active event when device authentication succeeds before the app resumes", async () => {
     const authentication = deferred<{ authenticated: boolean; message: string }>();
     const load = vi.fn(async () => fixtureWorkspace);

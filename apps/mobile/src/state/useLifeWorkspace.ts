@@ -118,6 +118,7 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
   let activeOperation: { kind: Exclude<OperationKind, null>; id: number } | null = null;
   let appState = "active";
   let authenticationPromptOperationId: number | null = null;
+  let resumedAuthenticationPromptOperationId: number | null = null;
   let authenticationResumeWaiter: {
     operationId: number;
     settle(resumed: boolean): void;
@@ -168,13 +169,20 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     onAppStateChange(nextState: string) {
       appState = nextState;
       if (nextState === "active") {
+        if (
+          activeOperation?.kind === "unlock" &&
+          authenticationPromptOperationId === activeOperation.id
+        ) {
+          resumedAuthenticationPromptOperationId = activeOperation.id;
+        }
         settleAuthenticationResume(true);
         return;
       }
       if (nextState !== "active") {
         if (
           activeOperation?.kind === "unlock" &&
-          authenticationPromptOperationId === activeOperation.id
+          authenticationPromptOperationId === activeOperation.id &&
+          resumedAuthenticationPromptOperationId !== activeOperation.id
         ) {
           return;
         }
@@ -291,12 +299,16 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
       patch({ isAuthenticating: true });
       try {
         authenticationPromptOperationId = id;
+        resumedAuthenticationPromptOperationId = null;
         let authentication: AuthenticationResult;
         try {
           authentication = await (dependencies.authenticate?.() ?? Promise.resolve({ authenticated: false, message: "기기 인증을 확인할 수 없습니다." }));
         } finally {
           if (authenticationPromptOperationId === id) {
             authenticationPromptOperationId = null;
+          }
+          if (resumedAuthenticationPromptOperationId === id) {
+            resumedAuthenticationPromptOperationId = null;
           }
         }
         if (!isCurrent("unlock", id, generation)) return;
