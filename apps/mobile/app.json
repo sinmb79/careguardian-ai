@@ -2,7 +2,7 @@
   "expo": {
     "name": "생활후견 AI",
     "slug": "careguardian-ai-mobile",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -27,7 +27,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "versionCode": 7,
+      "versionCode": 8,
       "allowBackup": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"

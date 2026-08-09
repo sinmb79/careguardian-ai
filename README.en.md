@@ -36,9 +36,9 @@ The privacy policy distinguishes Hugging Face’s possible external installation
 ## Delivery target
 
 - Display name: `생활후견 AI` / `Life Steward AI`
-- Android: `1.1.0` (`versionCode 7`)
+- Android: `1.1.1` (`versionCode 8`)
 - Preserved identifiers: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Thirteen Play closed-test changes were submitted for review on 2026-07-31 as a Productivity app for ages 18+, declared as non-health and positioned as a limited-scope local document helper. The current state is **under review**, not approved.
+- Play Alpha `1.1.0 (7)` has been available to testers since 2026-07-31. As of 2026-08-09, 12 testers have opted in and the test is on day 8. The `1.1.1 (8)` candidate fixes a lock screen that could remain stuck after successful device authentication on app relaunch.
 
 ```powershell
 npm ci

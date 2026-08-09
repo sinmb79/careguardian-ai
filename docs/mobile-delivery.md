@@ -7,7 +7,7 @@
 | 항목 | 값 |
 |---|---|
 | 표시명 | `생활후견 AI` / `Life Steward AI` |
-| Android 버전 | `1.1.0` / `versionCode 7` |
+| Android 버전 | `1.1.1` / `versionCode 8` |
 | package | `com.sinmb.careguardianai` (기존 식별자 유지) |
 | EAS slug / project ID | `careguardian-ai-mobile` / `15b9e293-b631-4b77-8cfc-9937cd604dd4` |
 | Play 위치 | Productivity, 타깃 연령 18세 이상, 기능 제한형 로컬 문서 정리 도구 (IARC 콘텐츠 등급은 설문 후 확정) |
@@ -16,7 +16,7 @@
 ```mermaid
 flowchart LR
   Source["source + tests"] --> Prebuild["Expo prebuild"]
-  Prebuild --> AAB["final AAB 1.1.0 / 7"]
+  Prebuild --> AAB["final AAB 1.1.1 / 8"]
   AAB --> Static["manifest·권한·식별자 검사"]
   Static --> Assets["Android-native screenshots"]
   Assets --> Console["Play Console 대조"]
@@ -93,7 +93,8 @@ Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재�
 1. final AAB SHA-256 `e29047be5302bb99e009bd2e1dd27d89ba246712b507f7ad084ef8623d6430c8`과 versionCode `7` Play 업로드 — **완료**
 2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드 — **완료**
 3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety 대조와 13개 변경사항 검토 제출 — **완료**
-4. Google 검토 승인과 실제 테스터 opt-in — **외부 대기**
+4. Google 검토 승인과 실제 테스터 opt-in — **완료** (`1.1.0 (7)`, 2026-08-09 현재 12명·8일째)
+5. 앱 재실행 기기 인증 복구 수정 `1.1.1 (8)` final AAB 검사와 Alpha 업데이트 — **진행 중**
 
 ### 합성 데이터 비공개 테스트 중
 

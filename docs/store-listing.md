@@ -1,6 +1,6 @@
 # Google Play 스토어 등록 문안 — 생활후견 AI 비공개 테스트
 
-이 문서는 `생활후견 AI 1.1.0 (7)`의 현재 Console 입력 기준입니다. 실제 Console 저장 전에는 새 AAB와 고정 Hugging Face HTTPS 요청 경로 2개를 다시 대조합니다. IARC 등급은 실제 Console 설문 응답으로만 확정하며 이 문서는 임의 등급을 만들지 않습니다.
+이 문서는 `생활후견 AI 1.1.1 (8)`의 현재 Console 입력 기준입니다. 실제 Console 저장 전에는 새 AAB와 고정 Hugging Face HTTPS 요청 경로 2개를 다시 대조합니다. IARC 등급은 실제 Console 설문 응답으로만 확정하며 이 문서는 임의 등급을 만들지 않습니다.
 
 ## 제출·검증 단계
 
@@ -55,11 +55,10 @@
 
 ### 출시 노트
 
-일반 생활 작업 중심으로 앱을 전면 재구성했습니다.
-• 일정·목록·메모·개인 기능을 한 기기에서 정리할 수 있습니다.
-• 앱이 직접 예약하는 Android 로컬 알림과 선택형 기기 내 한국어 AI를 추가했습니다.
-• 0.5B 로컬 AI 결과는 best-effort이며, 엄격한 검증에 통과하지 못하면 원문 변경 없이 폐기되고 다시 시도할 수 있음을 명확히 했습니다.
-• 로컬 저장 보호, 전체 삭제, 외부 모델 다운로드 고지를 강화했습니다.
+앱 종료 후 다시 실행할 때 기기 인증을 완료해도 잠금 화면에서 넘어가지 않던 문제를 수정했습니다.
+• 인증 성공과 앱 활성화 이벤트 순서가 달라도 안전하게 작업공간을 엽니다.
+• 인증 중 앱이 다시 비활성화되면 잠금 상태를 유지합니다.
+• 로컬 데이터·알림·AI 및 개인정보 경계는 변경하지 않았습니다.
 
 ### Play Console 적용값
 
@@ -148,8 +147,7 @@ Use only synthetic, non-sensitive schedules and notes during closed testing.
 
 ### Release notes
 
-Rebuilt the app around ordinary personal tasks.
-• Organize schedules, lists, notes, and personal tools on one device.
-• Added app-scheduled Android local notifications and optional on-device Korean AI.
-• Clarified that 0.5B local-AI results are best-effort; results that fail strict checks are discarded without changing the source and can be retried.
-• Strengthened local-storage protection, full deletion, and external-model download disclosure.
+Fixed an issue where the lock screen could remain stuck after successful device authentication when reopening the app.
+• The workspace opens safely even when authentication success and app-active events arrive in either order.
+• The app stays locked if it becomes inactive again during authentication.
+• Local data, notification, AI, and privacy boundaries are unchanged.
