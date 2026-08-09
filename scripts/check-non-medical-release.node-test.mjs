@@ -138,6 +138,23 @@ test("rejects drift from the exact Korean Play Console copy", () => {
   );
 });
 
+test("rejects drift from the approved authentication recovery release notes", () => {
+  const approvedLine =
+    "• 인증 중 앱이 다시 비활성화되면 잠금 상태를 유지합니다.";
+  const source = baseline.get(storeListingFile);
+  assert.ok(source.includes(approvedLine), `missing baseline copy: ${approvedLine}`);
+
+  const report = mutate(storeListingFile, (current) =>
+    current.replace(approvedLine, "")
+  );
+
+  assert.equal(report.status, "fail");
+  assert.match(
+    report.problems.join("\n"),
+    /Play Store Korean release notes must exactly match/
+  );
+});
+
 test("rejects guaranteed 0.5B claims or removal of closed-test quality limits", () => {
   const requiredCopy = [
     {
@@ -155,11 +172,6 @@ test("rejects guaranteed 0.5B claims or removal of closed-test quality limits", 
       line: "• 비공개 테스트에서는 네 동작의 성공률과 기기별 결과 품질을 평가합니다.",
       replacement: "",
       expected: /Play Store Korean full description must exactly match/
-    },
-    {
-      line: "• 0.5B 로컬 AI 결과는 best-effort이며, 엄격한 검증에 통과하지 못하면 원문 변경 없이 폐기되고 다시 시도할 수 있음을 명확히 했습니다.",
-      replacement: "",
-      expected: /Play Store Korean release notes must exactly match/
     }
   ];
   const source = baseline.get(storeListingFile);
@@ -265,6 +277,25 @@ test("rejects EAS production builds that can mutate the pinned Android version",
   const report = validateReleasePolicy(files);
   assert.equal(report.status, "fail");
   assert.match(report.problems.join("\n"), /EAS production version policy/);
+});
+
+test("rejects drift from the pinned app version and Android version code", () => {
+  const oldVersion = mutate(
+    "apps/mobile/app.json",
+    (source) => source.replace('"version": "1.1.1"', '"version": "1.1.0"')
+  );
+  const oldVersionCode = mutate(
+    "apps/mobile/app.json",
+    (source) => source.replace('"versionCode": 8', '"versionCode": 7')
+  );
+
+  assert.equal(oldVersion.status, "fail");
+  assert.match(oldVersion.problems.join("\n"), /app version is not exact 1\.1\.1/);
+  assert.equal(oldVersionCode.status, "fail");
+  assert.match(
+    oldVersionCode.problems.join("\n"),
+    /Android release version or backup policy is unsafe/
+  );
 });
 
 test("rejects a prohibited health feature hidden in a formerly allowlisted file", () => {

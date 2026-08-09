@@ -48,11 +48,10 @@ const EXPECTED_PLAY_STORE_KO_COPY = Object.freeze({
 • 자세한 내용은 앱 설정과 Play 등록정보에 연결된 개인정보처리방침에서 확인할 수 있습니다.
 
 비공개 테스트에서는 합성된 비민감 일정과 메모만 사용해 주세요.`,
-  releaseNotes: `일반 생활 작업 중심으로 앱을 전면 재구성했습니다.
-• 일정·목록·메모·개인 기능을 한 기기에서 정리할 수 있습니다.
-• 앱이 직접 예약하는 Android 로컬 알림과 선택형 기기 내 한국어 AI를 추가했습니다.
-• 0.5B 로컬 AI 결과는 best-effort이며, 엄격한 검증에 통과하지 못하면 원문 변경 없이 폐기되고 다시 시도할 수 있음을 명확히 했습니다.
-• 로컬 저장 보호, 전체 삭제, 외부 모델 다운로드 고지를 강화했습니다.`
+  releaseNotes: `앱 종료 후 다시 실행할 때 기기 인증을 완료해도 잠금 화면에서 넘어가지 않던 문제를 수정했습니다.
+• 인증 성공과 앱 활성화 이벤트 순서가 달라도 안전하게 작업공간을 엽니다.
+• 인증 중 앱이 다시 비활성화되면 잠금 상태를 유지합니다.
+• 로컬 데이터·알림·AI 및 개인정보 경계는 변경하지 않았습니다.`
 });
 const REQUIRED_PLAY_STORE_HEALTH_DISCLAIMER =
   "일반 개인 생산성 앱이며 건강·의료 기능이나 건강 데이터를 다루지 않습니다.";
@@ -2053,8 +2052,8 @@ function validateIdentity(files, problems) {
     return;
   }
   if (app?.name !== "생활후견 AI") problems.push("app identity name is not exact");
-  if (app?.version !== "1.1.0" || mobilePackage.version !== "1.1.0") {
-    problems.push("app version is not exact 1.1.0");
+  if (app?.version !== "1.1.1" || mobilePackage.version !== "1.1.1") {
+    problems.push("app version is not exact 1.1.1");
   }
   if (
     app?.android?.package !== "com.sinmb.careguardianai" ||
@@ -2068,7 +2067,7 @@ function validateIdentity(files, problems) {
   ) {
     problems.push("EAS linkage is not exact");
   }
-  if (app?.android?.versionCode !== 7 || app?.android?.allowBackup !== false) {
+  if (app?.android?.versionCode !== 8 || app?.android?.allowBackup !== false) {
     problems.push("Android release version or backup policy is unsafe");
   }
   if (
