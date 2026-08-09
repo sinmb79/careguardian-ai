@@ -94,7 +94,7 @@ Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재�
 2. 검증된 Android-native phone·tablet 자산 8장과 feature graphic 업로드 — **완료**
 3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety 대조와 13개 변경사항 검토 제출 — **완료**
 4. Google 검토 승인과 실제 테스터 opt-in — **완료** (`1.1.0 (7)`, 2026-08-09 현재 12명·8일째)
-5. 앱 재실행 기기 인증 복구 수정 `1.1.1 (8)` final AAB·네이티브 계약·에뮬레이터 CT-12 검사 — **완료** ([검증 증거](./security/android-aab-evidence-2026-08-09.md)); Alpha 업로드 — **대기**
+5. 앱 재실행 기기 인증 복구 수정 `1.1.1 (8)` final AAB·네이티브 계약·에뮬레이터 CT-12 검사와 Alpha 업로드·검토 제출 — **완료** ([AAB 검증](./security/android-aab-evidence-2026-08-09.md), [Play 제출](./security/google-play-closed-test-update-2026-08-09.md)); Google 검토 — **진행 중**
 
 ### 합성 데이터 비공개 테스트 중
 
