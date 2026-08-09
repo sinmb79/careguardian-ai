@@ -95,7 +95,8 @@ Production 앱은 화면 캡처 차단 hook을 유지합니다. Play 자산 재�
 3. Productivity, 타깃 연령, 최신 문안·선언·자산·Data safety 대조와 13개 변경사항 검토 제출 — **완료**
 4. Google 검토 승인과 실제 테스터 opt-in — **완료** (`1.1.0 (7)`, 2026-08-09 현재 12명·8일째)
 5. `1.1.1 (8)` final AAB·네이티브 계약·에뮬레이터 CT-12 검사와 Alpha 제출 — **완료 후 회수** ([AAB 검증](./security/android-aab-evidence-2026-08-09.md), [Play 제출·회수](./security/google-play-closed-test-update-2026-08-09.md)); 인증 화면 복귀 뒤 재백그라운드 P1 경합 발견
-6. 위 경합을 차단한 `1.1.2 (9)` CT-13 회귀·final AAB·Alpha 교체 제출 — **진행 중**
+6. 위 경합을 차단한 `1.1.2 (9)` CT-13 회귀·final AAB·에뮬레이터 CT-12 검사 — **완료** ([AAB 검증](./security/android-aab-evidence-2026-08-09-v9.md))
+7. 검증된 `1.1.2 (9)`로 회수된 code 8 Alpha 초안을 교체하고 Google 검토 제출 — **진행 중**
 
 ### 합성 데이터 비공개 테스트 중
 
