@@ -118,6 +118,10 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
   let activeOperation: { kind: Exclude<OperationKind, null>; id: number } | null = null;
   let appState = "active";
   let authenticationPromptOperationId: number | null = null;
+  let authenticationResumeWaiter: {
+    operationId: number;
+    settle(resumed: boolean): void;
+  } | null = null;
 
   const publish = (next: LifeWorkspaceSnapshot) => {
     current = next;
@@ -137,6 +141,22 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     activeOperation = null;
     patch(next);
   };
+  const waitForAuthenticationResume = (operationId: number) => {
+    if (appState === "active") return Promise.resolve(true);
+    return new Promise<boolean>((settle) => {
+      authenticationResumeWaiter = { operationId, settle };
+    });
+  };
+  const settleAuthenticationResume = (resumed: boolean) => {
+    const waiter = authenticationResumeWaiter;
+    if (!waiter) return;
+    authenticationResumeWaiter = null;
+    waiter.settle(
+      resumed &&
+      activeOperation?.kind === "unlock" &&
+      activeOperation.id === waiter.operationId
+    );
+  };
 
   return {
     snapshot: () => current,
@@ -147,6 +167,10 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
     update(workspace: PersonalWorkspace) { patch({ workspace }); },
     onAppStateChange(nextState: string) {
       appState = nextState;
+      if (nextState === "active") {
+        settleAuthenticationResume(true);
+        return;
+      }
       if (nextState !== "active") {
         if (
           activeOperation?.kind === "unlock" &&
@@ -154,6 +178,7 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
         ) {
           return;
         }
+        settleAuthenticationResume(false);
         lifecycleGeneration += 1;
         patch({ privacyGate: "locked", statusMessage: "앱이 백그라운드로 전환되어 작업공간을 잠갔습니다." });
       }
@@ -279,7 +304,8 @@ export function createLifeWorkspaceController(dependencies: LifeWorkspaceControl
           patch({ privacyGate: "locked", statusMessage: authentication.message });
           return;
         }
-        if (appState !== "active") return;
+        if (appState !== "active" && !await waitForAuthenticationResume(id)) return;
+        if (!isCurrent("unlock", id, generation)) return;
         const workspace = await dependencies.load();
         if (!isCurrent("unlock", id, generation) || appState !== "active") return;
         if (!workspace) {

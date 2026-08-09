@@ -193,11 +193,11 @@ describe("life workspace state", () => {
     expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", isSaving: false });
   });
 
-  test("keeps the real coordinator locked when authentication completes after backgrounding", async () => {
+  test("cancels an authenticated resume when the app leaves again before becoming active", async () => {
     const authentication = deferred<{ authenticated: boolean; message: string }>();
     const load = vi.fn(async () => fixtureWorkspace);
     const controller = createLifeWorkspaceController({
-      load, hasPreviousTestData: async () => false, authenticate: async () => authentication.promise,
+      load, hasPreviousTestData: async () => false, authenticate: () => authentication.promise,
       save: async () => undefined, deleteAllKnownWorkspaceData: async () => undefined,
       removeAllModels: async () => undefined,
       syncNotifications: async () => 0, cancelAllScheduledNotifications: async () => undefined
@@ -207,6 +207,12 @@ describe("life workspace state", () => {
     const unlocking = controller.unlock();
     controller.onAppStateChange("background");
     authentication.resolve({ authenticated: true, message: "ok" });
+    await Promise.resolve();
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", isAuthenticating: true });
+
+    controller.onAppStateChange("inactive");
 
     await expect(unlocking).resolves.toBeUndefined();
     expect(load).toHaveBeenCalledTimes(1);
@@ -229,6 +235,36 @@ describe("life workspace state", () => {
     controller.onAppStateChange("active");
     authentication.resolve({ authenticated: true, message: "인증되었습니다." });
 
+    await expect(unlocking).resolves.toBeUndefined();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot()).toMatchObject({
+      workspace: fixtureWorkspace,
+      privacyGate: "unlocked",
+      isAuthenticating: false,
+      statusMessage: "인증되었습니다."
+    });
+  });
+
+  test("waits for the active event when device authentication succeeds before the app resumes", async () => {
+    const authentication = deferred<{ authenticated: boolean; message: string }>();
+    const load = vi.fn(async () => fixtureWorkspace);
+    const controller = createLifeWorkspaceController({
+      load, hasPreviousTestData: async () => false, authenticate: () => authentication.promise,
+      save: async () => undefined, deleteAllKnownWorkspaceData: async () => undefined,
+      removeAllModels: async () => undefined,
+      syncNotifications: async () => 0, cancelAllScheduledNotifications: async () => undefined
+    });
+    await controller.load();
+
+    const unlocking = controller.unlock();
+    controller.onAppStateChange("background");
+    authentication.resolve({ authenticated: true, message: "인증되었습니다." });
+    await Promise.resolve();
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(controller.snapshot()).toMatchObject({ privacyGate: "locked", isAuthenticating: true });
+
+    controller.onAppStateChange("active");
     await expect(unlocking).resolves.toBeUndefined();
     expect(load).toHaveBeenCalledTimes(2);
     expect(controller.snapshot()).toMatchObject({
