@@ -52,7 +52,7 @@ Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알
 - 표시명: `생활후견 AI` / `Life Steward AI`
 - Android 대상 버전: `1.1.1` (`versionCode 8`)
 - 유지하는 식별자: package `com.sinmb.careguardianai`, EAS slug `careguardian-ai-mobile`, EAS project ID `15b9e293-b631-4b77-8cfc-9937cd604dd4`
-- Play Alpha `1.1.0 (7)`은 2026-07-31부터 테스터에게 제공 중이며, 2026-08-09 현재 참여자 12명·운영 8일째입니다. 앱 재실행 뒤 기기 인증이 완료되어도 잠금 화면을 벗어나지 못하던 문제를 수정한 `1.1.1 (8)`은 final AAB·네이티브 계약·에뮬레이터 회귀 검증을 통과했고 Alpha 업로드를 기다리고 있습니다.
+- Play Alpha `1.1.0 (7)`은 2026-07-31부터 테스터에게 제공 중이며, 2026-08-09 현재 참여자 12명·운영 8일째입니다. 앱 재실행 뒤 기기 인증이 완료되어도 잠금 화면을 벗어나지 못하던 문제를 수정한 `1.1.1 (8)`은 final AAB·네이티브 계약·에뮬레이터 회귀 검증을 통과한 뒤 Alpha에 업로드되어 Google 검토 중입니다. 업데이트 제출 뒤에도 참여자 수와 운영 일수는 유지되었습니다.
 
 ## 문서
 
@@ -62,5 +62,6 @@ Android의 빠른 UI 확인은 `npm run mobile:android:go`이며, SQLCipher·알
 4. [스토어 등록 문안](./docs/store-listing.md)
 5. [개인정보처리방침](./public/privacy-policy.html)
 6. [Android 1.1.1 (8) 인증 복구 AAB 검증 증거](./docs/security/android-aab-evidence-2026-08-09.md)
-7. [Android 1.1.0 (7) 최초 AAB 검증 증거](./docs/security/android-aab-evidence-2026-07-31.md)
-8. [Google Play 비공개 테스트 제출 증거](./docs/security/google-play-closed-test-submission-2026-07-31.md)
+7. [Google Play Alpha 1.1.1 (8) 업데이트 제출 증거](./docs/security/google-play-closed-test-update-2026-08-09.md)
+8. [Android 1.1.0 (7) 최초 AAB 검증 증거](./docs/security/android-aab-evidence-2026-07-31.md)
+9. [Google Play 최초 비공개 테스트 제출 증거](./docs/security/google-play-closed-test-submission-2026-07-31.md)
