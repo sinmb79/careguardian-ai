@@ -140,7 +140,7 @@ test("rejects drift from the exact Korean Play Console copy", () => {
 
 test("rejects drift from the approved authentication recovery release notes", () => {
   const approvedLine =
-    "• 인증 중 앱이 다시 비활성화되면 잠금 상태를 유지합니다.";
+    "• 인증 화면에서 돌아온 뒤 앱이 다시 백그라운드로 가면 이전 인증 결과를 폐기하고 잠금을 유지합니다.";
   const source = baseline.get(storeListingFile);
   assert.ok(source.includes(approvedLine), `missing baseline copy: ${approvedLine}`);
 
@@ -282,15 +282,15 @@ test("rejects EAS production builds that can mutate the pinned Android version",
 test("rejects drift from the pinned app version and Android version code", () => {
   const oldVersion = mutate(
     "apps/mobile/app.json",
-    (source) => source.replace('"version": "1.1.1"', '"version": "1.1.0"')
+    (source) => source.replace('"version": "1.1.2"', '"version": "1.1.1"')
   );
   const oldVersionCode = mutate(
     "apps/mobile/app.json",
-    (source) => source.replace('"versionCode": 8', '"versionCode": 7')
+    (source) => source.replace('"versionCode": 9', '"versionCode": 8')
   );
 
   assert.equal(oldVersion.status, "fail");
-  assert.match(oldVersion.problems.join("\n"), /app version is not exact 1\.1\.1/);
+  assert.match(oldVersion.problems.join("\n"), /app version is not exact 1\.1\.2/);
   assert.equal(oldVersionCode.status, "fail");
   assert.match(
     oldVersionCode.problems.join("\n"),
